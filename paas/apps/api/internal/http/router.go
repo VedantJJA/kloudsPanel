@@ -95,6 +95,7 @@ func NewServer(log *slog.Logger, store repository.Store, addr string) *fiber.App
 	svc := v1.Group("/services", h.requireSession)
 	svc.Get("/", h.handleListServices)
 	svc.Post("/", h.handleCreateService)
+	svc.Post("/parse-render-yaml", h.handleParseRenderYaml)
 	svc.Get("/:id", h.handleGetService)
 	svc.Patch("/:id", h.handleUpdateService)
 	svc.Delete("/:id", h.handleDeleteService)
