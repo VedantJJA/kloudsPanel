@@ -74,6 +74,7 @@ type DeploymentRepository interface {
 	ListForService(ctx context.Context, serviceID string, limit int, cursor *string) ([]*domain.Deployment, error)
 	Update(ctx context.Context, d *domain.Deployment) error
 	GetLatestHealthy(ctx context.Context, serviceID string) (*domain.Deployment, error)
+	GetNextSequence(ctx context.Context, serviceID string) (int64, error)
 }
 
 // DatabaseRepository manages database service persistence.
@@ -81,7 +82,9 @@ type DatabaseRepository interface {
 	Create(ctx context.Context, db *domain.Database) error
 	GetByID(ctx context.Context, id string) (*domain.Database, error)
 	ListForProject(ctx context.Context, projectID string) ([]*domain.Database, error)
+	ListAll(ctx context.Context) ([]*domain.Database, error)
 	Update(ctx context.Context, db *domain.Database) error
+	Delete(ctx context.Context, id string) error
 }
 
 // JobRepository manages the job queue.

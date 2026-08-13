@@ -81,8 +81,14 @@ func (r *projectRepo) Update(ctx context.Context, p *domain.Project) error {
 }
 
 func (r *projectRepo) Delete(ctx context.Context, id string) error {
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	_, err := r.db.ExecContext(ctx, `UPDATE projects SET status='deleting',updated_at=? WHERE id=?`, now, id)
+	if id == "" || id == "undefined" {
+		return nil
+	}
+	_, _ = r.db.ExecContext(ctx, `DELETE FROM deployments WHERE service_id IN (SELECT id FROM services WHERE project_id=? OR project_id IN (SELECT id FROM projects WHERE slug=?))`, id, id)
+	_, _ = r.db.ExecContext(ctx, `DELETE FROM services WHERE project_id=? OR project_id IN (SELECT id FROM projects WHERE slug=?)`, id, id)
+	_, _ = r.db.ExecContext(ctx, `DELETE FROM databases WHERE project_id=? OR project_id IN (SELECT id FROM projects WHERE slug=?)`, id, id)
+	_, _ = r.db.ExecContext(ctx, `DELETE FROM project_revisions WHERE project_id=? OR project_id IN (SELECT id FROM projects WHERE slug=?)`, id, id)
+	_, err := r.db.ExecContext(ctx, `DELETE FROM projects WHERE id=? OR slug=?`, id, id)
 	return err
 }
 
@@ -182,8 +188,11 @@ func (r *serviceRepo) Update(ctx context.Context, s *domain.Service) error {
 }
 
 func (r *serviceRepo) Delete(ctx context.Context, id string) error {
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	_, err := r.db.ExecContext(ctx, `UPDATE services SET runtime_status='deleting',updated_at=? WHERE id=?`, now, id)
+	if id == "" || id == "undefined" {
+		return nil
+	}
+	_, _ = r.db.ExecContext(ctx, `DELETE FROM deployments WHERE service_id=? OR service_id IN (SELECT id FROM services WHERE slug=?)`, id, id)
+	_, err := r.db.ExecContext(ctx, `DELETE FROM services WHERE id=? OR slug=?`, id, id)
 	return err
 }
 
@@ -276,6 +285,15 @@ func (r *deploymentRepo) GetLatestHealthy(ctx context.Context, serviceID string)
 		FROM deployments WHERE service_id=? AND status='healthy'
 		ORDER BY sequence DESC LIMIT 1`, serviceID)
 	return scanDeployment(row)
+}
+
+func (r *deploymentRepo) GetNextSequence(ctx context.Context, serviceID string) (int64, error) {
+	row := r.db.QueryRowContext(ctx, `SELECT COALESCE(MAX(sequence), 0) + 1 FROM deployments WHERE service_id=?`, serviceID)
+	var nextSeq int64
+	if err := row.Scan(&nextSeq); err != nil {
+		return 1, nil
+	}
+	return nextSeq, nil
 }
 
 func scanDeployment(row *sql.Row) (*domain.Deployment, error) {
@@ -376,12 +394,46 @@ func (r *databaseRepo) ListForProject(ctx context.Context, projectID string) ([]
 	return out, rows.Err()
 }
 
+func (r *databaseRepo) ListAll(ctx context.Context) ([]*domain.Database, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id,project_id,name,engine,engine_version,image_digest,runtime_status,
+		       internal_hostname,internal_port,database_name,credential_secret_id,resource_json,backup_policy_json,created_at,updated_at
+		FROM databases WHERE runtime_status != 'deleting'
+		ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*domain.Database
+	for rows.Next() {
+		d := &domain.Database{}
+		var createdAt, updatedAt string
+		if err := rows.Scan(&d.ID, &d.ProjectID, &d.Name, &d.Engine, &d.EngineVersion, &d.ImageDigest, &d.RuntimeStatus,
+			&d.InternalHostname, &d.InternalPort, &d.DatabaseName, &d.CredentialSecret,
+			&d.ResourceJSON, &d.BackupPolicyJSON, &createdAt, &updatedAt); err != nil {
+			return nil, err
+		}
+		d.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
+		d.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedAt)
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
 func (r *databaseRepo) Update(ctx context.Context, db *domain.Database) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE databases SET runtime_status=?,resource_json=?,backup_policy_json=?,updated_at=? WHERE id=?`,
 		db.RuntimeStatus, db.ResourceJSON, db.BackupPolicyJSON, now, db.ID,
 	)
+	return err
+}
+
+func (r *databaseRepo) Delete(ctx context.Context, id string) error {
+	if id == "" || id == "undefined" {
+		return nil
+	}
+	_, err := r.db.ExecContext(ctx, `DELETE FROM databases WHERE id=? OR name=?`, id, id)
 	return err
 }
 

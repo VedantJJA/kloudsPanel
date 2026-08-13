@@ -98,6 +98,10 @@ func NewServer(log *slog.Logger, store repository.Store, addr string) *fiber.App
 	svc.Get("/:id", h.handleGetService)
 	svc.Patch("/:id", h.handleUpdateService)
 	svc.Delete("/:id", h.handleDeleteService)
+	svc.Post("/:id/deploy", h.handleTriggerDeployment)
+	svc.Post("/:id/stop", h.handleStopService)
+	svc.Post("/:id/start", h.handleStartService)
+	svc.Get("/:id/logs", h.handleGetLogs)
 
 	// Deployment routes
 	dep := v1.Group("/services/:id/deployments", h.requireSession)
@@ -107,6 +111,7 @@ func NewServer(log *slog.Logger, store repository.Store, addr string) *fiber.App
 
 	// Log streaming
 	v1.Get("/deployments/:id/logs", h.requireSession, h.handleGetLogs)
+	v1.Get("/services/:id/logs", h.requireSession, h.handleGetLogs)
 	// WebSocket log stream handled by Fiber's built-in WS support
 	v1.Get("/ws/deployments/:id/logs", h.requireSession, h.handleWSLogs)
 

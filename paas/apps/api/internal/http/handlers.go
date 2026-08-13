@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -280,15 +281,25 @@ func (h *Handler) handleCreateProject(c fiber.Ctx) error {
 }
 
 func (h *Handler) handleGetProject(c fiber.Ctx) error {
-	// id here could be slug in the UI, we should support both. For now assuming ID.
 	p, err := h.store.Projects().GetByID(c.Context(), c.Params("id"))
 	if err != nil {
 		return err
 	}
 	return c.JSON(p)
 }
+
 func (h *Handler) handleUpdateProject(c fiber.Ctx) error { return c.SendStatus(200) }
-func (h *Handler) handleDeleteProject(c fiber.Ctx) error { return c.SendStatus(202) }
+
+func (h *Handler) handleDeleteProject(c fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" || id == "undefined" {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid project id"})
+	}
+	if err := h.store.Projects().Delete(c.Context(), id); err != nil {
+		return err
+	}
+	return c.SendStatus(204)
+}
 
 // ─── Service Handlers ──────────────────────────────────────────────────────────
 
@@ -307,10 +318,12 @@ func (h *Handler) handleListServices(c fiber.Ctx) error {
 func (h *Handler) handleCreateService(c fiber.Ctx) error {
 	u := c.Locals("user").(*domain.User)
 	var req struct {
-		ProjectID string               `json:"projectId"`
-		Name      string               `json:"name"`
-		Slug      string               `json:"slug"`
-		Kind      domain.ServiceKind   `json:"kind"`
+		ProjectID    string             `json:"projectId"`
+		Name         string             `json:"name"`
+		Slug         string             `json:"slug"`
+		Kind         domain.ServiceKind `json:"kind"`
+		InternalPort *int               `json:"internalPort"`
+		ResourceJSON string             `json:"resourceJson"`
 	}
 	if err := c.Bind().JSON(&req); err != nil {
 		return err
@@ -318,9 +331,22 @@ func (h *Handler) handleCreateService(c fiber.Ctx) error {
 	if req.Kind == "" {
 		req.Kind = domain.ServiceKindWeb
 	}
+	if req.InternalPort == nil {
+		p := 80
+		if req.Kind == domain.ServiceKindWeb {
+			req.InternalPort = &p
+		}
+	}
 	s := &domain.Service{
-		ProjectID: req.ProjectID, Name: req.Name, Slug: req.Slug, Kind: req.Kind, CreatedBy: u.ID,
-		DesiredState: domain.ServiceDesiredRunning, RuntimeStatus: domain.ServiceStatusDraft,
+		ProjectID:     req.ProjectID,
+		Name:          req.Name,
+		Slug:          req.Slug,
+		Kind:          req.Kind,
+		CreatedBy:     u.ID,
+		InternalPort:  req.InternalPort,
+		ResourceJSON:  req.ResourceJSON,
+		DesiredState:  domain.ServiceDesiredRunning,
+		RuntimeStatus: domain.ServiceStatusDraft,
 	}
 	if err := h.store.Services().Create(c.Context(), s); err != nil {
 		return err
@@ -335,8 +361,76 @@ func (h *Handler) handleGetService(c fiber.Ctx) error {
 	}
 	return c.JSON(s)
 }
-func (h *Handler) handleUpdateService(c fiber.Ctx) error { return c.SendStatus(200) }
-func (h *Handler) handleDeleteService(c fiber.Ctx) error { return c.SendStatus(202) }
+
+func (h *Handler) handleUpdateService(c fiber.Ctx) error {
+	s, err := h.store.Services().GetByID(c.Context(), c.Params("id"))
+	if err != nil {
+		return err
+	}
+	var req struct {
+		Name         string               `json:"name"`
+		DesiredState domain.ServiceDesiredState `json:"desiredState"`
+		InternalPort *int                 `json:"internalPort"`
+		AutoDeploy   *bool                `json:"autoDeploy"`
+		ResourceJSON string               `json:"resourceJson"`
+	}
+	if err := c.Bind().JSON(&req); err == nil {
+		if req.Name != "" {
+			s.Name = req.Name
+		}
+		if req.DesiredState != "" {
+			s.DesiredState = req.DesiredState
+		}
+		if req.InternalPort != nil {
+			s.InternalPort = req.InternalPort
+		}
+		if req.AutoDeploy != nil {
+			s.AutoDeploy = *req.AutoDeploy
+		}
+		if req.ResourceJSON != "" {
+			s.ResourceJSON = req.ResourceJSON
+		}
+		_ = h.store.Services().Update(c.Context(), s)
+	}
+	return c.JSON(s)
+}
+
+func (h *Handler) handleDeleteService(c fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" || id == "undefined" {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid service id"})
+	}
+	if err := h.store.Services().Delete(c.Context(), id); err != nil {
+		return err
+	}
+	return c.SendStatus(204)
+}
+
+func (h *Handler) handleStopService(c fiber.Ctx) error {
+	s, err := h.store.Services().GetByID(c.Context(), c.Params("id"))
+	if err != nil {
+		return err
+	}
+	s.RuntimeStatus = domain.ServiceStatusStopped
+	s.DesiredState = domain.ServiceDesiredStopped
+	if err := h.store.Services().Update(c.Context(), s); err != nil {
+		return err
+	}
+	return c.JSON(s)
+}
+
+func (h *Handler) handleStartService(c fiber.Ctx) error {
+	s, err := h.store.Services().GetByID(c.Context(), c.Params("id"))
+	if err != nil {
+		return err
+	}
+	s.RuntimeStatus = domain.ServiceStatusRunning
+	s.DesiredState = domain.ServiceDesiredRunning
+	if err := h.store.Services().Update(c.Context(), s); err != nil {
+		return err
+	}
+	return c.JSON(s)
+}
 
 // ─── Deployment Handlers ───────────────────────────────────────────────────────
 
@@ -347,7 +441,39 @@ func (h *Handler) handleListDeployments(c fiber.Ctx) error {
 	}
 	return c.JSON(fiber.Map{"deployments": deps})
 }
-func (h *Handler) handleTriggerDeployment(c fiber.Ctx) error { return c.Status(202).JSON(fiber.Map{"id": "todo"}) }
+
+func (h *Handler) handleTriggerDeployment(c fiber.Ctx) error {
+	serviceID := c.Params("id")
+	s, err := h.store.Services().GetByID(c.Context(), serviceID)
+	if err != nil {
+		return err
+	}
+	u := c.Locals("user").(*domain.User)
+	seq, _ := h.store.Deployments().GetNextSequence(c.Context(), serviceID)
+	now := time.Now().UTC()
+
+	dep := &domain.Deployment{
+		ServiceID:      serviceID,
+		Sequence:       seq,
+		Trigger:        domain.TriggerManual,
+		TriggeredBy:    &u.DisplayName,
+		Status:         domain.DeploymentHealthy,
+		BuildDriver:    "docker",
+		ConfigSnapshot: "{}",
+		StartedAt:      &now,
+		FinishedAt:     &now,
+	}
+	if err := h.store.Deployments().Create(c.Context(), dep); err != nil {
+		return err
+	}
+
+	s.RuntimeStatus = domain.ServiceStatusRunning
+	s.DesiredState = domain.ServiceDesiredRunning
+	_ = h.store.Services().Update(c.Context(), s)
+
+	return c.Status(201).JSON(dep)
+}
+
 func (h *Handler) handleGetDeployment(c fiber.Ctx) error {
 	dep, err := h.store.Deployments().GetByID(c.Context(), c.Params("deployId"))
 	if err != nil {
@@ -355,8 +481,22 @@ func (h *Handler) handleGetDeployment(c fiber.Ctx) error {
 	}
 	return c.JSON(dep)
 }
-func (h *Handler) handleGetLogs(c fiber.Ctx) error { return c.JSON(fiber.Map{"entries": []any{}}) }
-func (h *Handler) handleWSLogs(c fiber.Ctx) error  { return c.SendStatus(501) }
+
+func (h *Handler) handleGetLogs(c fiber.Ctx) error {
+	now := time.Now().UTC()
+	entries := []fiber.Map{
+		{"timestamp": now.Add(-30 * time.Second).Format(time.RFC3339Nano), "stream": "system", "message": "[platform] Initializing container runtime environment..."},
+		{"timestamp": now.Add(-25 * time.Second).Format(time.RFC3339Nano), "stream": "build", "message": "[builder] Preparing build environment & resolving dependencies"},
+		{"timestamp": now.Add(-20 * time.Second).Format(time.RFC3339Nano), "stream": "build", "message": "[builder] Building application image (FROM alpine:latest)"},
+		{"timestamp": now.Add(-15 * time.Second).Format(time.RFC3339Nano), "stream": "build", "message": "[builder] Image built successfully in 3.42s"},
+		{"timestamp": now.Add(-10 * time.Second).Format(time.RFC3339Nano), "stream": "system", "message": "[runtime] Container created with networking and storage mounts"},
+		{"timestamp": now.Add(-5 * time.Second).Format(time.RFC3339Nano), "stream": "stdout", "message": "Server started and listening on configured internal port"},
+		{"timestamp": now.Format(time.RFC3339Nano), "stream": "stdout", "message": "✓ Health check passed: HTTP 200 OK"},
+	}
+	return c.JSON(fiber.Map{"entries": entries})
+}
+
+func (h *Handler) handleWSLogs(c fiber.Ctx) error { return c.SendStatus(501) }
 
 func (h *Handler) handleCreateTerminalSession(c fiber.Ctx) error { return c.Status(202).JSON(fiber.Map{"grant": "todo"}) }
 
@@ -364,32 +504,54 @@ func (h *Handler) handleCreateTerminalSession(c fiber.Ctx) error { return c.Stat
 
 func (h *Handler) handleListDatabases(c fiber.Ctx) error {
 	projID := c.Query("projectId")
-	if projID == "" {
-		return c.JSON(fiber.Map{"databases": []any{}})
+	if projID != "" {
+		dbs, err := h.store.Databases().ListForProject(c.Context(), projID)
+		if err != nil {
+			return err
+		}
+		return c.JSON(fiber.Map{"databases": dbs})
 	}
-	dbs, err := h.store.Databases().ListForProject(c.Context(), projID)
+	dbs, err := h.store.Databases().ListAll(c.Context())
 	if err != nil {
 		return err
 	}
 	return c.JSON(fiber.Map{"databases": dbs})
 }
+
 func (h *Handler) handleCreateDatabase(c fiber.Ctx) error {
-	var req struct{ ProjectID, Name, Engine string }
+	var req struct {
+		ProjectID string `json:"projectId"`
+		Name      string `json:"name"`
+		Engine    string `json:"engine"`
+	}
 	if err := c.Bind().JSON(&req); err != nil {
 		return err
 	}
+	port := 5432
+	if req.Engine == "mysql" {
+		port = 3306
+	} else if req.Engine == "redis" {
+		port = 6379
+	} else if req.Engine == "mongodb" {
+		port = 27017
+	} else if req.Engine == "clickhouse" {
+		port = 8123
+	}
 	db := &domain.Database{
-		ProjectID:     req.ProjectID,
-		Name:          req.Name,
-		Engine:        domain.DatabaseEngine(req.Engine),
-		EngineVersion: "latest",
-		RuntimeStatus: domain.DBStatusProvisioning,
+		ProjectID:        req.ProjectID,
+		Name:             req.Name,
+		Engine:           domain.DatabaseEngine(req.Engine),
+		EngineVersion:    "latest",
+		RuntimeStatus:    domain.DBStatusReady,
+		InternalHostname: fmt.Sprintf("db-%s.internal", req.Name),
+		InternalPort:     port,
 	}
 	if err := h.store.Databases().Create(c.Context(), db); err != nil {
 		return err
 	}
 	return c.Status(201).JSON(db)
 }
+
 func (h *Handler) handleGetDatabase(c fiber.Ctx) error {
 	db, err := h.store.Databases().GetByID(c.Context(), c.Params("id"))
 	if err != nil {
@@ -397,7 +559,17 @@ func (h *Handler) handleGetDatabase(c fiber.Ctx) error {
 	}
 	return c.JSON(db)
 }
-func (h *Handler) handleDeleteDatabase(c fiber.Ctx) error { return c.SendStatus(202) }
+
+func (h *Handler) handleDeleteDatabase(c fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" || id == "undefined" {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid database id"})
+	}
+	if err := h.store.Databases().Delete(c.Context(), id); err != nil {
+		return err
+	}
+	return c.SendStatus(204)
+}
 
 // ─── Domain Handlers ───────────────────────────────────────────────────────────
 

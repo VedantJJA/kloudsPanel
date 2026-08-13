@@ -2,14 +2,14 @@
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
-  import { Loader2, Box, FolderOpen } from 'lucide-svelte';
+  import { Loader2, Box, FolderOpen, Trash2 } from 'lucide-svelte';
 
   const { slug } = $derived($page.params);
   let workspace = $state<any>(null);
   let projects = $state<any[]>([]);
   let loading = $state(true);
 
-  onMount(async () => {
+  async function loadProjects() {
     try {
       const wsRes = await fetch(`/api/v1/workspaces/${slug}`, { credentials: 'include' });
       if (!wsRes.ok) { 
@@ -19,7 +19,6 @@
       }
       workspace = await wsRes.json();
       const wsId = workspace.id || workspace.ID;
-      // Use the resolved workspace ID to fetch projects
       if (wsId) {
         const projRes = await fetch(`/api/v1/projects?workspaceId=${wsId}`, { credentials: 'include' });
         if (projRes.ok) {
@@ -33,7 +32,29 @@
     } finally {
       loading = false;
     }
+  }
+
+  onMount(() => {
+    loadProjects();
   });
+
+  async function deleteProject(e: Event, proj: any) {
+    e.preventDefault();
+    e.stopPropagation();
+    const id = proj.id || proj.ID;
+    if (!confirm(`Are you sure you want to delete project "${proj.name || proj.Name || id}"? All services and deployments in this project will be deleted.`)) return;
+    try {
+      const res = await fetch(`/api/v1/projects/${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert('Failed to delete project: ' + (d.detail || d.message || res.statusText));
+      }
+      await loadProjects();
+    } catch (e: any) {
+      console.error(e);
+      alert('Failed to delete project: ' + e.message);
+    }
+  }
 </script>
 
 <svelte:head>
@@ -72,18 +93,35 @@
   {:else}
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:1rem">
       {#each projects as proj}
-        <a href="/projects/{proj.id}" style="text-decoration:none">
-          <div class="card" style="cursor:pointer">
-            <div class="card-header">
-              <div>
-                <h3 style="margin:0">{proj.name}</h3>
-                <span class="text-xs text-muted">{proj.source_kind}</span>
-              </div>
-              <span class="badge badge-running">active</span>
+        {@const projId = proj.id || proj.ID}
+        <div 
+          class="card" 
+          style="cursor:pointer"
+          onclick={() => goto(`/projects/${projId}`)}
+          onkeydown={(e) => e.key === 'Enter' && goto(`/projects/${projId}`)}
+          role="button"
+          tabindex="0"
+        >
+          <div class="card-header" style="display:flex; justify-content:space-between; align-items:flex-start">
+            <div>
+              <h3 style="margin:0">{proj.name || proj.Name}</h3>
+              <span class="text-xs text-muted font-mono">{proj.slug || proj.Slug || ''}</span>
             </div>
-            <p class="text-sm text-muted" style="margin:0">{proj.description ?? 'No description'}</p>
+            <div style="display:flex; gap:0.5rem; align-items:center;">
+              <span class="badge badge-running">active</span>
+              <button 
+                class="btn btn-secondary" 
+                style="padding:4px; color:var(--color-error); border:none; background:transparent" 
+                aria-label="Delete Project" 
+                onclick={(e) => deleteProject(e, proj)}
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
           </div>
-        </a>
+          <p class="text-sm text-muted" style="margin:0 0 0.5rem 0">{proj.description ?? 'No description'}</p>
+          <div class="text-xs text-muted" style="color:var(--color-accent)">Open project →</div>
+        </div>
       {/each}
     </div>
   {/if}
