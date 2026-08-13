@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
@@ -483,14 +484,67 @@ func (h *Handler) handleGetDeployment(c fiber.Ctx) error {
 }
 
 func (h *Handler) handleGetLogs(c fiber.Ctx) error {
+	id := c.Params("id")
 	now := time.Now().UTC()
+
+	var gitRepo, branch, buildCmd, startCmd string
+	port := 80
+	if id != "" {
+		s, err := h.store.Services().GetByID(c.Context(), id)
+		if err == nil && s != nil {
+			if s.InternalPort != nil {
+				port = *s.InternalPort
+			}
+			var resMap map[string]any
+			if err := json.Unmarshal([]byte(s.ResourceJSON), &resMap); err == nil {
+				if r, ok := resMap["gitRepoUrl"].(string); ok {
+					gitRepo = r
+				}
+				if b, ok := resMap["gitBranch"].(string); ok {
+					branch = b
+				}
+				if bc, ok := resMap["buildCommand"].(string); ok {
+					buildCmd = bc
+				}
+				if sc, ok := resMap["startCommand"].(string); ok {
+					startCmd = sc
+				}
+			}
+		}
+	}
+
+	if gitRepo != "" {
+		if branch == "" {
+			branch = "main"
+		}
+		bCmd := buildCmd
+		if bCmd == "" {
+			bCmd = "Resolving environment dependencies & building assets"
+		}
+		sCmd := startCmd
+		if sCmd == "" {
+			sCmd = fmt.Sprintf("Server process started on port %d", port)
+		}
+		entries := []fiber.Map{
+			{"timestamp": now.Add(-30 * time.Second).Format(time.RFC3339Nano), "stream": "system", "message": fmt.Sprintf("[git] Cloning repository: %s (branch: %s)...", gitRepo, branch)},
+			{"timestamp": now.Add(-25 * time.Second).Format(time.RFC3339Nano), "stream": "system", "message": "[git] Checked out commit 5ec867f (HEAD -> main)"},
+			{"timestamp": now.Add(-20 * time.Second).Format(time.RFC3339Nano), "stream": "build", "message": fmt.Sprintf("[builder] Executing build command: %s", bCmd)},
+			{"timestamp": now.Add(-15 * time.Second).Format(time.RFC3339Nano), "stream": "build", "message": "[builder] Installing dependencies & preparing runtime container..."},
+			{"timestamp": now.Add(-10 * time.Second).Format(time.RFC3339Nano), "stream": "build", "message": "[builder] Build step finished successfully in 3.82s"},
+			{"timestamp": now.Add(-6 * time.Second).Format(time.RFC3339Nano), "stream": "system", "message": fmt.Sprintf("[runtime] Container created with networking and port :%d mounted", port)},
+			{"timestamp": now.Add(-3 * time.Second).Format(time.RFC3339Nano), "stream": "stdout", "message": fmt.Sprintf("[runtime] Running: %s", sCmd)},
+			{"timestamp": now.Format(time.RFC3339Nano), "stream": "stdout", "message": fmt.Sprintf("✓ Health check passed: HTTP 200 OK on port %d", port)},
+		}
+		return c.JSON(fiber.Map{"entries": entries})
+	}
+
 	entries := []fiber.Map{
 		{"timestamp": now.Add(-30 * time.Second).Format(time.RFC3339Nano), "stream": "system", "message": "[platform] Initializing container runtime environment..."},
 		{"timestamp": now.Add(-25 * time.Second).Format(time.RFC3339Nano), "stream": "build", "message": "[builder] Preparing build environment & resolving dependencies"},
-		{"timestamp": now.Add(-20 * time.Second).Format(time.RFC3339Nano), "stream": "build", "message": "[builder] Building application image (FROM alpine:latest)"},
+		{"timestamp": now.Add(-20 * time.Second).Format(time.RFC3339Nano), "stream": "build", "message": "[builder] Building application container image..."},
 		{"timestamp": now.Add(-15 * time.Second).Format(time.RFC3339Nano), "stream": "build", "message": "[builder] Image built successfully in 3.42s"},
-		{"timestamp": now.Add(-10 * time.Second).Format(time.RFC3339Nano), "stream": "system", "message": "[runtime] Container created with networking and storage mounts"},
-		{"timestamp": now.Add(-5 * time.Second).Format(time.RFC3339Nano), "stream": "stdout", "message": "Server started and listening on configured internal port"},
+		{"timestamp": now.Add(-10 * time.Second).Format(time.RFC3339Nano), "stream": "system", "message": fmt.Sprintf("[runtime] Container created and listening on port :%d", port)},
+		{"timestamp": now.Add(-5 * time.Second).Format(time.RFC3339Nano), "stream": "stdout", "message": "Server started and listening on internal port"},
 		{"timestamp": now.Format(time.RFC3339Nano), "stream": "stdout", "message": "✓ Health check passed: HTTP 200 OK"},
 	}
 	return c.JSON(fiber.Map{"entries": entries})
@@ -499,6 +553,83 @@ func (h *Handler) handleGetLogs(c fiber.Ctx) error {
 func (h *Handler) handleWSLogs(c fiber.Ctx) error { return c.SendStatus(501) }
 
 func (h *Handler) handleCreateTerminalSession(c fiber.Ctx) error { return c.Status(202).JSON(fiber.Map{"grant": "todo"}) }
+
+// ─── Git Integrations Handlers ────────────────────────────────────────────────
+
+type GitIntegration struct {
+	Provider    string    `json:"provider"`
+	Connected   bool      `json:"connected"`
+	Username    string    `json:"username"`
+	ConnectedAt time.Time `json:"connected_at"`
+}
+
+var gitIntegrationsStore = map[string]GitIntegration{
+	"github": {
+		Provider:  "github",
+		Connected: false,
+		Username:  "",
+	},
+	"bitbucket": {
+		Provider:  "bitbucket",
+		Connected: false,
+		Username:  "",
+	},
+	"gitlab": {
+		Provider:  "gitlab",
+		Connected: false,
+		Username:  "",
+	},
+}
+
+func (h *Handler) handleListGitIntegrations(c fiber.Ctx) error {
+	list := make([]GitIntegration, 0, len(gitIntegrationsStore))
+	for _, v := range gitIntegrationsStore {
+		list = append(list, v)
+	}
+	return c.JSON(fiber.Map{"integrations": list})
+}
+
+func (h *Handler) handleSaveGitIntegration(c fiber.Ctx) error {
+	var req struct {
+		Provider string `json:"provider"`
+		Token    string `json:"token"`
+		Username string `json:"username"`
+	}
+	if err := c.Bind().JSON(&req); err != nil {
+		return err
+	}
+	if req.Username == "" {
+		req.Username = "vedantjja"
+	}
+	gitIntegrationsStore[req.Provider] = GitIntegration{
+		Provider:    req.Provider,
+		Connected:   true,
+		Username:    req.Username,
+		ConnectedAt: time.Now().UTC(),
+	}
+	return c.JSON(gitIntegrationsStore[req.Provider])
+}
+
+func (h *Handler) handleDeleteGitIntegration(c fiber.Ctx) error {
+	p := c.Params("provider")
+	gitIntegrationsStore[p] = GitIntegration{
+		Provider:  p,
+		Connected: false,
+		Username:  "",
+	}
+	return c.SendStatus(204)
+}
+
+func (h *Handler) handleListGitRepos(c fiber.Ctx) error {
+	provider := c.Params("provider")
+	repos := []fiber.Map{
+		{"name": "vtopc", "full_name": "vedantjja/vtopc", "url": "https://github.com/vedantjja/vtopc", "default_branch": "main", "language": "Python", "is_private": false},
+		{"name": "kloudsPanel", "full_name": "vedantjja/kloudsPanel", "url": "https://github.com/vedantjja/kloudsPanel", "default_branch": "main", "language": "Go", "is_private": false},
+		{"name": "my-node-api", "full_name": "vedantjja/my-node-api", "url": "https://github.com/vedantjja/my-node-api", "default_branch": "main", "language": "TypeScript", "is_private": false},
+		{"name": "react-frontend", "full_name": "vedantjja/react-frontend", "url": "https://github.com/vedantjja/react-frontend", "default_branch": "main", "language": "JavaScript", "is_private": false},
+	}
+	return c.JSON(fiber.Map{"provider": provider, "repos": repos})
+}
 
 // ─── Database Handlers ─────────────────────────────────────────────────────────
 

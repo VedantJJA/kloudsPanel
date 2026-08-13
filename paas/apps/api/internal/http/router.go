@@ -127,11 +127,12 @@ func NewServer(log *slog.Logger, store repository.Store, addr string) *fiber.App
 	db.Get("/:id/logs", h.handleGetLogs)
 	db.Delete("/:id", h.handleDeleteDatabase)
 
-	// Domain routes
-	dom := v1.Group("/domains", h.requireSession)
-	dom.Get("/", h.handleListDomains)
-	dom.Post("/", h.handleCreateDomain)
-	dom.Post("/:id/verify", h.handleVerifyDomain)
+	// Git Integrations routes
+	git := v1.Group("/integrations/git", h.requireSession)
+	git.Get("/", h.handleListGitIntegrations)
+	git.Post("/", h.handleSaveGitIntegration)
+	git.Delete("/:provider", h.handleDeleteGitIntegration)
+	git.Get("/:provider/repos", h.handleListGitRepos)
 
 	// Admin routes (main_admin only)
 	admin := v1.Group("/admin", h.requireSession, h.requireMainAdmin)
