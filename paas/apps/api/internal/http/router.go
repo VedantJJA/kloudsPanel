@@ -7,12 +7,12 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/compress"
-	"github.com/gofiber/fiber/v3/middleware/cors"
 	"github.com/gofiber/fiber/v3/middleware/helmet"
 	"github.com/gofiber/fiber/v3/middleware/limiter"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/fiber/v3/middleware/recover"
 	"github.com/gofiber/fiber/v3/middleware/requestid"
+	"github.com/yourorg/klouds/api/internal/http/middleware"
 	"github.com/yourorg/klouds/api/internal/repository"
 )
 
@@ -20,13 +20,13 @@ import (
 // and routes registered.
 func NewServer(log *slog.Logger, store repository.Store, addr string) *fiber.App {
 	app := fiber.New(fiber.Config{
-		AppName:               "kloudsPanel API v1",
-		ReadTimeout:           15 * time.Second,
-		WriteTimeout:          60 * time.Second,
-		IdleTimeout:           120 * time.Second,
+		AppName:      "kloudsPanel API v1",
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 60 * time.Second,
+		IdleTimeout:  120 * time.Second,
 
 		// RFC 9457 problem+json errors
-		ErrorHandler: problemErrorHandler,
+		ErrorHandler: middleware.ProblemErrorHandler,
 	})
 
 	// ── Global middleware ───────────────────────────────────────────────────
@@ -37,15 +37,7 @@ func NewServer(log *slog.Logger, store repository.Store, addr string) *fiber.App
 	}))
 	app.Use(helmet.New())
 	app.Use(compress.New())
-	app.Use(cors.New(cors.Config{
-		AllowOriginsFunc: func(origin string) bool {
-			return true // Traefik handles edge security; API is internal-only
-		},
-		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Content-Type", "Authorization", "X-CSRF-Token", "X-Request-ID"},
-		AllowCredentials: true,
-		MaxAge:           600,
-	}))
+	app.Use(middleware.DefaultCORS())
 
 	// ── Health endpoints ────────────────────────────────────────────────────
 	app.Get("/healthz", func(c fiber.Ctx) error {
@@ -146,23 +138,4 @@ func NewServer(log *slog.Logger, store repository.Store, addr string) *fiber.App
 	admin.Post("/setup", h.handleAdminSetup)
 
 	return app
-}
-
-// problemErrorHandler converts errors to RFC 9457 problem+json responses.
-func problemErrorHandler(c fiber.Ctx, err error) error {
-	code := fiber.StatusInternalServerError
-	title := "Internal Server Error"
-
-	if e, ok := err.(*fiber.Error); ok {
-		code = e.Code
-		title = e.Message
-	}
-
-	return c.Status(code).JSON(fiber.Map{
-		"type":      "about:blank",
-		"title":     title,
-		"status":    code,
-		"detail":    err.Error(),
-		"requestId": c.Locals("requestid"),
-	})
 }
