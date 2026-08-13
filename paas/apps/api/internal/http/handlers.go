@@ -6,6 +6,10 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/shirou/gopsutil/v4/cpu"
+	"github.com/shirou/gopsutil/v4/disk"
+	"github.com/shirou/gopsutil/v4/load"
+	"github.com/shirou/gopsutil/v4/mem"
 	"github.com/yourorg/klouds/api/internal/domain"
 	"github.com/yourorg/klouds/api/internal/repository"
 	"golang.org/x/crypto/bcrypt"
@@ -331,7 +335,23 @@ func (h *Handler) handleListDatabases(c fiber.Ctx) error {
 	}
 	return c.JSON(fiber.Map{"databases": dbs})
 }
-func (h *Handler) handleCreateDatabase(c fiber.Ctx) error { return c.Status(202).JSON(fiber.Map{"id": "todo"}) }
+func (h *Handler) handleCreateDatabase(c fiber.Ctx) error {
+	var req struct{ ProjectID, Name, Engine string }
+	if err := c.Bind().JSON(&req); err != nil {
+		return err
+	}
+	db := &domain.Database{
+		ProjectID:     req.ProjectID,
+		Name:          req.Name,
+		Engine:        domain.DatabaseEngine(req.Engine),
+		EngineVersion: "latest",
+		RuntimeStatus: domain.DBStatusProvisioning,
+	}
+	if err := h.store.Databases().Create(c.Context(), db); err != nil {
+		return err
+	}
+	return c.Status(201).JSON(db)
+}
 func (h *Handler) handleGetDatabase(c fiber.Ctx) error {
 	db, err := h.store.Databases().GetByID(c.Context(), c.Params("id"))
 	if err != nil {
@@ -350,14 +370,39 @@ func (h *Handler) handleVerifyDomain(c fiber.Ctx) error { return c.Status(202).J
 // ─── Admin Handlers ────────────────────────────────────────────────────────────
 
 func (h *Handler) handleGetTelemetry(c fiber.Ctx) error {
+	v, _ := mem.VirtualMemory()
+	cpuStats, _ := cpu.Percent(0, false)
+	l, _ := load.Avg()
+	d, _ := disk.Usage("/")
+
+	var cpuPct float64
+	if len(cpuStats) > 0 {
+		cpuPct = cpuStats[0]
+	}
+
+	var load1 float64
+	if l != nil {
+		load1 = l.Load1
+	}
+
+	var memUsed, memTotal, diskUsed, diskTotal uint64
+	if v != nil {
+		memUsed = v.Used
+		memTotal = v.Total
+	}
+	if d != nil {
+		diskUsed = d.Used
+		diskTotal = d.Total
+	}
+
 	return c.JSON(fiber.Map{
 		"host": fiber.Map{
-			"cpu_percent":         4.2,
-			"load1":               1.2,
-			"memory_used_bytes":   2 * 1024 * 1024 * 1024,
-			"memory_total_bytes":  8 * 1024 * 1024 * 1024,
-			"storage_used_bytes":  100 * 1024 * 1024 * 1024,
-			"storage_total_bytes": 500 * 1024 * 1024 * 1024,
+			"cpu_percent":         cpuPct,
+			"load1":               load1,
+			"memory_used_bytes":   memUsed,
+			"memory_total_bytes":  memTotal,
+			"storage_used_bytes":  diskUsed,
+			"storage_total_bytes": diskTotal,
 		},
 	})
 }
