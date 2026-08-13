@@ -76,9 +76,11 @@ services:
       - "io.paas.component=sablier"
     logging: *default-logging
 
-  # ── Go node agent (only Docker socket access) ───────────────────────────────
   agent:
     image: ghcr.io/yourorg/klouds/agent:latest
+    build:
+      context: ../..
+      dockerfile: apps/agent/Dockerfile
     container_name: klouds-agent
     restart: unless-stopped
     networks:
@@ -94,9 +96,11 @@ services:
       - "io.paas.component=agent"
     logging: *default-logging
 
-  # ── Go control API ──────────────────────────────────────────────────────────
   api:
     image: ghcr.io/yourorg/klouds/api:latest
+    build:
+      context: ../../apps/api
+      dockerfile: Dockerfile
     container_name: klouds-api
     restart: unless-stopped
     networks:
@@ -131,9 +135,11 @@ services:
       timeout: 5s
       retries: 3
 
-  # ── SvelteKit UI ────────────────────────────────────────────────────────────
   web:
     image: ghcr.io/yourorg/klouds/web:latest
+    build:
+      context: ../..
+      dockerfile: apps/web/Dockerfile
     container_name: klouds-web
     restart: unless-stopped
     networks:
