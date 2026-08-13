@@ -9,6 +9,7 @@ WORKDIR /app
 # Copy workspace files and agent module
 COPY go.work go.work.sum ./
 COPY apps/agent/go.mod apps/agent/
+COPY apps/api/go.mod apps/api/
 RUN go work sync
 
 # Copy agent source
