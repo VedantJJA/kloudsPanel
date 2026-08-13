@@ -74,23 +74,33 @@
 {:else}
   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1rem">
     {#each workspaces as ws}
-      <a href="/workspaces/{ws.slug}" style="text-decoration:none">
-        <div class="card" style="cursor:pointer">
-          <div class="card-header" style="display:flex; justify-content:space-between; align-items:flex-start">
-            <div>
-              <h3 style="margin:0">{ws.name || 'Unnamed Workspace'}</h3>
-              <span class="text-xs text-muted font-mono">/{ws.slug || 'no-slug'}</span>
-            </div>
-            <div style="display:flex; gap:0.5rem; align-items:center;">
-              <span class="badge badge-running">active</span>
-              <button class="btn btn-secondary" style="padding:4px; color:var(--color-error); border:none; background:transparent" aria-label="Delete Workspace" onclick={(e) => deleteWorkspace(e, ws.id)}>
-                <Trash2 size={16} />
-              </button>
-            </div>
+      <div 
+        class="card" 
+        style="cursor:pointer" 
+        onclick={() => goto(`/workspaces/${ws.slug}`)}
+        onkeydown={(e) => e.key === 'Enter' && goto(`/workspaces/${ws.slug}`)}
+        role="button"
+        tabindex="0"
+      >
+        <div class="card-header" style="display:flex; justify-content:space-between; align-items:flex-start">
+          <div>
+            <h3 style="margin:0">{ws.name || 'Unnamed Workspace'}</h3>
+            <span class="text-xs text-muted font-mono">/{ws.slug || 'no-slug'}</span>
           </div>
-          <div class="text-sm text-muted">Click to open workspace →</div>
+          <div style="display:flex; gap:0.5rem; align-items:center;">
+            <span class="badge badge-running">active</span>
+            <button 
+              class="btn btn-secondary" 
+              style="padding:4px; color:var(--color-error); border:none; background:transparent" 
+              aria-label="Delete Workspace" 
+              onclick={(e) => { e.stopPropagation(); deleteWorkspace(e, ws.id); }}
+            >
+              <Trash2 size={16} />
+            </button>
+          </div>
         </div>
-      </a>
+        <div class="text-sm text-muted">Click to open workspace →</div>
+      </div>
     {/each}
   </div>
 {/if}
