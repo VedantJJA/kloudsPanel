@@ -1,7 +1,4 @@
 packages:
   - apps/web
-  - packages/contracts
-  - packages/ui
-  - packages/config
 allowBuilds:
   esbuild: true
