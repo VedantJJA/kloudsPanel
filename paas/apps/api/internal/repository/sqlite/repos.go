@@ -212,6 +212,28 @@ func scanService(row *sql.Row) (*domain.Service, error) {
 	return s, nil
 }
 
+func nullableTimeString(t *time.Time) *string {
+	if t == nil || t.IsZero() {
+		return nil
+	}
+	formatted := t.UTC().Format(time.RFC3339Nano)
+	return &formatted
+}
+
+func parseNullableTime(s *string) *time.Time {
+	if s == nil || *s == "" {
+		return nil
+	}
+	t, err := time.Parse(time.RFC3339Nano, *s)
+	if err != nil {
+		t, err = time.Parse(time.RFC3339, *s)
+		if err != nil {
+			return nil
+		}
+	}
+	return &t
+}
+
 // ─── Deployments ──────────────────────────────────────────────────────────────
 
 type deploymentRepo struct{ db querier }
@@ -221,6 +243,8 @@ func (r *deploymentRepo) Create(ctx context.Context, d *domain.Deployment) error
 		d.ID = ids.NewV7()
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
+	startedAt := nullableTimeString(d.StartedAt)
+	finishedAt := nullableTimeString(d.FinishedAt)
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO deployments (id,service_id,revision_id,sequence,trigger,triggered_by,
 		  status,build_driver,config_snapshot,image_ref,image_digest,docker_container_id,
@@ -228,7 +252,7 @@ func (r *deploymentRepo) Create(ctx context.Context, d *domain.Deployment) error
 		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		d.ID, d.ServiceID, d.RevisionID, d.Sequence, d.Trigger, d.TriggeredBy,
 		d.Status, d.BuildDriver, d.ConfigSnapshot, d.ImageRef, d.ImageDigest, d.DockerContainer,
-		d.StartedAt, d.FinishedAt, d.ExitCode, d.ErrorCode, d.ErrorSummary, d.RollbackOf, now, now,
+		startedAt, finishedAt, d.ExitCode, d.ErrorCode, d.ErrorSummary, d.RollbackOf, now, now,
 	)
 	return err
 }
@@ -266,12 +290,14 @@ func (r *deploymentRepo) ListForService(ctx context.Context, serviceID string, l
 
 func (r *deploymentRepo) Update(ctx context.Context, d *domain.Deployment) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
+	startedAt := nullableTimeString(d.StartedAt)
+	finishedAt := nullableTimeString(d.FinishedAt)
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE deployments SET status=?,image_ref=?,image_digest=?,docker_container_id=?,
 		  started_at=?,finished_at=?,exit_code=?,error_code=?,error_summary=?,updated_at=?
 		WHERE id=?`,
 		d.Status, d.ImageRef, d.ImageDigest, d.DockerContainer,
-		nullableTime(d.StartedAt), nullableTime(d.FinishedAt), d.ExitCode, d.ErrorCode, d.ErrorSummary,
+		startedAt, finishedAt, d.ExitCode, d.ErrorCode, d.ErrorSummary,
 		now, d.ID,
 	)
 	return err
@@ -299,15 +325,18 @@ func (r *deploymentRepo) GetNextSequence(ctx context.Context, serviceID string) 
 func scanDeployment(row *sql.Row) (*domain.Deployment, error) {
 	d := &domain.Deployment{}
 	var createdAt, updatedAt string
+	var startedAt, finishedAt *string
 	err := row.Scan(&d.ID, &d.ServiceID, &d.RevisionID, &d.Sequence, &d.Trigger, &d.TriggeredBy,
 		&d.Status, &d.BuildDriver, &d.ConfigSnapshot, &d.ImageRef, &d.ImageDigest, &d.DockerContainer,
-		&d.StartedAt, &d.FinishedAt, &d.ExitCode, &d.ErrorCode, &d.ErrorSummary, &d.RollbackOf, &createdAt, &updatedAt)
+		&startedAt, &finishedAt, &d.ExitCode, &d.ErrorCode, &d.ErrorSummary, &d.RollbackOf, &createdAt, &updatedAt)
 	if err == sql.ErrNoRows {
 		return nil, domain.ErrNotFound{Resource: "deployment"}
 	}
 	if err != nil {
 		return nil, err
 	}
+	d.StartedAt = parseNullableTime(startedAt)
+	d.FinishedAt = parseNullableTime(finishedAt)
 	d.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
 	d.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedAt)
 	return d, nil
@@ -316,12 +345,15 @@ func scanDeployment(row *sql.Row) (*domain.Deployment, error) {
 func scanDeploymentRow(rows *sql.Rows) (*domain.Deployment, error) {
 	d := &domain.Deployment{}
 	var createdAt, updatedAt string
+	var startedAt, finishedAt *string
 	err := rows.Scan(&d.ID, &d.ServiceID, &d.RevisionID, &d.Sequence, &d.Trigger, &d.TriggeredBy,
 		&d.Status, &d.BuildDriver, &d.ConfigSnapshot, &d.ImageRef, &d.ImageDigest, &d.DockerContainer,
-		&d.StartedAt, &d.FinishedAt, &d.ExitCode, &d.ErrorCode, &d.ErrorSummary, &d.RollbackOf, &createdAt, &updatedAt)
+		&startedAt, &finishedAt, &d.ExitCode, &d.ErrorCode, &d.ErrorSummary, &d.RollbackOf, &createdAt, &updatedAt)
 	if err != nil {
 		return nil, err
 	}
+	d.StartedAt = parseNullableTime(startedAt)
+	d.FinishedAt = parseNullableTime(finishedAt)
 	d.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
 	d.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedAt)
 	return d, nil

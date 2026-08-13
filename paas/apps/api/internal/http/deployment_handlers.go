@@ -468,28 +468,33 @@ func (h *Handler) handleListDeployments(c fiber.Ctx) error {
 func (h *Handler) handleTriggerDeployment(c fiber.Ctx) error {
 	serviceID := c.Params("id")
 	s, err := h.store.Services().GetByID(c.Context(), serviceID)
-	if err != nil {
-		return err
+	if err != nil || s == nil {
+		return c.Status(404).JSON(fiber.Map{"error": fmt.Sprintf("Service '%s' not found", serviceID)})
 	}
-	u := c.Locals("user").(*domain.User)
-	seq, _ := h.store.Deployments().GetNextSequence(c.Context(), serviceID)
+
+	var userDisplayName *string
+	if u, ok := c.Locals("user").(*domain.User); ok && u != nil {
+		userDisplayName = &u.DisplayName
+	}
+
+	seq, _ := h.store.Deployments().GetNextSequence(c.Context(), s.ID)
 	now := time.Now().UTC()
 
 	rootDomain := getRootDomain()
 	domainName := fmt.Sprintf("%s.%s", s.Slug, rootDomain)
 
 	dep := &domain.Deployment{
-		ServiceID:      serviceID,
+		ServiceID:      s.ID,
 		Sequence:       seq,
 		Trigger:        domain.TriggerManual,
-		TriggeredBy:    &u.DisplayName,
+		TriggeredBy:    userDisplayName,
 		Status:         domain.DeploymentBuilding,
 		BuildDriver:    "docker",
 		ConfigSnapshot: s.ResourceJSON,
 		StartedAt:      &now,
 	}
 	if err := h.store.Deployments().Create(c.Context(), dep); err != nil {
-		return err
+		return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to initialize deployment: %v", err)})
 	}
 
 	// Trigger real deployment execution in background goroutine
@@ -521,9 +526,20 @@ func (h *Handler) handleGetLogs(c fiber.Ctx) error {
 		return c.JSON(fiber.Map{"entries": entries})
 	}
 
-	// Fallback to query live docker logs
+	// Try resolving service to check by other identifier (slug or ID)
 	s, err := h.store.Services().GetByID(c.Context(), id)
 	if err == nil && s != nil {
+		logMu.RLock()
+		entries, exists = serviceLatestLogs[s.ID]
+		if !exists || len(entries) == 0 {
+			entries, exists = serviceLatestLogs[s.Slug]
+		}
+		logMu.RUnlock()
+		if exists && len(entries) > 0 {
+			return c.JSON(fiber.Map{"entries": entries})
+		}
+
+		// Fallback to query live docker logs from container
 		containerName := fmt.Sprintf("paas-svc-%s", s.Slug)
 		cmd := exec.Command("docker", "logs", "--tail", "100", containerName)
 		out, err := cmd.CombinedOutput()
