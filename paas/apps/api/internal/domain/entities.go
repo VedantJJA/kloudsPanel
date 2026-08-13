@@ -24,18 +24,18 @@ const (
 )
 
 type User struct {
-	ID              string
-	Email           string
-	DisplayName     string
-	PasswordHash    string
-	Status          UserStatus
-	PlatformRole    PlatformRole
-	EmailVerifiedAt *time.Time
-	ApprovedBy      *string
-	ApprovedAt      *time.Time
-	LastLoginAt     *time.Time
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID              string       `json:"id"`
+	Email           string       `json:"email"`
+	DisplayName     string       `json:"display_name"`
+	PasswordHash    string       `json:"-"`
+	Status          UserStatus   `json:"status"`
+	PlatformRole    PlatformRole `json:"platform_role"`
+	EmailVerifiedAt *time.Time   `json:"email_verified_at,omitempty"`
+	ApprovedBy      *string      `json:"approved_by,omitempty"`
+	ApprovedAt      *time.Time   `json:"approved_at,omitempty"`
+	LastLoginAt     *time.Time   `json:"last_login_at,omitempty"`
+	CreatedAt       time.Time    `json:"created_at"`
+	UpdatedAt       time.Time    `json:"updated_at"`
 }
 
 // ─── Workspaces ───────────────────────────────────────────────────────────────
@@ -57,25 +57,25 @@ const (
 )
 
 type Workspace struct {
-	ID          string
-	Name        string
-	Slug        string
-	Description *string
-	CreatedBy   string
-	Status      WorkspaceStatus
-	QuotaJSON   string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID          string          `json:"id"`
+	Name        string          `json:"name"`
+	Slug        string          `json:"slug"`
+	Description *string         `json:"description,omitempty"`
+	CreatedBy   string          `json:"created_by"`
+	Status      WorkspaceStatus `json:"status"`
+	QuotaJSON   string          `json:"quota_json,omitempty"`
+	CreatedAt   time.Time       `json:"created_at"`
+	UpdatedAt   time.Time       `json:"updated_at"`
 }
 
 type WorkspaceMember struct {
-	WorkspaceID string
-	UserID      string
-	Role        WorkspaceMemberRole
-	Status      string
-	JoinedAt    time.Time
-	InvitedBy   *string
-	Version     int
+	WorkspaceID string              `json:"workspace_id"`
+	UserID      string              `json:"user_id"`
+	Role        WorkspaceMemberRole `json:"role"`
+	Status      string              `json:"status"`
+	JoinedAt    time.Time           `json:"joined_at"`
+	InvitedBy   *string             `json:"invited_by,omitempty"`
+	Version     int                 `json:"version"`
 }
 
 // ─── Projects ─────────────────────────────────────────────────────────────────
@@ -97,20 +97,20 @@ const (
 )
 
 type Project struct {
-	ID                   string
-	WorkspaceID          string
-	Name                 string
-	Slug                 string
-	Description          *string
-	SourceKind           SourceKind
-	RepositoryURL        *string
-	RepositoryCredential *string
-	DefaultBranch        *string
-	RootDirectory        string
-	Status               ProjectStatus
-	CreatedBy            string
-	CreatedAt            time.Time
-	UpdatedAt            time.Time
+	ID                   string        `json:"id"`
+	WorkspaceID          string        `json:"workspace_id"`
+	Name                 string        `json:"name"`
+	Slug                 string        `json:"slug"`
+	Description          *string       `json:"description,omitempty"`
+	SourceKind           SourceKind    `json:"source_kind"`
+	RepositoryURL        *string       `json:"repository_url,omitempty"`
+	RepositoryCredential *string       `json:"repository_credential,omitempty"`
+	DefaultBranch        *string       `json:"default_branch,omitempty"`
+	RootDirectory        string        `json:"root_directory"`
+	Status               ProjectStatus `json:"status"`
+	CreatedBy            string        `json:"created_by"`
+	CreatedAt            time.Time     `json:"created_at"`
+	UpdatedAt            time.Time     `json:"updated_at"`
 }
 
 // ─── Services ─────────────────────────────────────────────────────────────────
@@ -144,20 +144,20 @@ const (
 )
 
 type Service struct {
-	ID             string
-	ProjectID      string
-	Name           string
-	Slug           string
-	Kind           ServiceKind
-	DesiredState   ServiceDesiredState
-	RuntimeStatus  ServiceRuntimeStatus
-	InternalPort   *int
-	HealthcheckPath *string
-	AutoDeploy     bool
-	ResourceJSON   string
-	CreatedBy      string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ID              string               `json:"id"`
+	ProjectID       string               `json:"project_id"`
+	Name            string               `json:"name"`
+	Slug            string               `json:"slug"`
+	Kind            ServiceKind          `json:"kind"`
+	DesiredState    ServiceDesiredState  `json:"desired_state"`
+	RuntimeStatus   ServiceRuntimeStatus `json:"runtime_status"`
+	InternalPort    *int                 `json:"internal_port,omitempty"`
+	HealthcheckPath *string              `json:"healthcheck_path,omitempty"`
+	AutoDeploy      bool                 `json:"auto_deploy"`
+	ResourceJSON    string               `json:"resource_json,omitempty"`
+	CreatedBy       string               `json:"created_by"`
+	CreatedAt       time.Time            `json:"created_at"`
+	UpdatedAt       time.Time            `json:"updated_at"`
 }
 
 // ─── Deployments ──────────────────────────────────────────────────────────────
@@ -187,26 +187,26 @@ const (
 )
 
 type Deployment struct {
-	ID              string
-	ServiceID       string
-	RevisionID      *string
-	Sequence        int64
-	Trigger         DeploymentTrigger
-	TriggeredBy     *string
-	Status          DeploymentStatus
-	BuildDriver     string
-	ConfigSnapshot  string
-	ImageRef        *string
-	ImageDigest     *string
-	DockerContainer *string
-	StartedAt       *time.Time
-	FinishedAt      *time.Time
-	ExitCode        *int
-	ErrorCode       *string
-	ErrorSummary    *string
-	RollbackOf      *string
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID              string            `json:"id"`
+	ServiceID       string            `json:"service_id"`
+	RevisionID      *string           `json:"revision_id,omitempty"`
+	Sequence        int64             `json:"sequence"`
+	Trigger         DeploymentTrigger `json:"trigger"`
+	TriggeredBy     *string           `json:"triggered_by,omitempty"`
+	Status          DeploymentStatus  `json:"status"`
+	BuildDriver     string            `json:"build_driver"`
+	ConfigSnapshot  string            `json:"config_snapshot,omitempty"`
+	ImageRef        *string           `json:"image_ref,omitempty"`
+	ImageDigest     *string           `json:"image_digest,omitempty"`
+	DockerContainer *string           `json:"docker_container,omitempty"`
+	StartedAt       *time.Time        `json:"started_at,omitempty"`
+	FinishedAt      *time.Time        `json:"finished_at,omitempty"`
+	ExitCode        *int              `json:"exit_code,omitempty"`
+	ErrorCode       *string           `json:"error_code,omitempty"`
+	ErrorSummary    *string           `json:"error_summary,omitempty"`
+	RollbackOf      *string           `json:"rollback_of,omitempty"`
+	CreatedAt       time.Time         `json:"created_at"`
+	UpdatedAt       time.Time         `json:"updated_at"`
 }
 
 // ─── Databases ────────────────────────────────────────────────────────────────
@@ -232,21 +232,21 @@ const (
 )
 
 type Database struct {
-	ID               string
-	ProjectID        string
-	Name             string
-	Engine           DatabaseEngine
-	EngineVersion    string
-	ImageDigest      string
-	RuntimeStatus    DatabaseStatus
-	InternalHostname string
-	InternalPort     int
-	DatabaseName     *string
-	CredentialSecret *string
-	ResourceJSON     string
-	BackupPolicyJSON string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID               string         `json:"id"`
+	ProjectID        string         `json:"project_id"`
+	Name             string         `json:"name"`
+	Engine           DatabaseEngine `json:"engine"`
+	EngineVersion    string         `json:"engine_version"`
+	ImageDigest      string         `json:"image_digest,omitempty"`
+	RuntimeStatus    DatabaseStatus `json:"runtime_status"`
+	InternalHostname string         `json:"internal_hostname"`
+	InternalPort     int            `json:"internal_port"`
+	DatabaseName     *string        `json:"database_name,omitempty"`
+	CredentialSecret *string        `json:"credential_secret,omitempty"`
+	ResourceJSON     string         `json:"resource_json,omitempty"`
+	BackupPolicyJSON string         `json:"backup_policy_json,omitempty"`
+	CreatedAt        time.Time      `json:"created_at"`
+	UpdatedAt        time.Time      `json:"updated_at"`
 }
 
 // ─── Jobs ─────────────────────────────────────────────────────────────────────
@@ -262,19 +262,19 @@ const (
 )
 
 type Job struct {
-	ID          string
-	Kind        string
-	DedupeKey   string
-	Payload     string
-	Status      JobStatus
-	Attempts    int
-	MaxAttempts int
-	RunAfter    time.Time
-	LockedAt    *time.Time
-	LockedBy    *string
-	LastError   *string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID          string     `json:"id"`
+	Kind        string     `json:"kind"`
+	DedupeKey   string     `json:"dedupe_key"`
+	Payload     string     `json:"payload"`
+	Status      JobStatus  `json:"status"`
+	Attempts    int        `json:"attempts"`
+	MaxAttempts int        `json:"max_attempts"`
+	RunAfter    time.Time  `json:"run_after"`
+	LockedAt    *time.Time `json:"locked_at,omitempty"`
+	LockedBy    *string    `json:"locked_by,omitempty"`
+	LastError   *string    `json:"last_error,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 }
 
 // ─── Audit ────────────────────────────────────────────────────────────────────
@@ -288,17 +288,17 @@ const (
 )
 
 type AuditEvent struct {
-	ID          string
-	ActorUserID *string
-	ActorKind   AuditActorKind
-	WorkspaceID *string
-	Action      string
-	TargetType  string
-	TargetID    string
-	RequestID   *string
-	IPHash      *string
-	Metadata    string
-	OccurredAt  time.Time
+	ID          string         `json:"id"`
+	ActorUserID *string        `json:"actor_user_id,omitempty"`
+	ActorKind   AuditActorKind `json:"actor_kind"`
+	WorkspaceID *string        `json:"workspace_id,omitempty"`
+	Action      string         `json:"action"`
+	TargetType  string         `json:"target_type"`
+	TargetID    string         `json:"target_id"`
+	RequestID   *string        `json:"request_id,omitempty"`
+	IPHash      *string        `json:"ip_hash,omitempty"`
+	Metadata    string         `json:"metadata,omitempty"`
+	OccurredAt  time.Time      `json:"occurred_at"`
 }
 
 // ─── Errors ───────────────────────────────────────────────────────────────────

@@ -26,14 +26,24 @@
     loadWorkspaces();
   });
 
-  async function deleteWorkspace(e: Event, id: string) {
+  async function deleteWorkspace(e: Event, ws: any) {
     e.preventDefault();
-    if (!confirm('Are you sure you want to delete this workspace?')) return;
+    const id = ws.id || ws.ID || ws.slug || ws.Slug;
+    if (!id || id === 'undefined') {
+      alert('Error: Workspace has no valid ID or slug to delete.');
+      return;
+    }
+    if (!confirm(`Are you sure you want to delete workspace "${ws.name || ws.Name || id}"?`)) return;
     try {
-      await fetch(`/api/v1/workspaces/${id}`, { method: 'DELETE', credentials: 'include' });
+      const res = await fetch(`/api/v1/workspaces/${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert('Failed to delete workspace: ' + (d.detail || d.message || res.statusText));
+      }
       await loadWorkspaces();
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      alert('Failed to delete workspace: ' + e.message);
     }
   }
 </script>
@@ -74,18 +84,20 @@
 {:else}
   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1rem">
     {#each workspaces as ws}
+      {@const targetSlug = ws.slug || (ws as any).Slug || ws.id || (ws as any).ID}
+      {@const displayName = ws.name || (ws as any).Name || 'Unnamed Workspace'}
       <div 
         class="card" 
         style="cursor:pointer" 
-        onclick={() => goto(`/workspaces/${ws.slug}`)}
-        onkeydown={(e) => e.key === 'Enter' && goto(`/workspaces/${ws.slug}`)}
+        onclick={() => targetSlug && goto(`/workspaces/${targetSlug}`)}
+        onkeydown={(e) => e.key === 'Enter' && targetSlug && goto(`/workspaces/${targetSlug}`)}
         role="button"
         tabindex="0"
       >
         <div class="card-header" style="display:flex; justify-content:space-between; align-items:flex-start">
           <div>
-            <h3 style="margin:0">{ws.name || 'Unnamed Workspace'}</h3>
-            <span class="text-xs text-muted font-mono">/{ws.slug || 'no-slug'}</span>
+            <h3 style="margin:0">{displayName}</h3>
+            <span class="text-xs text-muted font-mono">/{targetSlug || 'no-slug'}</span>
           </div>
           <div style="display:flex; gap:0.5rem; align-items:center;">
             <span class="badge badge-running">active</span>
@@ -93,7 +105,7 @@
               class="btn btn-secondary" 
               style="padding:4px; color:var(--color-error); border:none; background:transparent" 
               aria-label="Delete Workspace" 
-              onclick={(e) => { e.stopPropagation(); deleteWorkspace(e, ws.id); }}
+              onclick={(e) => { e.stopPropagation(); deleteWorkspace(e, ws); }}
             >
               <Trash2 size={16} />
             </button>

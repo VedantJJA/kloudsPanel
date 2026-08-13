@@ -34,7 +34,7 @@ func (r *workspaceRepo) GetByID(ctx context.Context, id string) (*domain.Workspa
 func (r *workspaceRepo) GetBySlug(ctx context.Context, slug string) (*domain.Workspace, error) {
 	row := r.db.QueryRowContext(ctx,
 		`SELECT id,name,slug,description,created_by,status,quota_json,created_at,updated_at
-		 FROM workspaces WHERE slug=?`, slug)
+		 FROM workspaces WHERE slug=? OR id=?`, slug, slug)
 	return scanWorkspace(row)
 }
 
@@ -62,7 +62,14 @@ func (r *workspaceRepo) Update(ctx context.Context, w *domain.Workspace) error {
 }
 
 func (r *workspaceRepo) Delete(ctx context.Context, id string) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM workspaces WHERE id=?`, id)
+	if id == "" || id == "undefined" {
+		return nil
+	}
+	_, _ = r.db.ExecContext(ctx, `DELETE FROM workspace_members WHERE workspace_id=? OR workspace_id IN (SELECT id FROM workspaces WHERE slug=?)`, id, id)
+	_, _ = r.db.ExecContext(ctx, `DELETE FROM workspace_invitations WHERE workspace_id=? OR workspace_id IN (SELECT id FROM workspaces WHERE slug=?)`, id, id)
+	_, _ = r.db.ExecContext(ctx, `DELETE FROM encrypted_secrets WHERE workspace_id=? OR workspace_id IN (SELECT id FROM workspaces WHERE slug=?)`, id, id)
+	_, _ = r.db.ExecContext(ctx, `DELETE FROM projects WHERE workspace_id=? OR workspace_id IN (SELECT id FROM workspaces WHERE slug=?)`, id, id)
+	_, err := r.db.ExecContext(ctx, `DELETE FROM workspaces WHERE id=? OR slug=?`, id, id)
 	return err
 }
 

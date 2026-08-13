@@ -35,7 +35,9 @@
         throw new Error(data.detail || data.message || 'Failed to create workspace');
       }
       
-      goto('/workspaces');
+      const data = await res.json();
+      const targetSlug = data.slug || data.Slug || slug;
+      goto(`/workspaces/${targetSlug}`);
     } catch (e: any) {
       error = e.message;
     } finally {

@@ -12,12 +12,24 @@
   onMount(async () => {
     try {
       const wsRes = await fetch(`/api/v1/workspaces/${slug}`, { credentials: 'include' });
-      if (!wsRes.ok) { goto('/workspaces'); return; }
+      if (!wsRes.ok) { 
+        console.error('Failed to load workspace:', wsRes.status);
+        goto('/workspaces'); 
+        return; 
+      }
       workspace = await wsRes.json();
+      const wsId = workspace.id || workspace.ID;
       // Use the resolved workspace ID to fetch projects
-      const projRes = await fetch(`/api/v1/projects?workspaceId=${workspace.id}`, { credentials: 'include' });
-      const projData = await projRes.json();
-      projects = projData.projects ?? [];
+      if (wsId) {
+        const projRes = await fetch(`/api/v1/projects?workspaceId=${wsId}`, { credentials: 'include' });
+        if (projRes.ok) {
+          const projData = await projRes.json();
+          projects = projData.projects ?? [];
+        }
+      }
+    } catch (e) {
+      console.error(e);
+      goto('/workspaces');
     } finally {
       loading = false;
     }
@@ -25,7 +37,7 @@
 </script>
 
 <svelte:head>
-  <title>{workspace?.name ?? slug} — kloudsPanel</title>
+  <title>{workspace?.name || workspace?.Name || slug} — kloudsPanel</title>
 </svelte:head>
 
 {#if loading}
@@ -39,7 +51,7 @@
       <p class="text-xs text-muted" style="margin-bottom:0.25rem">
         <a href="/workspaces">Workspaces</a> /
       </p>
-      <h1 class="page-title">{workspace?.name ?? slug}</h1>
+      <h1 class="page-title">{workspace?.name || workspace?.Name || slug}</h1>
       <p class="page-subtitle">Manage projects and services in this workspace</p>
     </div>
     <button class="btn btn-primary" onclick={() => goto(`/workspaces/${slug}/projects/new`)}>

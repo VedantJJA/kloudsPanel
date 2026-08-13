@@ -212,7 +212,11 @@ func (h *Handler) handleGetWorkspace(c fiber.Ctx) error {
 func (h *Handler) handleUpdateWorkspace(c fiber.Ctx) error { return c.SendStatus(200) }
 
 func (h *Handler) handleDeleteWorkspace(c fiber.Ctx) error {
-	if err := h.store.Workspaces().Delete(c.Context(), c.Params("id")); err != nil {
+	id := c.Params("id")
+	if id == "" || id == "undefined" {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid workspace id"})
+	}
+	if err := h.store.Workspaces().Delete(c.Context(), id); err != nil {
 		return err
 	}
 	return c.SendStatus(202)
