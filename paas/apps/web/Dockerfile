@@ -1,5 +1,8 @@
 FROM node:22-alpine AS builder
 
+# Set CI=true so pnpm doesn't prompt for confirmation in non-TTY environments
+ENV CI=true
+
 WORKDIR /app
 COPY pnpm-lock.yaml package.json ./
 RUN npm install -g pnpm && pnpm fetch
