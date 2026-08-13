@@ -1,24 +1,33 @@
 <script lang="ts">
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
+  import {
+    Home,
+    Database,
+    Settings,
+    Users,
+    Activity,
+    ClipboardList,
+    LogOut
+  } from 'lucide-svelte';
 
   let sidebarOpen = $state(false);
 
   type NavItem = {
     label: string;
     href: string;
-    icon: string;
+    icon: any;
     section?: string;
   };
 
   const navItems: NavItem[] = [
-    { label: 'Workspaces', href: '/workspaces', icon: '🏠' },
-    { label: 'Databases', href: '/databases', icon: '🗄️' },
-    { section: 'Administration', label: '', href: '', icon: '' },
-    { label: 'Platform', href: '/admin', icon: '⚙️' },
-    { label: 'Users', href: '/admin/users', icon: '👥' },
-    { label: 'Telemetry', href: '/admin/telemetry', icon: '📊' },
-    { label: 'Audit Log', href: '/admin/audit', icon: '📋' },
+    { label: 'Workspaces', href: '/workspaces', icon: Home },
+    { label: 'Databases', href: '/databases', icon: Database },
+    { section: 'Administration', label: '', href: '', icon: null },
+    { label: 'Platform', href: '/admin', icon: Settings },
+    { label: 'Users', href: '/admin/users', icon: Users },
+    { label: 'Telemetry', href: '/admin/telemetry', icon: Activity },
+    { label: 'Audit Log', href: '/admin/audit', icon: ClipboardList },
   ];
 
   function isActive(href: string): boolean {
@@ -44,8 +53,9 @@
   <!-- Nav items -->
   <div class="sidebar-nav" role="list">
     {#each navItems as item}
+      {@const Icon = item.icon}
       {#if item.section}
-        <span class="sidebar-section-label">{item.section}</span>
+        <div class="nav-section">{item.section}</div>
       {:else}
         <a
           href={item.href}
@@ -53,7 +63,7 @@
           class:active={isActive(item.href)}
           aria-current={isActive(item.href) ? 'page' : undefined}
         >
-          <span class="nav-item-icon" aria-hidden="true">{item.icon}</span>
+          <span class="nav-item-icon" aria-hidden="true"><Icon size={20} /></span>
           {item.label}
         </a>
       {/if}
@@ -63,12 +73,12 @@
   <!-- Footer: User account -->
   <div class="sidebar-footer">
     <button
-      class="nav-item"
+      class="nav-item nav-item-logout"
       style="width:100%;color:rgba(234,241,250,0.6);font-size:0.8rem"
       onclick={handleLogout}
       aria-label="Sign out"
     >
-      <span aria-hidden="true">🚪</span>
+      <span aria-hidden="true"><LogOut size={20} /></span>
       Sign Out
     </button>
   </div>

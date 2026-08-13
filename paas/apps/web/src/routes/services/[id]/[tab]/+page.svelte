@@ -3,6 +3,7 @@
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
   import LogViewer from '$lib/components/logs/LogViewer.svelte';
+  import { Loader2, ExternalLink, Square, Rocket } from 'lucide-svelte';
 
   const { id, tab } = $derived($page.params);
   const tabs = ['overview', 'deployments', 'logs', 'terminal', 'variables', 'domains', 'scale', 'resources', 'settings'];
@@ -37,7 +38,10 @@
 </svelte:head>
 
 {#if loading}
-  <div class="empty-state"><div style="opacity:0.4;font-size:2rem">⏳</div><p>Loading…</p></div>
+  <div class="empty-state">
+    <div class="animate-spin text-muted" style="margin-bottom:1rem"><Loader2 size={48} /></div>
+    <p>Loading…</p>
+  </div>
 {:else}
   <!-- Service header -->
   <div class="page-header">
@@ -52,13 +56,13 @@
       {#if service?.domain}
         <a href="https://{service.domain}" target="_blank" rel="noopener" class="text-xs"
            style="color:var(--color-accent);margin-top:0.25rem;display:inline-block">
-          🔗 {service.domain}
+          <ExternalLink size={12} style="display:inline;vertical-align:middle" /> {service.domain}
         </a>
       {/if}
     </div>
     <div style="display:flex;gap:0.5rem">
-      <button class="btn btn-secondary">⏹ Stop</button>
-      <button class="btn btn-primary">🚀 Deploy</button>
+      <button class="btn btn-secondary"><Square size={14} fill="currentColor" /> Stop</button>
+      <button class="btn btn-primary"><Rocket size={14} /> Deploy</button>
     </div>
   </div>
 

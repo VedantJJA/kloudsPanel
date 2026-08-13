@@ -1,7 +1,7 @@
 <script lang="ts">
   import { page } from '$app/stores';
-  import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
+  import { Loader2, Rocket, Wrench, Database } from 'lucide-svelte';
 
   const { slug } = $derived($page.params);
   let project = $state<any>(null);
@@ -33,7 +33,10 @@
 </svelte:head>
 
 {#if loading}
-  <div class="empty-state"><div style="opacity:0.4;font-size:2rem">⏳</div><p>Loading…</p></div>
+  <div class="empty-state">
+    <div class="animate-spin text-muted" style="margin-bottom:1rem"><Loader2 size={48} /></div>
+    <p>Loading…</p>
+  </div>
 {:else}
   <div class="page-header">
     <div>
@@ -45,7 +48,7 @@
       <p class="page-subtitle">{project?.description ?? ''}</p>
     </div>
     <button class="btn btn-primary" onclick={() => showDeployModal = true}>
-      🚀 Deploy Service
+      <Rocket size={16} /> Deploy Service
     </button>
   </div>
 
@@ -53,7 +56,7 @@
   <h2 style="font-size:1rem;font-weight:600;margin-bottom:1rem;color:var(--color-ink)">Services</h2>
   {#if services.length === 0}
     <div class="empty-state" style="padding:2rem">
-      <div class="empty-state-icon">🔧</div>
+      <div class="empty-state-icon"><Wrench size={48} /></div>
       <h3>No services yet</h3>
       <p>Deploy your first service using the wizard.</p>
     </div>
@@ -88,7 +91,7 @@
   <h2 style="font-size:1rem;font-weight:600;margin-bottom:1rem;color:var(--color-ink)">Databases</h2>
   {#if databases.length === 0}
     <div class="empty-state" style="padding:2rem">
-      <div class="empty-state-icon">🗄️</div>
+      <div class="empty-state-icon"><Database size={48} /></div>
       <h3>No databases yet</h3>
       <p>Add a PostgreSQL, MySQL, Redis, MongoDB, or ClickHouse database.</p>
     </div>

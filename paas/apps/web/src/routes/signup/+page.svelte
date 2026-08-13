@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
+  import { Check } from 'lucide-svelte';
   let email = $state('');
   let displayName = $state('');
   let password = $state('');
@@ -68,8 +68,8 @@
         border-radius:var(--radius-md);padding:1rem 1.25rem;
         font-size:0.875rem;text-align:center;
       ">
-        <strong>✓ Request submitted!</strong><br/>
-        Your account is pending approval. You'll be notified when access is granted.
+        <strong style="display:flex;align-items:center;justify-content:center;gap:0.5rem;"><Check size={16} /> Request submitted!</strong><br/>
+        Your account is pending admin approval. You'll be notified when access is granted.
         <br/><br/>
         <a href="/login" style="color:var(--color-accent-dim);font-weight:500">Back to Sign In →</a>
       </div>

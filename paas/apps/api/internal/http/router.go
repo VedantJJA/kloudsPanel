@@ -13,11 +13,12 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/fiber/v3/middleware/recover"
 	"github.com/gofiber/fiber/v3/middleware/requestid"
+	"github.com/yourorg/klouds/api/internal/repository"
 )
 
 // NewServer creates and configures the Fiber application with all middleware
 // and routes registered.
-func NewServer(log *slog.Logger, addr string) *fiber.App {
+func NewServer(log *slog.Logger, store repository.Store, addr string) *fiber.App {
 	app := fiber.New(fiber.Config{
 		AppName:               "kloudsPanel API v1",
 		ReadTimeout:           15 * time.Second,
@@ -52,6 +53,8 @@ func NewServer(log *slog.Logger, addr string) *fiber.App {
 	// ── API v1 ──────────────────────────────────────────────────────────────
 	v1 := app.Group("/api/v1")
 
+	h := NewHandler(store, log)
+
 	// Rate limit auth endpoints aggressively
 	authLimiter := limiter.New(limiter.Config{
 		Max:        10,
@@ -63,72 +66,72 @@ func NewServer(log *slog.Logger, addr string) *fiber.App {
 
 	// Auth routes
 	auth := v1.Group("/auth")
-	auth.Post("/signup", authLimiter, handleSignup)
-	auth.Post("/login", authLimiter, handleLogin)
-	auth.Post("/logout", handleLogout)
-	auth.Get("/me", requireSession, handleMe)
+	auth.Post("/signup", authLimiter, h.handleSignup)
+	auth.Post("/login", authLimiter, h.handleLogin)
+	auth.Post("/logout", h.handleLogout)
+	auth.Get("/me", h.requireSession, h.handleMe)
 
 	// Workspace routes
-	ws := v1.Group("/workspaces", requireSession)
-	ws.Get("/", handleListWorkspaces)
-	ws.Post("/", handleCreateWorkspace)
-	ws.Get("/:slug", handleGetWorkspace)
-	ws.Patch("/:slug", handleUpdateWorkspace)
-	ws.Get("/:slug/members", handleListMembers)
-	ws.Post("/:slug/members", handleInviteMember)
+	ws := v1.Group("/workspaces", h.requireSession)
+	ws.Get("/", h.handleListWorkspaces)
+	ws.Post("/", h.handleCreateWorkspace)
+	ws.Get("/:slug", h.handleGetWorkspace)
+	ws.Patch("/:slug", h.handleUpdateWorkspace)
+	ws.Get("/:slug/members", h.handleListMembers)
+	ws.Post("/:slug/members", h.handleInviteMember)
 
 	// Project routes
-	proj := v1.Group("/projects", requireSession)
-	proj.Get("/", handleListProjects)
-	proj.Post("/", handleCreateProject)
-	proj.Get("/:id", handleGetProject)
-	proj.Patch("/:id", handleUpdateProject)
-	proj.Delete("/:id", handleDeleteProject)
+	proj := v1.Group("/projects", h.requireSession)
+	proj.Get("/", h.handleListProjects)
+	proj.Post("/", h.handleCreateProject)
+	proj.Get("/:id", h.handleGetProject)
+	proj.Patch("/:id", h.handleUpdateProject)
+	proj.Delete("/:id", h.handleDeleteProject)
 
 	// Service routes
-	svc := v1.Group("/services", requireSession)
-	svc.Get("/", handleListServices)
-	svc.Post("/", handleCreateService)
-	svc.Get("/:id", handleGetService)
-	svc.Patch("/:id", handleUpdateService)
-	svc.Delete("/:id", handleDeleteService)
+	svc := v1.Group("/services", h.requireSession)
+	svc.Get("/", h.handleListServices)
+	svc.Post("/", h.handleCreateService)
+	svc.Get("/:id", h.handleGetService)
+	svc.Patch("/:id", h.handleUpdateService)
+	svc.Delete("/:id", h.handleDeleteService)
 
 	// Deployment routes
-	dep := v1.Group("/services/:id/deployments", requireSession)
-	dep.Get("/", handleListDeployments)
-	dep.Post("/", handleTriggerDeployment)
-	dep.Get("/:deployId", handleGetDeployment)
+	dep := v1.Group("/services/:id/deployments", h.requireSession)
+	dep.Get("/", h.handleListDeployments)
+	dep.Post("/", h.handleTriggerDeployment)
+	dep.Get("/:deployId", h.handleGetDeployment)
 
 	// Log streaming
-	v1.Get("/deployments/:id/logs", requireSession, handleGetLogs)
+	v1.Get("/deployments/:id/logs", h.requireSession, h.handleGetLogs)
 	// WebSocket log stream handled by Fiber's built-in WS support
-	v1.Get("/ws/deployments/:id/logs", requireSession, handleWSLogs)
+	v1.Get("/ws/deployments/:id/logs", h.requireSession, h.handleWSLogs)
 
 	// Terminal sessions
-	v1.Post("/services/:id/terminal-sessions", requireSession, handleCreateTerminalSession)
+	v1.Post("/services/:id/terminal-sessions", h.requireSession, h.handleCreateTerminalSession)
 
 	// Database routes
-	db := v1.Group("/databases", requireSession)
-	db.Get("/", handleListDatabases)
-	db.Post("/", handleCreateDatabase)
-	db.Get("/:id", handleGetDatabase)
-	db.Delete("/:id", handleDeleteDatabase)
+	db := v1.Group("/databases", h.requireSession)
+	db.Get("/", h.handleListDatabases)
+	db.Post("/", h.handleCreateDatabase)
+	db.Get("/:id", h.handleGetDatabase)
+	db.Delete("/:id", h.handleDeleteDatabase)
 
 	// Domain routes
-	dom := v1.Group("/domains", requireSession)
-	dom.Get("/", handleListDomains)
-	dom.Post("/", handleCreateDomain)
-	dom.Post("/:id/verify", handleVerifyDomain)
+	dom := v1.Group("/domains", h.requireSession)
+	dom.Get("/", h.handleListDomains)
+	dom.Post("/", h.handleCreateDomain)
+	dom.Post("/:id/verify", h.handleVerifyDomain)
 
 	// Admin routes (main_admin only)
-	admin := v1.Group("/admin", requireSession, requireMainAdmin)
-	admin.Get("/telemetry", handleGetTelemetry)
-	admin.Get("/users", handleAdminListUsers)
-	admin.Post("/users/:id/approve", handleApproveUser)
-	admin.Post("/users/:id/suspend", handleSuspendUser)
-	admin.Get("/audit", handleListAuditEvents)
-	admin.Get("/platform", handleGetPlatformSettings)
-	admin.Post("/setup", handleAdminSetup)
+	admin := v1.Group("/admin", h.requireSession, h.requireMainAdmin)
+	admin.Get("/telemetry", h.handleGetTelemetry)
+	admin.Get("/users", h.handleAdminListUsers)
+	admin.Post("/users/:id/approve", h.handleApproveUser)
+	admin.Post("/users/:id/suspend", h.handleSuspendUser)
+	admin.Get("/audit", h.handleListAuditEvents)
+	admin.Get("/platform", h.handleGetPlatformSettings)
+	admin.Post("/setup", h.handleAdminSetup)
 
 	return app
 }

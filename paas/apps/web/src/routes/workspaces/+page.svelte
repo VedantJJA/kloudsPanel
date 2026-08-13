@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
+  import { Loader2, Box } from 'lucide-svelte';
 
   let workspaces = $state<Array<{id: string, name: string, slug: string}>>([]);
   let loading = $state(true);
@@ -41,12 +42,14 @@
 
 {#if loading}
   <div class="empty-state">
-    <div style="font-size:2rem;opacity:0.4;margin-bottom:1rem">⏳</div>
+    <div class="animate-spin text-muted" style="margin-bottom:1rem">
+      <Loader2 size={48} />
+    </div>
     <p>Loading workspaces…</p>
   </div>
 {:else if workspaces.length === 0}
   <div class="empty-state">
-    <div class="empty-state-icon">🏗️</div>
+    <div class="empty-state-icon" style="color:var(--text-muted); margin-bottom: 1rem;"><Box size={48} /></div>
     <h3>No workspaces yet</h3>
     <p>Create your first workspace to start deploying applications.</p>
     <button class="btn btn-primary mt-4" onclick={() => goto('/workspaces/new')}>

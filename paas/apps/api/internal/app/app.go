@@ -11,6 +11,7 @@ import (
 	"github.com/yourorg/klouds/api/internal/crypto"
 	"github.com/yourorg/klouds/api/internal/http"
 	"github.com/yourorg/klouds/api/internal/jobs"
+	"github.com/yourorg/klouds/api/internal/repository"
 	"github.com/yourorg/klouds/api/internal/repository/sqlite"
 )
 
@@ -88,7 +89,7 @@ func Run(ctx context.Context, logger *slog.Logger) error {
 	go worker.Run(workerCtx)
 
 	// Start HTTP server
-	srv := http.NewServer(logger, cfg.ListenAddr)
+	srv := http.NewServer(logger, repo.(repository.Store), cfg.ListenAddr)
 
 	errCh := make(chan error, 1)
 	go func() {

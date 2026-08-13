@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { Loader2, Zap, Brain, HardDrive, RefreshCw, Satellite } from 'lucide-svelte';
 
   type Metric = {
     cpu_percent: number;
@@ -47,14 +48,17 @@
     <h1 class="page-title">Platform Telemetry</h1>
     <p class="page-subtitle">Real-time host and container capacity metrics</p>
   </div>
-  <button class="btn btn-secondary" onclick={fetchMetrics}>↻ Refresh</button>
+  <button class="btn btn-secondary" onclick={fetchMetrics}><RefreshCw size={16} /> Refresh</button>
 </div>
 
 {#if loading}
-  <div class="empty-state"><div style="opacity:0.4;font-size:2rem">⏳</div><p>Loading metrics…</p></div>
+  <div class="empty-state">
+    <div class="animate-spin" style="opacity:0.4"><Loader2 size={48} /></div>
+    <p>Loading metrics…</p>
+  </div>
 {:else if !metrics}
   <div class="empty-state">
-    <div class="empty-state-icon">📡</div>
+    <div class="empty-state-icon"><Satellite size={48} /></div>
     <h3>No metrics available</h3>
     <p>The agent must be running to collect host metrics.</p>
   </div>
@@ -64,29 +68,33 @@
     {#each [
       {
         label: 'CPU Utilization',
-        icon: '⚡',
+        icon: Zap,
         value: `${metrics.cpu_percent.toFixed(1)}%`,
         sub: `Load avg: ${metrics.load1?.toFixed(2) ?? '—'}`,
         pct: metrics.cpu_percent,
+        color: 'var(--color-accent)'
       },
       {
         label: 'Memory',
-        icon: '🧠',
+        icon: Brain,
         value: `${fmt(metrics.memory_used_bytes)} / ${fmt(metrics.memory_total_bytes)}`,
         sub: `${pct(metrics.memory_used_bytes, metrics.memory_total_bytes)}% used`,
         pct: pct(metrics.memory_used_bytes, metrics.memory_total_bytes),
+        color: 'var(--color-primary)'
       },
       {
         label: 'Storage',
-        icon: '💾',
+        icon: HardDrive,
         value: `${fmt(metrics.storage_used_bytes)} / ${fmt(metrics.storage_total_bytes)}`,
         sub: `${pct(metrics.storage_used_bytes, metrics.storage_total_bytes)}% used`,
         pct: pct(metrics.storage_used_bytes, metrics.storage_total_bytes),
+        color: 'var(--color-success)'
       },
     ] as m}
+      {@const Icon = m.icon}
       <div class="card">
         <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem">
-          <span style="font-size:1.5rem">{m.icon}</span>
+          <span style="font-size:1.5rem"><Icon size={24} /></span>
           <div>
             <div class="text-xs text-muted">{m.label}</div>
             <div style="font-size:1.125rem;font-weight:700">{m.value}</div>

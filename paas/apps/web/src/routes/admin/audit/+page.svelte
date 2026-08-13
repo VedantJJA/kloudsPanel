@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { Loader2 } from 'lucide-svelte';
 
   let events = $state<any[]>([]);
   let loading = $state(true);
@@ -32,7 +33,10 @@
 </div>
 
 {#if loading}
-  <div class="empty-state"><div style="opacity:0.4;font-size:2rem">⏳</div><p>Loading audit events…</p></div>
+  <div class="empty-state">
+    <div class="animate-spin text-muted" style="margin-bottom:1rem"><Loader2 size={48} /></div>
+    <p>Loading audit events…</p>
+  </div>
 {:else}
   <div class="table-wrapper">
     <table>

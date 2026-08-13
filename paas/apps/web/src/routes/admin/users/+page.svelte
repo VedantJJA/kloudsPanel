@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { Loader2, Clock, Check, X } from 'lucide-svelte';
 
   let users = $state<any[]>([]);
   let pending = $state<any[]>([]);
@@ -40,16 +41,18 @@
 </div>
 
 {#if loading}
-  <div class="empty-state"><div style="opacity:0.4;font-size:2rem">⏳</div><p>Loading…</p></div>
+  <div class="empty-state">
+    <div class="animate-spin text-muted" style="margin-bottom:1rem"><Loader2 size={48} /></div>
+    <p>Loading…</p>
+  </div>
 {:else}
   <!-- Pending approvals -->
   {#if pending.length > 0}
-    <div style="
-      background:#fef3c7;border:1px solid #fbbf24;border-radius:var(--radius-md);
-      padding:1rem 1.25rem;margin-bottom:1.5rem;display:flex;align-items:center;justify-content:space-between;
-    ">
-      <div style="font-size:0.9375rem;font-weight:500">
-        ⏳ {pending.length} account{pending.length > 1 ? 's' : ''} awaiting approval
+    <div class="alert alert-warning" style="margin-bottom:1.5rem;display:flex;align-items:center;gap:0.75rem;">
+      <Clock size={20} />
+      <div>
+        <strong>Pending Approvals</strong>
+        <p style="margin:0;font-size:0.875rem">{pending.length} account{pending.length > 1 ? 's' : ''} awaiting approval</p>
       </div>
     </div>
 
@@ -63,15 +66,13 @@
               <td style="font-weight:500">{u.display_name}</td>
               <td class="font-mono text-sm">{u.email}</td>
               <td class="text-xs text-muted">{u.created_at?.slice(0,10) ?? '—'}</td>
-              <td>
-                <div style="display:flex;gap:0.5rem">
-                  <button class="btn btn-primary" style="padding:4px 12px;min-height:32px;font-size:0.8125rem" onclick={() => approve(u.id)}>
-                    ✓ Approve
-                  </button>
-                  <button class="btn btn-danger" style="padding:4px 12px;min-height:32px;font-size:0.8125rem" onclick={() => suspend(u.id)}>
-                    ✗ Reject
-                  </button>
-                </div>
+              <td style="text-align:right">
+                <button class="btn btn-primary" style="padding:0.25rem 0.5rem;font-size:0.75rem" onclick={() => approve(u.id)}>
+                  <Check size={14} /> Approve
+                </button>
+                <button class="btn btn-secondary" style="padding:0.25rem 0.5rem;font-size:0.75rem;margin-left:0.5rem;color:var(--color-error)" onclick={() => suspend(u.id)}>
+                  <X size={14} /> Reject
+                </button>
               </td>
             </tr>
           {/each}
