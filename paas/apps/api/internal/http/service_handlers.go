@@ -2,6 +2,7 @@ package http
 
 import (
 	"fmt"
+	"os/exec"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/yourorg/klouds/api/internal/domain"
@@ -190,6 +191,12 @@ func (h *Handler) handleDeleteService(c fiber.Ctx) error {
 	if id == "" || id == "undefined" {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid service id"})
 	}
+	s, err := h.store.Services().GetByID(c.Context(), id)
+	if err == nil && s != nil {
+		containerName := fmt.Sprintf("paas-svc-%s", s.Slug)
+		_ = exec.Command("docker", "rm", "-f", containerName).Run()
+		removeTraefikDynamicConfig(s.Slug)
+	}
 	if err := h.store.Services().Delete(c.Context(), id); err != nil {
 		return err
 	}
@@ -201,6 +208,9 @@ func (h *Handler) handleStopService(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+	containerName := fmt.Sprintf("paas-svc-%s", s.Slug)
+	_ = exec.Command("docker", "stop", containerName).Run()
+
 	s.RuntimeStatus = domain.ServiceStatusStopped
 	s.DesiredState = domain.ServiceDesiredStopped
 	if err := h.store.Services().Update(c.Context(), s); err != nil {
@@ -227,6 +237,9 @@ func (h *Handler) handleStartService(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+	containerName := fmt.Sprintf("paas-svc-%s", s.Slug)
+	_ = exec.Command("docker", "start", containerName).Run()
+
 	s.RuntimeStatus = domain.ServiceStatusRunning
 	s.DesiredState = domain.ServiceDesiredRunning
 	if err := h.store.Services().Update(c.Context(), s); err != nil {

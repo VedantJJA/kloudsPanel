@@ -33,28 +33,17 @@
   let project = $state<any>(null);
   let loading = $state(true);
 
-  // Source Type: 'git_public' | 'git_provider' | 'render_yaml' | 'image'
-  let sourceType = $state<'git_public' | 'git_provider' | 'render_yaml' | 'image'>('git_public');
+  // Source Type: 'git_public' | 'git_provider' | 'image'
+  let sourceType = $state<'git_public' | 'git_provider' | 'image'>('git_public');
 
   // Public Git source fields
   let gitRepoUrl = $state('https://github.com/vedantjja/vtopc');
   let gitBranch = $state('main');
   let rootDirectory = $state('.');
 
-  // render.yaml parser state
-  let renderYamlContent = $state(`services:
-  - type: web
-    name: vtopc
-    env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --bind 0.0.0.0:5000 --workers 2
-    envVars:
-      - key: PYTHONUNBUFFERED
-        value: "1"
-      - key: PORT
-        value: "5000"
-    autoDeploy: true`);
+  // render.yaml auto-detect state
   let parsingYaml = $state(false);
+  let detectedBlueprint = $state<any>(null);
   let yamlParsedInfo = $state<string | null>(null);
   let detectedDatabases = $state<any[]>([]);
 
@@ -299,6 +288,8 @@
     }
   });
 
+  let autoDetectDebounce: any = null;
+
   function handleRepoUrlChange(url: string) {
     gitRepoUrl = url.trim();
     if (!gitRepoUrl) return;
@@ -312,55 +303,59 @@
         svcSlug = repoBase.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
       }
     } catch {}
+
+    clearTimeout(autoDetectDebounce);
+    autoDetectDebounce = setTimeout(() => {
+      autoDetectRenderYaml();
+    }, 600);
   }
 
-  async function parseRenderYaml(customContent?: string) {
+  async function autoDetectRenderYaml() {
+    if (!gitRepoUrl.trim()) return;
     parsingYaml = true;
+    detectedBlueprint = null;
     yamlParsedInfo = null;
-    error = null;
     try {
       const res = await fetch('/api/v1/services/parse-render-yaml', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          content: customContent || renderYamlContent,
           repoUrl: gitRepoUrl
         })
       });
-      if (!res.ok) {
-        const d = await res.json();
-        error = d.error || 'Failed to parse render.yaml';
-        return;
-      }
-      const data = await res.json();
-      if (data.services && data.services.length > 0) {
-        const svc = data.services[0];
-        name = svc.name || name;
-        svcSlug = svc.slug || svcSlug;
-        kind = svc.kind || kind;
-        
-        // Find matching preset
-        const matchingPreset = presets.find(p => p.id === svc.preset) || 
-                              presets.find(p => p.kind === svc.kind) || 
-                              presets[0];
-        choosePreset(matchingPreset);
-
-        if (svc.build_command) buildCommand = svc.build_command;
-        if (svc.start_command) startCommand = svc.start_command;
-        if (svc.internal_port) internalPort = svc.internal_port;
-        if (svc.cron_schedule) cronSchedule = svc.cron_schedule;
-        if (svc.env_vars && Object.keys(svc.env_vars).length > 0) {
-          envVars = Object.entries(svc.env_vars).map(([k, v]) => ({ key: k, value: String(v) }));
+      if (res.ok) {
+        const data = await res.json();
+        if (data.services && data.services.length > 0) {
+          detectedBlueprint = data.services[0];
+          detectedDatabases = data.databases || [];
         }
-        detectedDatabases = data.databases || [];
-        yamlParsedInfo = `✓ Applied render.yaml for "${svc.name}" (${svc.kind.toUpperCase()} • ${svc.env || svc.preset} on port :${internalPort})`;
       }
-    } catch (e: any) {
-      error = 'Error parsing render.yaml: ' + e.message;
-    } finally {
+    } catch {} finally {
       parsingYaml = false;
     }
+  }
+
+  function applyDetectedBlueprint() {
+    if (!detectedBlueprint) return;
+    const svc = detectedBlueprint;
+    name = svc.name || name;
+    svcSlug = svc.slug || svcSlug;
+    kind = svc.kind || kind;
+
+    const matchingPreset = presets.find(p => p.id === svc.preset) || 
+                          presets.find(p => p.kind === svc.kind) || 
+                          presets[0];
+    choosePreset(matchingPreset);
+
+    if (svc.build_command) buildCommand = svc.build_command;
+    if (svc.start_command) startCommand = svc.start_command;
+    if (svc.internal_port) internalPort = svc.internal_port;
+    if (svc.cron_schedule) cronSchedule = svc.cron_schedule;
+    if (svc.env_vars && Object.keys(svc.env_vars).length > 0) {
+      envVars = Object.entries(svc.env_vars).map(([k, v]) => ({ key: k, value: String(v) }));
+    }
+    yamlParsedInfo = `✓ Applied render.yaml configuration for "${svc.name}" (${svc.kind.toUpperCase()} • ${svc.env || svc.preset} on port :${internalPort})`;
   }
 
   function selectProviderRepo(repo: any) {
@@ -376,6 +371,8 @@
     } else if (repo.language === 'TypeScript' || repo.language === 'JavaScript') {
       choosePreset(presets.find(p => p.id === 'node') || presets[0]);
     }
+
+    autoDetectRenderYaml();
   }
 
   function choosePreset(p: ServicePreset) {
@@ -441,7 +438,7 @@
       }
 
       const resourcePayload = {
-        gitRepoUrl: (sourceType === 'git_public' || sourceType === 'git_provider' || sourceType === 'render_yaml') ? gitRepoUrl : '',
+        gitRepoUrl: (sourceType === 'git_public' || sourceType === 'git_provider') ? gitRepoUrl : '',
         gitBranch: gitBranch,
         rootDirectory: rootDirectory,
         sourceType: sourceType,
@@ -513,7 +510,7 @@
       </button>
       <div>
         <h1 class="page-title">Deploy a Service</h1>
-        <p class="page-subtitle">Clone public repositories, link Git accounts, import render.yaml blueprints, or run container images.</p>
+        <p class="page-subtitle">Clone public repositories, link Git accounts, or deploy container images with automatic render.yaml detection.</p>
       </div>
     </div>
   </div>
@@ -526,7 +523,7 @@
     </div>
 
     <!-- Source Type Radios / Tabs -->
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem; margin-bottom: 1.5rem;">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem; margin-bottom: 1.5rem;">
       <button 
         type="button" 
         class="card"
@@ -546,27 +543,6 @@
           <span class="badge badge-running" style="font-size: 0.65rem;">Instant</span>
         </div>
         <p class="text-xs text-muted" style="margin: 0;">Clone any public GitHub, Bitbucket, or GitLab URL.</p>
-      </button>
-
-      <button 
-        type="button" 
-        class="card"
-        style="
-          cursor: pointer; 
-          text-align: left; 
-          padding: 1rem; 
-          border: 2px solid {sourceType === 'render_yaml' ? 'var(--color-accent)' : 'var(--color-border)'}; 
-          background: {sourceType === 'render_yaml' ? 'rgba(0,166,166,0.05)' : 'var(--color-surface)'};
-        "
-        onclick={() => sourceType = 'render_yaml'}
-      >
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
-          <div style="display: flex; align-items: center; gap: 0.5rem; font-weight: 600;">
-            <FileCode size={18} style="color: #ec4899;" /> render.yaml Blueprint
-          </div>
-          <span class="badge" style="background:#fdf2f8; color:#be185d; font-size: 0.65rem;">Parser</span>
-        </div>
-        <p class="text-xs text-muted" style="margin: 0;">Paste or parse Render Blueprint specification directly.</p>
       </button>
 
       <button 
@@ -662,55 +638,40 @@
             type="button" 
             class="btn btn-secondary" 
             style="font-size:0.75rem; padding:4px 10px; color:var(--color-accent);"
-            onclick={() => parseRenderYaml()}
+            onclick={() => autoDetectRenderYaml()}
             disabled={parsingYaml || !gitRepoUrl}
           >
-            {#if parsingYaml}<Loader2 size={12} class="animate-spin" /> Auto-Detecting...{:else}<Sparkles size={12} /> Auto-Detect render.yaml in Repo{/if}
+            {#if parsingYaml}<Loader2 size={12} class="animate-spin" /> Checking Repo...{:else}<Sparkles size={12} /> Auto-Detect render.yaml in Repo{/if}
           </button>
         </div>
 
-        {#if yamlParsedInfo}
-          <div style="background:#d1fae5; border:1px solid #6ee7b7; color:#065f46; border-radius:var(--radius-md); padding:0.6rem 0.85rem; font-size:0.8125rem; margin-top:0.75rem;">
-            {yamlParsedInfo}
-          </div>
-        {/if}
-      </div>
-
-    {:else if sourceType === 'render_yaml'}
-      <div style="background: rgba(0,0,0,0.02); padding: 1.25rem; border-radius: var(--radius-md); border: 1px solid var(--color-border);">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
-          <div>
-            <div style="font-weight:600; font-size:0.9375rem;">Render Blueprint Specification (render.yaml)</div>
-            <p class="text-xs text-muted" style="margin:0;">Paste your render.yaml file or blueprint definition below.</p>
-          </div>
-          <button 
-            type="button" 
-            class="btn btn-primary" 
-            style="font-size:0.8125rem; padding:6px 14px;"
-            onclick={() => parseRenderYaml()}
-            disabled={parsingYaml || !renderYamlContent.trim()}
-          >
-            {#if parsingYaml}<Loader2 size={14} class="animate-spin" /> Parsing...{:else}<Sparkles size={14} /> Parse & Apply Blueprint{/if}
-          </button>
-        </div>
-
-        <textarea 
-          class="form-input font-mono text-xs" 
-          rows={10} 
-          style="width:100%; resize:vertical; background:var(--color-surface); line-height:1.5;"
-          bind:value={renderYamlContent}
-          placeholder={`services:\n  - type: web\n    name: my-app\n    env: python\n    buildCommand: pip install -r requirements.txt\n    startCommand: gunicorn app:app --bind 0.0.0.0:5000\n    envVars:\n      - key: PORT\n        value: 5000`}
-        ></textarea>
-
-        {#if yamlParsedInfo}
-          <div style="background:#d1fae5; border:1px solid #6ee7b7; color:#065f46; border-radius:var(--radius-md); padding:0.6rem 0.85rem; font-size:0.8125rem; margin-top:0.75rem;">
-            {yamlParsedInfo}
+        {#if detectedBlueprint}
+          <div style="background: rgba(16,185,129,0.08); border: 1.5px solid #10b981; border-radius: var(--radius-md); padding: 0.9rem 1.1rem; margin-top: 0.85rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+              <Sparkles size={20} style="color: #059669; flex-shrink: 0;" />
+              <div>
+                <div style="font-weight: 700; color: #065f46; font-size: 0.875rem;">
+                  render.yaml blueprint detected in repository!
+                </div>
+                <div class="text-xs" style="color: #047857; margin-top: 2px;">
+                  Found service config for <strong>{detectedBlueprint.name}</strong> ({detectedBlueprint.env || detectedBlueprint.preset} runtime • port :{detectedBlueprint.internal_port})
+                </div>
+              </div>
+            </div>
+            <button 
+              type="button" 
+              class="btn btn-primary" 
+              style="font-size: 0.8125rem; padding: 6px 14px; background: #059669; border-color: #059669;"
+              onclick={applyDetectedBlueprint}
+            >
+              Apply render.yaml Config
+            </button>
           </div>
         {/if}
 
-        {#if detectedDatabases.length > 0}
-          <div style="background:#eff6ff; border:1px solid #bfdbfe; color:#1e40af; border-radius:var(--radius-md); padding:0.6rem 0.85rem; font-size:0.8125rem; margin-top:0.5rem; display:flex; align-items:center; gap:0.5rem;">
-            <Database size={16} /> Blueprint includes {detectedDatabases.length} database definition(s): {detectedDatabases.map(d => d.name).join(', ')}. You can provision them under Databases.
+        {#if yamlParsedInfo}
+          <div style="background:#d1fae5; border:1px solid #6ee7b7; color:#065f46; border-radius:var(--radius-md); padding:0.6rem 0.85rem; font-size:0.8125rem; margin-top:0.75rem; display: flex; align-items: center; gap: 0.5rem;">
+            <Check size={16} /> {yamlParsedInfo}
           </div>
         {/if}
       </div>
@@ -806,6 +767,36 @@
                 </button>
               </div>
             {/each}
+          </div>
+        {/if}
+
+        {#if detectedBlueprint}
+          <div style="background: rgba(16,185,129,0.08); border: 1.5px solid #10b981; border-radius: var(--radius-md); padding: 0.9rem 1.1rem; margin-top: 0.85rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+              <Sparkles size={20} style="color: #059669; flex-shrink: 0;" />
+              <div>
+                <div style="font-weight: 700; color: #065f46; font-size: 0.875rem;">
+                  render.yaml blueprint detected in repository!
+                </div>
+                <div class="text-xs" style="color: #047857; margin-top: 2px;">
+                  Found service config for <strong>{detectedBlueprint.name}</strong> ({detectedBlueprint.env || detectedBlueprint.preset} runtime • port :{detectedBlueprint.internal_port})
+                </div>
+              </div>
+            </div>
+            <button 
+              type="button" 
+              class="btn btn-primary" 
+              style="font-size: 0.8125rem; padding: 6px 14px; background: #059669; border-color: #059669;"
+              onclick={applyDetectedBlueprint}
+            >
+              Apply render.yaml Config
+            </button>
+          </div>
+        {/if}
+
+        {#if yamlParsedInfo}
+          <div style="background:#d1fae5; border:1px solid #6ee7b7; color:#065f46; border-radius:var(--radius-md); padding:0.6rem 0.85rem; font-size:0.8125rem; margin-top:0.75rem; display: flex; align-items: center; gap: 0.5rem;">
+            <Check size={16} /> {yamlParsedInfo}
           </div>
         {/if}
       </div>

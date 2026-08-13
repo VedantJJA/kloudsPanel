@@ -1,15 +1,55 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/yourorg/klouds/api/internal/domain"
 )
+
+// ─── Log Storage ──────────────────────────────────────────────────────────────
+
+type LogEntry struct {
+	Timestamp string `json:"timestamp"`
+	Stream    string `json:"stream"` // "stdout" | "stderr" | "build" | "system"
+	Message   string `json:"message"`
+}
+
+var (
+	logMu             sync.RWMutex
+	serviceLatestLogs = make(map[string][]LogEntry)
+)
+
+func appendLog(serviceID, stream, message string) {
+	logMu.Lock()
+	defer logMu.Unlock()
+
+	entry := LogEntry{
+		Timestamp: time.Now().UTC().Format("15:04:05"),
+		Stream:    stream,
+		Message:   message,
+	}
+
+	logs := serviceLatestLogs[serviceID]
+	if len(logs) > 500 {
+		logs = logs[1:]
+	}
+	serviceLatestLogs[serviceID] = append(logs, entry)
+}
+
+func clearLogs(serviceID string) {
+	logMu.Lock()
+	defer logMu.Unlock()
+	serviceLatestLogs[serviceID] = []LogEntry{}
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -49,6 +89,288 @@ func writeTraefikDynamicConfig(slug string, port int, rootDomain string) {
 	_ = os.WriteFile(filePath, []byte(content), 0644)
 }
 
+func removeTraefikDynamicConfig(slug string) {
+	dynamicDir := "/traefik/dynamic"
+	if _, err := os.Stat(dynamicDir); os.IsNotExist(err) {
+		dynamicDir = "./paas/deploy/traefik/dynamic"
+	}
+	filePath := filepath.Join(dynamicDir, fmt.Sprintf("svc-%s.yaml", slug))
+	_ = os.Remove(filePath)
+}
+
+func generateDockerfileForPreset(preset, buildCmd, startCmd string, port int) string {
+	switch strings.ToLower(preset) {
+	case "python":
+		sCmd := startCmd
+		if sCmd == "" {
+			sCmd = fmt.Sprintf("gunicorn app:app --bind 0.0.0.0:%d --workers 2", port)
+		}
+		bCmd := buildCmd
+		if bCmd == "" {
+			bCmd = "pip install --no-cache-dir -r requirements.txt"
+		}
+		return fmt.Sprintf(`FROM python:3.11-slim
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev curl && rm -rf /var/lib/apt/lists/*
+COPY . /app
+RUN if [ -f requirements.txt ]; then %s; fi
+ENV PORT=%d PYTHONUNBUFFERED=1
+EXPOSE %d
+CMD ["sh", "-c", "%s"]
+`, bCmd, port, port, sCmd)
+
+	case "node", "nodejs":
+		sCmd := startCmd
+		if sCmd == "" {
+			sCmd = "npm start"
+		}
+		return fmt.Sprintf(`FROM node:20-alpine
+WORKDIR /app
+COPY . /app
+RUN if [ -f package.json ]; then npm install; fi
+RUN if grep -q '"build":' package.json 2>/dev/null; then npm run build; fi
+ENV PORT=%d
+EXPOSE %d
+CMD ["sh", "-c", "%s"]
+`, port, port, sCmd)
+
+	case "go", "golang":
+		return fmt.Sprintf(`FROM golang:1.22-alpine AS builder
+WORKDIR /app
+COPY . .
+RUN CGO_ENABLED=0 go build -o server .
+FROM alpine:3.21
+WORKDIR /app
+COPY --from=builder /app/server /app/server
+EXPOSE %d
+CMD ["/app/server"]
+`, port)
+
+	case "static", "static-spa", "nginx":
+		return fmt.Sprintf(`FROM nginx:alpine
+COPY . /usr/share/nginx/html
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
+`)
+
+	default:
+		sCmd := startCmd
+		if sCmd == "" {
+			sCmd = fmt.Sprintf("python app.py || node server.js || ./server || nginx -g 'daemon off;'")
+		}
+		return fmt.Sprintf(`FROM python:3.11-slim
+WORKDIR /app
+COPY . /app
+RUN if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+ENV PORT=%d PYTHONUNBUFFERED=1
+EXPOSE %d
+CMD ["sh", "-c", "%s"]
+`, port, port, sCmd)
+	}
+}
+
+// ─── Real Deployment Execution Engine ─────────────────────────────────────────
+
+func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deployment, rootDomain string) {
+	serviceID := service.ID
+	clearLogs(serviceID)
+	appendLog(serviceID, "system", fmt.Sprintf("[platform] Deployment #%d triggered for service '%s' (%s)", dep.Sequence, service.Name, service.Slug))
+
+	var resMap map[string]any
+	var gitRepoUrl, gitBranch, buildCommand, startCommand, presetId string
+	var envMap = make(map[string]string)
+
+	if service.ResourceJSON != "" {
+		if err := json.Unmarshal([]byte(service.ResourceJSON), &resMap); err == nil {
+			if r, ok := resMap["gitRepoUrl"].(string); ok {
+				gitRepoUrl = r
+			}
+			if b, ok := resMap["gitBranch"].(string); ok {
+				gitBranch = b
+			}
+			if bc, ok := resMap["buildCommand"].(string); ok {
+				buildCommand = bc
+			}
+			if sc, ok := resMap["startCommand"].(string); ok {
+				startCommand = sc
+			}
+			if p, ok := resMap["presetId"].(string); ok {
+				presetId = p
+			}
+			if envs, ok := resMap["env"].(map[string]any); ok {
+				for k, v := range envs {
+					envMap[k] = fmt.Sprintf("%v", v)
+				}
+			}
+		}
+	}
+
+	if presetId == "" {
+		presetId = string(service.Kind)
+	}
+	if gitBranch == "" {
+		gitBranch = "main"
+	}
+
+	port := 80
+	if service.InternalPort != nil && *service.InternalPort > 0 {
+		port = *service.InternalPort
+	}
+
+	workspaceDir := filepath.Join("/tmp/builds", service.Slug)
+	_ = os.RemoveAll(workspaceDir)
+	_ = os.MkdirAll(workspaceDir, 0755)
+
+	imageTag := fmt.Sprintf("paas-svc-%s:latest", service.Slug)
+
+	// Step 1: Clone Git Repository if URL is provided
+	if gitRepoUrl != "" {
+		appendLog(serviceID, "system", fmt.Sprintf("[git] Cloning %s (branch: %s)...", gitRepoUrl, gitBranch))
+		cmd := exec.Command("git", "clone", "--depth", "1", "--branch", gitBranch, gitRepoUrl, workspaceDir)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			// Fallback clone without branch
+			cmd = exec.Command("git", "clone", "--depth", "1", gitRepoUrl, workspaceDir)
+			out, err = cmd.CombinedOutput()
+		}
+
+		for _, line := range strings.Split(string(out), "\n") {
+			if strings.TrimSpace(line) != "" {
+				appendLog(serviceID, "stdout", line)
+			}
+		}
+
+		if err != nil {
+			appendLog(serviceID, "stderr", fmt.Sprintf("[git] Error cloning repository: %v", err))
+			dep.Status = domain.DeploymentFailed
+			_ = h.store.Deployments().Update(context.Background(), dep)
+			return
+		}
+		appendLog(serviceID, "system", "[git] Repository checkout complete.")
+
+		// Step 2: Auto-detect render.yaml inside repository
+		renderFile := filepath.Join(workspaceDir, "render.yaml")
+		if _, err := os.Stat(renderFile); os.IsNotExist(err) {
+			renderFile = filepath.Join(workspaceDir, "render.yml")
+		}
+		if _, err := os.Stat(renderFile); err == nil {
+			if yamlBytes, err := os.ReadFile(renderFile); err == nil {
+				parsed := parseRenderYAMLString(string(yamlBytes))
+				if len(parsed.Services) > 0 {
+					svc := parsed.Services[0]
+					appendLog(serviceID, "system", fmt.Sprintf("[render] Auto-detected render.yaml config for '%s' (preset: %s, port: %d)", svc.Name, svc.Preset, svc.InternalPort))
+					if buildCommand == "" && svc.BuildCommand != "" {
+						buildCommand = svc.BuildCommand
+					}
+					if startCommand == "" && svc.StartCommand != "" {
+						startCommand = svc.StartCommand
+					}
+					if svc.InternalPort > 0 && service.InternalPort == nil {
+						port = svc.InternalPort
+					}
+					for k, v := range svc.EnvVars {
+						if _, exists := envMap[k]; !exists {
+							envMap[k] = v
+						}
+					}
+				}
+			}
+		}
+
+		// Step 3: Check if Dockerfile exists or generate one
+		dockerfilePath := filepath.Join(workspaceDir, "Dockerfile")
+		if _, err := os.Stat(dockerfilePath); os.IsNotExist(err) {
+			appendLog(serviceID, "build", fmt.Sprintf("[builder] Generating Dockerfile for runtime: %s", presetId))
+			dfContent := generateDockerfileForPreset(presetId, buildCommand, startCommand, port)
+			_ = os.WriteFile(dockerfilePath, []byte(dfContent), 0644)
+		}
+
+		// Step 4: Build Container Image with Docker
+		appendLog(serviceID, "build", fmt.Sprintf("[builder] Running 'docker build -t %s %s'...", imageTag, workspaceDir))
+		buildCmd := exec.Command("docker", "build", "-t", imageTag, workspaceDir)
+		buildOut, err := buildCmd.CombinedOutput()
+		for _, line := range strings.Split(string(buildOut), "\n") {
+			if strings.TrimSpace(line) != "" {
+				appendLog(serviceID, "build", line)
+			}
+		}
+		if err != nil {
+			appendLog(serviceID, "stderr", fmt.Sprintf("[builder] Build failed: %v", err))
+			dep.Status = domain.DeploymentFailed
+			_ = h.store.Deployments().Update(context.Background(), dep)
+			return
+		}
+		appendLog(serviceID, "build", "✓ Container image built successfully.")
+	}
+
+	// Step 5: Stop previous container and run the new container
+	containerName := fmt.Sprintf("paas-svc-%s", service.Slug)
+	appendLog(serviceID, "runtime", fmt.Sprintf("[runtime] Deploying container '%s' on network platform-control...", containerName))
+
+	_ = exec.Command("docker", "rm", "-f", containerName).Run()
+
+	runArgs := []string{
+		"run", "-d",
+		"--name", containerName,
+		"--network", "platform-control",
+		"--restart", "unless-stopped",
+		"-e", fmt.Sprintf("PORT=%d", port),
+		"-e", "PYTHONUNBUFFERED=1",
+		"--label", "io.paas.managed=true",
+		"--label", fmt.Sprintf("io.paas.service=%s", service.ID),
+		"--label", "traefik.enable=true",
+		"--label", fmt.Sprintf("traefik.http.routers.%s.rule=Host(`%s.%s`)", service.Slug, service.Slug, rootDomain),
+		"--label", fmt.Sprintf("traefik.http.routers.%s.entrypoints=websecure", service.Slug),
+		"--label", fmt.Sprintf("traefik.http.routers.%s.tls.certresolver=letsencrypt", service.Slug),
+		"--label", fmt.Sprintf("traefik.http.services.%s.loadbalancer.server.port=%d", service.Slug, port),
+	}
+
+	for k, v := range envMap {
+		runArgs = append(runArgs, "-e", fmt.Sprintf("%s=%s", k, v))
+	}
+
+	runArgs = append(runArgs, imageTag)
+
+	runCmd := exec.Command("docker", runArgs...)
+	runOut, err := runCmd.CombinedOutput()
+	for _, line := range strings.Split(string(runOut), "\n") {
+		if strings.TrimSpace(line) != "" {
+			appendLog(serviceID, "stdout", line)
+		}
+	}
+	if err != nil {
+		appendLog(serviceID, "stderr", fmt.Sprintf("[runtime] Failed to launch container: %v", err))
+		dep.Status = domain.DeploymentFailed
+		_ = h.store.Deployments().Update(context.Background(), dep)
+		return
+	}
+
+	// Step 6: Write Dynamic Traefik Configuration
+	writeTraefikDynamicConfig(service.Slug, port, rootDomain)
+	appendLog(serviceID, "system", fmt.Sprintf("[traefik] Ingress route active -> https://%s.%s (port :%d)", service.Slug, rootDomain, port))
+
+	// Step 7: Stream container logs
+	time.Sleep(2 * time.Second)
+	containerLogsCmd := exec.Command("docker", "logs", "--tail", "50", containerName)
+	cLogs, _ := containerLogsCmd.CombinedOutput()
+	for _, line := range strings.Split(string(cLogs), "\n") {
+		if strings.TrimSpace(line) != "" {
+			appendLog(serviceID, "stdout", line)
+		}
+	}
+
+	appendLog(serviceID, "stdout", fmt.Sprintf("✓ Application '%s' is live and accessible at https://%s.%s", service.Name, service.Slug, rootDomain))
+
+	finishTime := time.Now().UTC()
+	dep.Status = domain.DeploymentHealthy
+	dep.FinishedAt = &finishTime
+	_ = h.store.Deployments().Update(context.Background(), dep)
+
+	service.RuntimeStatus = domain.ServiceStatusRunning
+	service.DesiredState = domain.ServiceDesiredRunning
+	_ = h.store.Services().Update(context.Background(), service)
+}
+
 // ─── Deployment Handlers ───────────────────────────────────────────────────────
 
 func (h *Handler) handleListDeployments(c fiber.Ctx) error {
@@ -72,37 +394,28 @@ func (h *Handler) handleTriggerDeployment(c fiber.Ctx) error {
 	rootDomain := getRootDomain()
 	domainName := fmt.Sprintf("%s.%s", s.Slug, rootDomain)
 
-	// Write dynamic Traefik configuration file
-	port := 80
-	if s.InternalPort != nil && *s.InternalPort > 0 {
-		port = *s.InternalPort
-	}
-	writeTraefikDynamicConfig(s.Slug, port, rootDomain)
-
 	dep := &domain.Deployment{
 		ServiceID:      serviceID,
 		Sequence:       seq,
 		Trigger:        domain.TriggerManual,
 		TriggeredBy:    &u.DisplayName,
-		Status:         domain.DeploymentHealthy,
+		Status:         domain.DeploymentBuilding,
 		BuildDriver:    "docker",
 		ConfigSnapshot: s.ResourceJSON,
 		StartedAt:      &now,
-		FinishedAt:     &now,
 	}
 	if err := h.store.Deployments().Create(c.Context(), dep); err != nil {
 		return err
 	}
 
-	s.RuntimeStatus = domain.ServiceStatusRunning
-	s.DesiredState = domain.ServiceDesiredRunning
-	_ = h.store.Services().Update(c.Context(), s)
+	// Trigger real deployment execution in background goroutine
+	go h.executeDeployment(s, dep, rootDomain)
 
 	return c.Status(201).JSON(fiber.Map{
 		"deployment": dep,
 		"domain":     domainName,
 		"endpoint":   fmt.Sprintf("https://%s", domainName),
-		"status":     "running",
+		"status":     "deploying",
 	})
 }
 
@@ -116,72 +429,45 @@ func (h *Handler) handleGetDeployment(c fiber.Ctx) error {
 
 func (h *Handler) handleGetLogs(c fiber.Ctx) error {
 	id := c.Params("id")
-	now := time.Now().UTC()
+	logMu.RLock()
+	entries, exists := serviceLatestLogs[id]
+	logMu.RUnlock()
 
-	var gitRepo, branch, buildCmd, startCmd string
-	port := 80
-	if id != "" {
-		s, err := h.store.Services().GetByID(c.Context(), id)
-		if err == nil && s != nil {
-			if s.InternalPort != nil {
-				port = *s.InternalPort
-			}
-			var resMap map[string]any
-			if err := json.Unmarshal([]byte(s.ResourceJSON), &resMap); err == nil {
-				if r, ok := resMap["gitRepoUrl"].(string); ok {
-					gitRepo = r
-				}
-				if b, ok := resMap["gitBranch"].(string); ok {
-					branch = b
-				}
-				if bc, ok := resMap["buildCommand"].(string); ok {
-					buildCmd = bc
-				}
-				if sc, ok := resMap["startCommand"].(string); ok {
-					startCmd = sc
-				}
-			}
-		}
-	}
-
-	rootDomain := getRootDomain()
-
-	if gitRepo != "" {
-		if branch == "" {
-			branch = "main"
-		}
-		bCmd := buildCmd
-		if bCmd == "" {
-			bCmd = "pip install -r requirements.txt"
-		}
-		sCmd := startCmd
-		if sCmd == "" {
-			sCmd = fmt.Sprintf("gunicorn app:app --bind 0.0.0.0:%d", port)
-		}
-		entries := []fiber.Map{
-			{"timestamp": now.Add(-30 * time.Second).Format(time.RFC3339Nano), "stream": "system", "message": fmt.Sprintf("[git] Cloning repository: %s (branch: %s)...", gitRepo, branch)},
-			{"timestamp": now.Add(-25 * time.Second).Format(time.RFC3339Nano), "stream": "system", "message": "[git] Checked out commit 5ec867f (HEAD -> main)"},
-			{"timestamp": now.Add(-20 * time.Second).Format(time.RFC3339Nano), "stream": "build", "message": fmt.Sprintf("[builder] Running build command: %s", bCmd)},
-			{"timestamp": now.Add(-15 * time.Second).Format(time.RFC3339Nano), "stream": "build", "message": "[builder] Resolving requirements & compiling application assets..."},
-			{"timestamp": now.Add(-10 * time.Second).Format(time.RFC3339Nano), "stream": "build", "message": "[builder] Build step finished successfully in 3.42s"},
-			{"timestamp": now.Add(-6 * time.Second).Format(time.RFC3339Nano), "stream": "system", "message": fmt.Sprintf("[runtime] Container created with internal port :%d mounted on network platform-control", port)},
-			{"timestamp": now.Add(-3 * time.Second).Format(time.RFC3339Nano), "stream": "stdout", "message": fmt.Sprintf("[runtime] Executing: %s", sCmd)},
-			{"timestamp": now.Add(-1 * time.Second).Format(time.RFC3339Nano), "stream": "system", "message": fmt.Sprintf("[traefik] Ingress route established -> https://%s (SSL: Let's Encrypt)", rootDomain)},
-			{"timestamp": now.Format(time.RFC3339Nano), "stream": "stdout", "message": fmt.Sprintf("✓ Health check passed (HTTP 200 OK) — Application is ready and serving traffic on port %d", port)},
-		}
+	if exists && len(entries) > 0 {
 		return c.JSON(fiber.Map{"entries": entries})
 	}
 
-	entries := []fiber.Map{
-		{"timestamp": now.Add(-30 * time.Second).Format(time.RFC3339Nano), "stream": "system", "message": "[platform] Initializing container runtime environment..."},
-		{"timestamp": now.Add(-25 * time.Second).Format(time.RFC3339Nano), "stream": "build", "message": "[builder] Preparing build environment & resolving dependencies"},
-		{"timestamp": now.Add(-20 * time.Second).Format(time.RFC3339Nano), "stream": "build", "message": "[builder] Building application container image..."},
-		{"timestamp": now.Add(-15 * time.Second).Format(time.RFC3339Nano), "stream": "build", "message": "[builder] Image built successfully in 3.42s"},
-		{"timestamp": now.Add(-10 * time.Second).Format(time.RFC3339Nano), "stream": "system", "message": fmt.Sprintf("[runtime] Container created and listening on port :%d", port)},
-		{"timestamp": now.Add(-5 * time.Second).Format(time.RFC3339Nano), "stream": "stdout", "message": "Server started and listening on internal port"},
-		{"timestamp": now.Format(time.RFC3339Nano), "stream": "stdout", "message": "✓ Health check passed: HTTP 200 OK"},
+	// Fallback to query live docker logs
+	s, err := h.store.Services().GetByID(c.Context(), id)
+	if err == nil && s != nil {
+		containerName := fmt.Sprintf("paas-svc-%s", s.Slug)
+		cmd := exec.Command("docker", "logs", "--tail", "100", containerName)
+		out, err := cmd.CombinedOutput()
+		if err == nil && len(out) > 0 {
+			var liveEntries []LogEntry
+			now := time.Now().UTC()
+			for _, line := range strings.Split(string(out), "\n") {
+				if strings.TrimSpace(line) != "" {
+					liveEntries = append(liveEntries, LogEntry{
+						Timestamp: now.Format("15:04:05"),
+						Stream:    "stdout",
+						Message:   line,
+					})
+				}
+			}
+			if len(liveEntries) > 0 {
+				return c.JSON(fiber.Map{"entries": liveEntries})
+			}
+		}
 	}
-	return c.JSON(fiber.Map{"entries": entries})
+
+	return c.JSON(fiber.Map{"entries": []LogEntry{
+		{
+			Timestamp: time.Now().UTC().Format("15:04:05"),
+			Stream:    "system",
+			Message:   "Ready for deployment. Click 'Deploy Now' to clone, build, and start container.",
+		},
+	}})
 }
 
 func (h *Handler) handleWSLogs(c fiber.Ctx) error { return c.SendStatus(501) }

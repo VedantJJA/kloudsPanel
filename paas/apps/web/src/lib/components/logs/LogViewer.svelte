@@ -3,10 +3,10 @@
 
   let logs = $state<Array<{stream?: string, message?: string, emitted_at?: string, timestamp?: string}>>([]);
   let loading = $state(true);
-  let ws: WebSocket | null = null;
+  let pollInterval: any = null;
 
-  async function fetchLogs() {
-    loading = true;
+  async function fetchLogs(isInitial = false) {
+    if (isInitial) loading = true;
     try {
       const url = deploymentId 
         ? `/api/v1/deployments/${deploymentId}/logs` 
@@ -19,41 +19,43 @@
     } catch (e) {
       console.error(e);
     } finally {
-      loading = false;
+      if (isInitial) loading = false;
     }
   }
 
-  $effect(() => {
-    fetchLogs();
-
-    if (deploymentId) {
-      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-      try {
-        ws = new WebSocket(`${proto}://${location.host}/api/v1/ws/deployments/${deploymentId}/logs`);
-        ws.onmessage = (e: MessageEvent) => {
-          try {
-            const entry = JSON.parse(e.data as string);
-            logs = [...logs, entry].slice(-5000);
-          } catch {}
-        };
-      } catch {}
+  function formatTime(ts?: string): string {
+    if (!ts) return '';
+    if (ts.includes('T')) {
+      return ts.slice(11, 19);
     }
+    return ts;
+  }
 
-    return () => ws?.close();
+  $effect(() => {
+    fetchLogs(true);
+    pollInterval = setInterval(() => {
+      fetchLogs(false);
+    }, 2500);
+
+    return () => {
+      if (pollInterval) clearInterval(pollInterval);
+    };
   });
 </script>
 
 <div class="log-viewer" id="log-viewer" role="log" aria-label="Deployment logs" aria-live="polite">
   {#if loading}
-    <span class="log-line-system">Loading logs…</span>
+    <div style="display:flex; align-items:center; gap:0.5rem; color:#8b949e;">
+      <span class="log-line-system">Loading deployment logs…</span>
+    </div>
   {:else if logs.length === 0}
-    <span class="log-line-system">No log entries recorded yet. Trigger a deployment to view build and runtime output.</span>
+    <span class="log-line-system">No log entries recorded yet. Trigger a deployment to view real console output.</span>
   {:else}
     {#each logs as entry}
-      {@const timeStr = (entry.emitted_at || entry.timestamp || '').slice(11, 19)}
-      <div class="log-line-{entry.stream || 'stdout'}" style="margin-bottom:0.25rem;">
+      {@const timeStr = formatTime(entry.emitted_at || entry.timestamp)}
+      <div class="log-line-{entry.stream || 'stdout'}" style="margin-bottom:0.25rem; word-break:break-word; white-space:pre-wrap;">
         {#if timeStr}
-          <span style="opacity:0.4;margin-right:0.75rem;font-size:0.75rem;font-family:var(--font-mono)">{timeStr}</span>
+          <span style="opacity:0.45; margin-right:0.75rem; font-size:0.75rem; font-family:var(--font-mono); user-select:none;">{timeStr}</span>
         {/if}
         <span>{entry.message}</span>
       </div>
@@ -63,15 +65,32 @@
 
 <style>
   .log-viewer {
-    min-height: 360px;
-    max-height: 520px;
-    background: #0d1117;
+    min-height: 380px;
+    max-height: 560px;
+    background: #090d13;
+    border: 1px solid #21262d;
     border-radius: var(--radius-md);
     padding: var(--sp-4);
     font-family: var(--font-mono);
     font-size: 0.8125rem;
-    line-height: 1.7;
+    line-height: 1.65;
     color: #e6edf3;
     overflow-y: auto;
+  }
+
+  :global(.log-line-system) {
+    color: #79c0ff;
+  }
+
+  :global(.log-line-build) {
+    color: #d2a8ff;
+  }
+
+  :global(.log-line-stdout) {
+    color: #e6edf3;
+  }
+
+  :global(.log-line-stderr) {
+    color: #ff7b72;
   }
 </style>

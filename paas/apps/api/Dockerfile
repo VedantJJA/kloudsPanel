@@ -26,18 +26,13 @@ RUN CGO_ENABLED=1 GOOS=linux go build \
 # ── Runtime stage ──────────────────────────────────────────────────────────────
 FROM alpine:3.21
 
-RUN apk add --no-cache ca-certificates tzdata curl
-
-# Non-root user
-RUN addgroup -g 1001 klouds && adduser -u 1001 -G klouds -s /bin/sh -D klouds
+RUN apk add --no-cache ca-certificates tzdata curl git docker-cli
 
 WORKDIR /app
 COPY --from=builder /app/bin/api /app/api
 
-# Data directory owned by the app user
-RUN mkdir -p /data && chown klouds:klouds /data
-
-USER klouds
+# Data and build directory
+RUN mkdir -p /data /tmp/builds
 
 EXPOSE 8080
 
