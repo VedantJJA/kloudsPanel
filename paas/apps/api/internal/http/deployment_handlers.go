@@ -472,9 +472,11 @@ func (h *Handler) handleTriggerDeployment(c fiber.Ctx) error {
 		return c.Status(404).JSON(fiber.Map{"error": fmt.Sprintf("Service '%s' not found", serviceID)})
 	}
 
-	var userDisplayName *string
+	var userID *string
 	if u, ok := c.Locals("user").(*domain.User); ok && u != nil {
-		userDisplayName = &u.DisplayName
+		if dbUser, err := h.store.Users().GetByID(c.Context(), u.ID); err == nil && dbUser != nil {
+			userID = &dbUser.ID
+		}
 	}
 
 	seq, _ := h.store.Deployments().GetNextSequence(c.Context(), s.ID)
@@ -487,7 +489,7 @@ func (h *Handler) handleTriggerDeployment(c fiber.Ctx) error {
 		ServiceID:      s.ID,
 		Sequence:       seq,
 		Trigger:        domain.TriggerManual,
-		TriggeredBy:    userDisplayName,
+		TriggeredBy:    userID,
 		Status:         domain.DeploymentBuilding,
 		BuildDriver:    "docker",
 		ConfigSnapshot: s.ResourceJSON,
