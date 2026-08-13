@@ -9,7 +9,7 @@ RUN npm install -g pnpm && pnpm fetch
 
 COPY . .
 RUN pnpm install -r --offline
-RUN pnpm --filter web build
+RUN pnpm --filter klouds-web build
 
 FROM node:22-alpine
 WORKDIR /app
