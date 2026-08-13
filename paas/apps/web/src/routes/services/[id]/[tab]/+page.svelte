@@ -228,6 +228,13 @@
 
   <!-- Tab content -->
   {#if tab === 'overview'}
+    {@const parsedRes = (() => {
+      try {
+        return JSON.parse(service?.resource_json || service?.ResourceJSON || '{}');
+      } catch {
+        return {};
+      }
+    })()}
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:1rem; margin-bottom:1.5rem;">
       <div class="card" style="padding:1.25rem;">
         <div class="text-xs text-muted" style="margin-bottom:0.25rem;">Service Kind</div>
@@ -239,10 +246,24 @@
           <span class="badge badge-{statusBadge}">{statusBadge}</span>
         </div>
       </div>
-      <div class="card" style="padding:1.25rem;">
-        <div class="text-xs text-muted" style="margin-bottom:0.25rem;">Internal Port</div>
-        <div style="font-size:1.125rem; font-weight:600; font-family:var(--font-mono)">:{service?.internal_port || service?.InternalPort || 80}</div>
-      </div>
+
+      {#if (service?.kind || service?.Kind) === 'cron'}
+        <div class="card" style="padding:1.25rem;">
+          <div class="text-xs text-muted" style="margin-bottom:0.25rem;">Cron Schedule</div>
+          <div style="font-size:1rem; font-weight:600; font-family:var(--font-mono)">{parsedRes.cronSchedule || '0 * * * *'}</div>
+        </div>
+      {:else if (service?.kind || service?.Kind) === 'worker'}
+        <div class="card" style="padding:1.25rem;">
+          <div class="text-xs text-muted" style="margin-bottom:0.25rem;">Execution Model</div>
+          <div style="font-size:1.125rem; font-weight:600;">Background Daemon</div>
+        </div>
+      {:else}
+        <div class="card" style="padding:1.25rem;">
+          <div class="text-xs text-muted" style="margin-bottom:0.25rem;">Internal Port</div>
+          <div style="font-size:1.125rem; font-weight:600; font-family:var(--font-mono)">:{service?.internal_port || service?.InternalPort || 80}</div>
+        </div>
+      {/if}
+
       <div class="card" style="padding:1.25rem;">
         <div class="text-xs text-muted" style="margin-bottom:0.25rem;">Total Deployments</div>
         <div style="font-size:1.125rem; font-weight:600;">{deployments.length}</div>

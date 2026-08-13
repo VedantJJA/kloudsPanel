@@ -123,6 +123,8 @@ func NewServer(log *slog.Logger, store repository.Store, addr string) *fiber.App
 	db.Get("/", h.handleListDatabases)
 	db.Post("/", h.handleCreateDatabase)
 	db.Get("/:id", h.handleGetDatabase)
+	db.Post("/:id/restart", h.handleRestartDatabase)
+	db.Get("/:id/logs", h.handleGetLogs)
 	db.Delete("/:id", h.handleDeleteDatabase)
 
 	// Domain routes
