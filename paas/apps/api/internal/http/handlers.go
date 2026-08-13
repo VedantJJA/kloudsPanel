@@ -238,7 +238,11 @@ func (h *Handler) handleListProjects(c fiber.Ctx) error {
 
 func (h *Handler) handleCreateProject(c fiber.Ctx) error {
 	u := c.Locals("user").(*domain.User)
-	var req struct{ WorkspaceID, Name, Slug string }
+	var req struct {
+		WorkspaceID string `json:"workspaceId"`
+		Name        string `json:"name"`
+		Slug        string `json:"slug"`
+	}
 	if err := c.Bind().JSON(&req); err != nil {
 		return err
 	}
@@ -276,9 +280,17 @@ func (h *Handler) handleListServices(c fiber.Ctx) error {
 
 func (h *Handler) handleCreateService(c fiber.Ctx) error {
 	u := c.Locals("user").(*domain.User)
-	var req struct{ ProjectID, Name, Slug string; Kind domain.ServiceKind }
+	var req struct {
+		ProjectID string               `json:"projectId"`
+		Name      string               `json:"name"`
+		Slug      string               `json:"slug"`
+		Kind      domain.ServiceKind   `json:"kind"`
+	}
 	if err := c.Bind().JSON(&req); err != nil {
 		return err
+	}
+	if req.Kind == "" {
+		req.Kind = domain.ServiceKindWeb
 	}
 	s := &domain.Service{
 		ProjectID: req.ProjectID, Name: req.Name, Slug: req.Slug, Kind: req.Kind, CreatedBy: u.ID,

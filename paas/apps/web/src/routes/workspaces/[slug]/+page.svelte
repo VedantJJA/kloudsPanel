@@ -2,6 +2,7 @@
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
+  import { Loader2, Box, FolderOpen } from 'lucide-svelte';
 
   const { slug } = $derived($page.params);
   let workspace = $state<any>(null);
@@ -10,12 +11,11 @@
 
   onMount(async () => {
     try {
-      const [wsRes, projRes] = await Promise.all([
-        fetch(`/api/v1/workspaces/${slug}`, { credentials: 'include' }),
-        fetch(`/api/v1/projects?workspace_slug=${slug}`, { credentials: 'include' }),
-      ]);
+      const wsRes = await fetch(`/api/v1/workspaces/${slug}`, { credentials: 'include' });
       if (!wsRes.ok) { goto('/workspaces'); return; }
       workspace = await wsRes.json();
+      // Use the resolved workspace ID to fetch projects
+      const projRes = await fetch(`/api/v1/projects?workspaceId=${workspace.id}`, { credentials: 'include' });
       const projData = await projRes.json();
       projects = projData.projects ?? [];
     } finally {
@@ -29,7 +29,10 @@
 </svelte:head>
 
 {#if loading}
-  <div class="empty-state"><div style="font-size:2rem;opacity:0.4;margin-bottom:1rem">⏳</div><p>Loading…</p></div>
+  <div class="empty-state">
+    <div class="animate-spin text-muted" style="margin-bottom:1rem"><Loader2 size={48} /></div>
+    <p>Loading…</p>
+  </div>
 {:else}
   <div class="page-header">
     <div>
@@ -49,10 +52,10 @@
 
   {#if projects.length === 0}
     <div class="empty-state">
-      <div class="empty-state-icon">📦</div>
+      <div class="empty-state-icon"><Box size={48} /></div>
       <h3>No projects yet</h3>
       <p>Create your first project to start deploying services.</p>
-      <button class="btn btn-primary mt-4">Create Project</button>
+      <button class="btn btn-primary mt-4" onclick={() => goto(`/workspaces/${slug}/projects/new`)}>Create Project</button>
     </div>
   {:else}
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:1rem">

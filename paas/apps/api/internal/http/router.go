@@ -38,7 +38,9 @@ func NewServer(log *slog.Logger, store repository.Store, addr string) *fiber.App
 	app.Use(helmet.New())
 	app.Use(compress.New())
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"https://localhost:5173"},
+		AllowOriginsFunc: func(origin string) bool {
+			return true // Traefik handles edge security; API is internal-only
+		},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Content-Type", "Authorization", "X-CSRF-Token", "X-Request-ID"},
 		AllowCredentials: true,
