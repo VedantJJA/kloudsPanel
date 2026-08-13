@@ -253,14 +253,26 @@ func (h *Handler) handleListProjects(c fiber.Ctx) error {
 func (h *Handler) handleCreateProject(c fiber.Ctx) error {
 	u := c.Locals("user").(*domain.User)
 	var req struct {
-		WorkspaceID string `json:"workspaceId"`
-		Name        string `json:"name"`
-		Slug        string `json:"slug"`
+		WorkspaceID string            `json:"workspaceId"`
+		Name        string            `json:"name"`
+		Slug        string            `json:"slug"`
+		SourceKind  domain.SourceKind `json:"sourceKind"`
 	}
 	if err := c.Bind().JSON(&req); err != nil {
 		return err
 	}
-	p := &domain.Project{WorkspaceID: req.WorkspaceID, Name: req.Name, Slug: req.Slug, CreatedBy: u.ID, Status: domain.ProjectStatusActive}
+	if req.SourceKind == "" {
+		req.SourceKind = domain.SourceKindEmpty
+	}
+	p := &domain.Project{
+		WorkspaceID:   req.WorkspaceID,
+		Name:          req.Name,
+		Slug:          req.Slug,
+		SourceKind:    req.SourceKind,
+		RootDirectory: ".",
+		CreatedBy:     u.ID,
+		Status:        domain.ProjectStatusActive,
+	}
 	if err := h.store.Projects().Create(c.Context(), p); err != nil {
 		return err
 	}
