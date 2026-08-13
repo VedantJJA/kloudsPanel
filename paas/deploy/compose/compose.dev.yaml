@@ -17,7 +17,7 @@ volumes:
 services:
 
   sablier:
-    image: acouvreur/sablier:1.10
+    image: sablierapp/sablier:1.10
     container_name: klouds-dev-sablier
     networks:
       - platform-control
@@ -29,8 +29,8 @@ services:
 
   agent:
     build:
-      context: ../../apps/agent
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: apps/agent/Dockerfile
     container_name: klouds-dev-agent
     networks:
       - platform-control

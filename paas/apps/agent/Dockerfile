@@ -1,20 +1,24 @@
 # Multi-stage Dockerfile for kloudsPanel Agent (Go)
 # No CGO needed — pure Go binary.
+# Build context must be the repo root (contains go.work + go.work.sum).
 
 FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
 
-COPY go.mod go.sum ./
-RUN go mod download
+# Copy workspace files and agent module
+COPY go.work go.work.sum ./
+COPY apps/agent/go.mod apps/agent/
+RUN go work sync
 
-COPY . .
+# Copy agent source
+COPY apps/agent/ apps/agent/
 
 RUN CGO_ENABLED=0 GOOS=linux go build \
     -trimpath \
     -ldflags="-s -w" \
     -o /app/bin/agent \
-    ./cmd/agent
+    ./apps/agent/cmd/agent
 
 FROM alpine:3.21
 
