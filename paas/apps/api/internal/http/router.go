@@ -79,6 +79,7 @@ func NewServer(log *slog.Logger, store repository.Store, addr string) *fiber.App
 	ws.Post("/", h.handleCreateWorkspace)
 	ws.Get("/:slug", h.handleGetWorkspace)
 	ws.Patch("/:slug", h.handleUpdateWorkspace)
+	ws.Delete("/:id", h.handleDeleteWorkspace)
 	ws.Get("/:slug/members", h.handleListMembers)
 	ws.Post("/:slug/members", h.handleInviteMember)
 

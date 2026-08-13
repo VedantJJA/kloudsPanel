@@ -61,6 +61,11 @@ func (r *workspaceRepo) Update(ctx context.Context, w *domain.Workspace) error {
 	return err
 }
 
+func (r *workspaceRepo) Delete(ctx context.Context, id string) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM workspaces WHERE id=?`, id)
+	return err
+}
+
 func (r *workspaceRepo) AddMember(ctx context.Context, m *domain.WorkspaceMember) error {
 	_, err := r.db.ExecContext(ctx,
 		`INSERT INTO workspace_members (workspace_id,user_id,role,status,joined_at,invited_by,version)

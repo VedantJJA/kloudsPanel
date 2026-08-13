@@ -211,6 +211,13 @@ func (h *Handler) handleGetWorkspace(c fiber.Ctx) error {
 
 func (h *Handler) handleUpdateWorkspace(c fiber.Ctx) error { return c.SendStatus(200) }
 
+func (h *Handler) handleDeleteWorkspace(c fiber.Ctx) error {
+	if err := h.store.Workspaces().Delete(c.Context(), c.Params("id")); err != nil {
+		return err
+	}
+	return c.SendStatus(202)
+}
+
 func (h *Handler) handleListMembers(c fiber.Ctx) error {
 	ws, err := h.store.Workspaces().GetBySlug(c.Context(), c.Params("slug"))
 	if err != nil {

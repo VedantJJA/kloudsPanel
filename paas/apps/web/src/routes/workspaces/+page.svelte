@@ -1,12 +1,12 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
-  import { Loader2, Box } from 'lucide-svelte';
+  import { Loader2, Box, Trash2 } from 'lucide-svelte';
 
   let workspaces = $state<Array<{id: string, name: string, slug: string}>>([]);
   let loading = $state(true);
 
-  onMount(async () => {
+  async function loadWorkspaces() {
     try {
       const res = await fetch('/api/v1/workspaces', { credentials: 'include' });
       if (res.status === 401) {
@@ -20,7 +20,22 @@
     } finally {
       loading = false;
     }
+  }
+
+  onMount(() => {
+    loadWorkspaces();
   });
+
+  async function deleteWorkspace(e: Event, id: string) {
+    e.preventDefault();
+    if (!confirm('Are you sure you want to delete this workspace?')) return;
+    try {
+      await fetch(`/api/v1/workspaces/${id}`, { method: 'DELETE', credentials: 'include' });
+      await loadWorkspaces();
+    } catch (e) {
+      console.error(e);
+    }
+  }
 </script>
 
 <svelte:head>
@@ -61,12 +76,17 @@
     {#each workspaces as ws}
       <a href="/workspaces/{ws.slug}" style="text-decoration:none">
         <div class="card" style="cursor:pointer">
-          <div class="card-header">
+          <div class="card-header" style="display:flex; justify-content:space-between; align-items:flex-start">
             <div>
-              <h3 style="margin:0">{ws.name}</h3>
-              <span class="text-xs text-muted font-mono">/{ws.slug}</span>
+              <h3 style="margin:0">{ws.name || 'Unnamed Workspace'}</h3>
+              <span class="text-xs text-muted font-mono">/{ws.slug || 'no-slug'}</span>
             </div>
-            <span class="badge badge-running">active</span>
+            <div style="display:flex; gap:0.5rem; align-items:center;">
+              <span class="badge badge-running">active</span>
+              <button class="btn btn-secondary" style="padding:4px; color:var(--color-error); border:none; background:transparent" aria-label="Delete Workspace" onclick={(e) => deleteWorkspace(e, ws.id)}>
+                <Trash2 size={16} />
+              </button>
+            </div>
           </div>
           <div class="text-sm text-muted">Click to open workspace →</div>
         </div>
