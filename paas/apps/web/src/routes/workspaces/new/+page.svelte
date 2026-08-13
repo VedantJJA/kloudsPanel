@@ -49,12 +49,14 @@
 </svelte:head>
 
 <div class="page-header" style="margin-bottom: 2rem;">
-  <button class="btn btn-secondary" onclick={() => goto('/workspaces')} style="margin-right: 1rem; padding: 0.5rem;">
-    <ArrowLeft size={16} />
-  </button>
-  <div>
-    <h1 class="page-title">New Workspace</h1>
-    <p class="page-subtitle">Create a new environment to organize your projects and databases.</p>
+  <div style="display: flex; align-items: center; gap: 1rem;">
+    <button class="btn btn-secondary" onclick={() => goto('/workspaces')} style="padding: 0.5rem;">
+      <ArrowLeft size={16} />
+    </button>
+    <div>
+      <h1 class="page-title">New Workspace</h1>
+      <p class="page-subtitle">Create a new environment to organize your projects and databases.</p>
+    </div>
   </div>
 </div>
 

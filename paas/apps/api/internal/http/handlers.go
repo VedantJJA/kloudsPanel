@@ -180,7 +180,10 @@ func (h *Handler) handleListWorkspaces(c fiber.Ctx) error {
 
 func (h *Handler) handleCreateWorkspace(c fiber.Ctx) error {
 	u := c.Locals("user").(*domain.User)
-	var req struct{ Name, Slug string }
+	var req struct {
+		Name string `json:"name"`
+		Slug string `json:"slug"`
+	}
 	if err := c.Bind().JSON(&req); err != nil {
 		return err
 	}
@@ -423,6 +426,18 @@ func (h *Handler) handleAdminListUsers(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+	
+	status := c.Query("status")
+	if status != "" {
+		var filtered []*domain.User
+		for _, u := range users {
+			if string(u.Status) == status {
+				filtered = append(filtered, u)
+			}
+		}
+		return c.JSON(fiber.Map{"users": filtered})
+	}
+	
 	return c.JSON(fiber.Map{"users": users})
 }
 func (h *Handler) handleApproveUser(c fiber.Ctx) error {
