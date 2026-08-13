@@ -1,0 +1,154 @@
+# kloudsPanel Platform Compose
+# Production deployment manifest for a single Linux host.
+# Usage: docker compose -f compose.platform.yaml up -d
+
+name: klouds-platform
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+networks:
+  platform-control:
+    name: platform-control
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  traefik-acme:
+    name: klouds-traefik-acme
+  klouds-data:
+    name: klouds-data
+  sablier-data:
+    name: klouds-sablier-data
+  agent-socket:
+    name: klouds-agent-socket
+
+services:
+
+  # ── Traefik edge proxy ──────────────────────────────────────────────────────
+  traefik:
+    image: traefik:v3.7
+    container_name: klouds-traefik
+    restart: unless-stopped
+    networks:
+      - platform-control
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ../traefik/static.yaml:/traefik/static.yaml:ro
+      - ../traefik/dynamic:/traefik/dynamic:ro
+      - traefik-acme:/acme
+    command:
+      - --configfile=/traefik/static.yaml
+    environment:
+      - ACME_EMAIL=${ACME_EMAIL}
+    labels:
+      - "io.paas.managed=true"
+      - "io.paas.component=traefik"
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ── Sablier scale-to-zero ───────────────────────────────────────────────────
+  sablier:
+    image: acouvreur/sablier:1.10
+    container_name: klouds-sablier
+    restart: unless-stopped
+    networks:
+      - platform-control
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ../sablier/config.yaml:/config.yaml:ro
+      - sablier-data:/data
+    command: ["start", "--config=/config.yaml"]
+    labels:
+      - "io.paas.managed=true"
+      - "io.paas.component=sablier"
+    logging: *default-logging
+
+  # ── Go node agent (only Docker socket access) ───────────────────────────────
+  agent:
+    image: ghcr.io/yourorg/klouds/agent:latest
+    container_name: klouds-agent
+    restart: unless-stopped
+    networks:
+      - platform-control
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - agent-socket:/run/klouds
+    environment:
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - AGENT_SOCKET=/run/klouds/agent.sock
+    labels:
+      - "io.paas.managed=true"
+      - "io.paas.component=agent"
+    logging: *default-logging
+
+  # ── Go control API ──────────────────────────────────────────────────────────
+  api:
+    image: ghcr.io/yourorg/klouds/api:latest
+    container_name: klouds-api
+    restart: unless-stopped
+    networks:
+      - platform-control
+    volumes:
+      - klouds-data:/data
+      - agent-socket:/run/klouds:ro
+    environment:
+      - LISTEN_ADDR=:8080
+      - DB_DRIVER=${DB_DRIVER:-sqlite}
+      - DB_PATH=/data/klouds.db
+      - DATABASE_URL=${DATABASE_URL:-}
+      - MASTER_KEY_HEX=${MASTER_KEY_HEX}
+      - AGENT_SOCKET=/run/klouds/agent.sock
+      - ROOT_DOMAIN=${ROOT_DOMAIN}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-}
+    labels:
+      - "io.paas.managed=true"
+      - "io.paas.component=api"
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=Host(`${ROOT_DOMAIN}`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.api.entrypoints=websecure"
+      - "traefik.http.routers.api.tls.certresolver=letsencrypt"
+      - "traefik.http.services.api.loadbalancer.server.port=8080"
+    depends_on:
+      - agent
+      - traefik
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ── SvelteKit UI ────────────────────────────────────────────────────────────
+  web:
+    image: ghcr.io/yourorg/klouds/web:latest
+    container_name: klouds-web
+    restart: unless-stopped
+    networks:
+      - platform-control
+    environment:
+      - API_BASE=http://api:8080
+      - PORT=3000
+    labels:
+      - "io.paas.managed=true"
+      - "io.paas.component=web"
+      - "traefik.enable=true"
+      - "traefik.http.routers.web.rule=Host(`${ROOT_DOMAIN}`)"
+      - "traefik.http.routers.web.entrypoints=websecure"
+      - "traefik.http.routers.web.tls.certresolver=letsencrypt"
+      - "traefik.http.services.web.loadbalancer.server.port=3000"
+    depends_on:
+      - api
+    logging: *default-logging

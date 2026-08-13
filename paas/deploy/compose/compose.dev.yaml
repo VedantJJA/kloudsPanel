@@ -1,0 +1,67 @@
+# kloudsPanel Development Compose
+# For local development without a real domain or TLS.
+# Usage: docker compose -f compose.dev.yaml up
+
+name: klouds-dev
+
+networks:
+  platform-control:
+    name: klouds-dev-platform-control
+    driver: bridge
+
+volumes:
+  klouds-dev-data:
+  sablier-dev-data:
+  agent-dev-socket:
+
+services:
+
+  sablier:
+    image: acouvreur/sablier:1.10
+    container_name: klouds-dev-sablier
+    networks:
+      - platform-control
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ../sablier/config.yaml:/config.yaml:ro
+      - sablier-dev-data:/data
+    command: ["start", "--config=/config.yaml"]
+
+  agent:
+    build:
+      context: ../../apps/agent
+      dockerfile: Dockerfile
+    container_name: klouds-dev-agent
+    networks:
+      - platform-control
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - agent-dev-socket:/run/klouds
+    environment:
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - AGENT_SOCKET=/run/klouds/agent.sock
+
+  api:
+    build:
+      context: ../../apps/api
+      dockerfile: Dockerfile
+    container_name: klouds-dev-api
+    networks:
+      - platform-control
+    ports:
+      - "8080:8080"
+    volumes:
+      - klouds-dev-data:/data
+      - agent-dev-socket:/run/klouds:ro
+    environment:
+      - LISTEN_ADDR=:8080
+      - DB_DRIVER=sqlite
+      - DB_PATH=/data/klouds.db
+      - MASTER_KEY_HEX=${MASTER_KEY_HEX:-0000000000000000000000000000000000000000000000000000000000000000}
+      - AGENT_SOCKET=/run/klouds/agent.sock
+      - ROOT_DOMAIN=localhost
+    depends_on:
+      - agent
+
+  # SvelteKit dev server runs outside Docker for hot reload
+  # Run: cd apps/web && pnpm dev

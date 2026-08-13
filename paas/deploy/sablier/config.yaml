@@ -1,0 +1,23 @@
+# Sablier configuration for kloudsPanel scale-to-zero
+server:
+  port: 10000
+
+logging:
+  level: info
+
+provider:
+  name: docker
+  docker:
+    host: unix:///var/run/docker.sock
+
+storage:
+  file:
+    filename: /data/sablier.json
+
+blocking:
+  default_timeout: 30s
+
+dynamic:
+  default_theme: hacker-terminal
+  show_details_by_default: true
+  custom_themes_path: /themes

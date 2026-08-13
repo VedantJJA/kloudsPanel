@@ -1,0 +1,48 @@
+# Go
+*.exe
+*.test
+*.out
+/vendor/
+/dist/
+
+# Node / pnpm
+node_modules/
+.pnpm-store/
+dist/
+build/
+.svelte-kit/
+
+# Environment secrets - NEVER commit
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+*.p12
+*.pfx
+secrets/
+
+# SQLite runtime data
+*.db
+*.db-shm
+*.db-wal
+
+# Traefik ACME state (runtime)
+deploy/traefik/acme/acme.json
+
+# Build artifacts
+apps/api/bin/
+apps/agent/bin/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
