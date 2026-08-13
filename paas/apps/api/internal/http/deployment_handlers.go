@@ -103,7 +103,7 @@ func generateDockerfileForPreset(preset, buildCmd, startCmd string, port int) st
 	case "python":
 		sCmd := startCmd
 		if sCmd == "" {
-			sCmd = fmt.Sprintf("gunicorn app:app --bind 0.0.0.0:%d --workers 2", port)
+			sCmd = fmt.Sprintf("python app.py || python main.py || gunicorn app:app --bind 0.0.0.0:%d --workers 2", port)
 		}
 		bCmd := buildCmd
 		if bCmd == "" {
@@ -122,28 +122,86 @@ CMD ["sh", "-c", "%s"]
 	case "node", "nodejs":
 		sCmd := startCmd
 		if sCmd == "" {
-			sCmd = "npm start"
+			sCmd = "npm start || node index.js || node server.js || node app.js"
+		}
+		bCmd := buildCmd
+		if bCmd == "" {
+			bCmd = "if [ -f package.json ]; then npm install; fi && if grep -q '\"build\":' package.json 2>/dev/null; then npm run build; fi"
 		}
 		return fmt.Sprintf(`FROM node:20-alpine
 WORKDIR /app
 COPY . /app
-RUN if [ -f package.json ]; then npm install; fi
-RUN if grep -q '"build":' package.json 2>/dev/null; then npm run build; fi
+RUN %s
 ENV PORT=%d
 EXPOSE %d
 CMD ["sh", "-c", "%s"]
-`, port, port, sCmd)
+`, bCmd, port, port, sCmd)
 
 	case "go", "golang":
+		bCmd := buildCmd
+		if bCmd == "" {
+			bCmd = "CGO_ENABLED=0 go build -o server ."
+		}
 		return fmt.Sprintf(`FROM golang:1.22-alpine AS builder
 WORKDIR /app
 COPY . .
-RUN CGO_ENABLED=0 go build -o server .
+RUN %s
 FROM alpine:3.21
 WORKDIR /app
 COPY --from=builder /app/server /app/server
 EXPOSE %d
 CMD ["/app/server"]
+`, bCmd, port)
+
+	case "java":
+		sCmd := startCmd
+		if sCmd == "" {
+			sCmd = "java -jar target/*.jar || java -jar build/libs/*.jar"
+		}
+		return fmt.Sprintf(`FROM maven:3.9-eclipse-temurin-21-alpine AS builder
+WORKDIR /app
+COPY . .
+RUN if [ -f pom.xml ]; then mvn clean package -DskipTests; fi
+FROM eclipse-temurin:21-jdk-alpine
+WORKDIR /app
+COPY --from=builder /app /app
+EXPOSE %d
+CMD ["sh", "-c", "%s"]
+`, port, sCmd)
+
+	case "php":
+		return fmt.Sprintf(`FROM php:8.3-apache
+COPY . /var/www/html/
+RUN a2enmod rewrite
+EXPOSE 80
+CMD ["apache2-foreground"]
+`)
+
+	case "ruby":
+		sCmd := startCmd
+		if sCmd == "" {
+			sCmd = "bundle exec rackup -p 3000 -o 0.0.0.0 || ruby app.rb"
+		}
+		return fmt.Sprintf(`FROM ruby:3.3-alpine
+WORKDIR /app
+RUN apk add --no-cache build-base
+COPY . /app
+RUN if [ -f Gemfile ]; then bundle install; fi
+EXPOSE %d
+CMD ["sh", "-c", "%s"]
+`, port, sCmd)
+
+	case "rust":
+		return fmt.Sprintf(`FROM rust:1.77-alpine AS builder
+WORKDIR /app
+RUN apk add --no-cache musl-dev
+COPY . .
+RUN cargo build --release
+FROM alpine:3.21
+WORKDIR /app
+COPY --from=builder /app/target/release/* /app/
+EXPOSE %d
+CMD ["sh", "-c", "./$(ls -p | grep -v / | head -n 1)"]
 `, port)
 
 	case "static", "static-spa", "nginx":
@@ -156,16 +214,15 @@ CMD ["nginx", "-g", "daemon off;"]
 	default:
 		sCmd := startCmd
 		if sCmd == "" {
-			sCmd = fmt.Sprintf("python app.py || node server.js || ./server || nginx -g 'daemon off;'")
+			sCmd = fmt.Sprintf("python app.py || node index.js || ./server || nginx -g 'daemon off;'")
 		}
 		return fmt.Sprintf(`FROM python:3.11-slim
 WORKDIR /app
 COPY . /app
 RUN if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-ENV PORT=%d PYTHONUNBUFFERED=1
 EXPOSE %d
 CMD ["sh", "-c", "%s"]
-`, port, port, sCmd)
+`, port, sCmd)
 	}
 }
 
@@ -277,15 +334,42 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 			}
 		}
 
-		// Step 3: Check if Dockerfile exists or generate one
+		// Step 3: Auto-detect runtime from repository files if generic
+		if presetId == "" || presetId == "web" || presetId == "custom" {
+			if _, err := os.Stat(filepath.Join(workspaceDir, "requirements.txt")); err == nil {
+				presetId = "python"
+				if port == 80 {
+					port = 5000
+				}
+			} else if _, err := os.Stat(filepath.Join(workspaceDir, "package.json")); err == nil {
+				presetId = "node"
+				if port == 80 {
+					port = 3000
+				}
+			} else if _, err := os.Stat(filepath.Join(workspaceDir, "go.mod")); err == nil {
+				presetId = "go"
+				if port == 80 {
+					port = 8080
+				}
+			} else if _, err := os.Stat(filepath.Join(workspaceDir, "pom.xml")); err == nil {
+				presetId = "java"
+				if port == 80 {
+					port = 8080
+				}
+			} else if _, err := os.Stat(filepath.Join(workspaceDir, "index.html")); err == nil {
+				presetId = "static"
+			}
+		}
+
+		// Step 4: Check if Dockerfile exists or generate one
 		dockerfilePath := filepath.Join(workspaceDir, "Dockerfile")
 		if _, err := os.Stat(dockerfilePath); os.IsNotExist(err) {
-			appendLog(serviceID, "build", fmt.Sprintf("[builder] Generating Dockerfile for runtime: %s", presetId))
+			appendLog(serviceID, "build", fmt.Sprintf("[builder] Generating runtime Dockerfile (preset: %s, port: %d)", presetId, port))
 			dfContent := generateDockerfileForPreset(presetId, buildCommand, startCommand, port)
 			_ = os.WriteFile(dockerfilePath, []byte(dfContent), 0644)
 		}
 
-		// Step 4: Build Container Image with Docker
+		// Step 5: Build Container Image with Docker
 		appendLog(serviceID, "build", fmt.Sprintf("[builder] Running 'docker build -t %s %s'...", imageTag, workspaceDir))
 		buildCmd := exec.Command("docker", "build", "-t", imageTag, workspaceDir)
 		buildOut, err := buildCmd.CombinedOutput()

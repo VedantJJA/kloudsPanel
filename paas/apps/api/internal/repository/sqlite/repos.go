@@ -146,7 +146,7 @@ func (r *serviceRepo) GetByID(ctx context.Context, id string) (*domain.Service, 
 	row := r.db.QueryRowContext(ctx, `
 		SELECT id,project_id,name,slug,kind,desired_state,runtime_status,
 		       internal_port,healthcheck_path,auto_deploy,resource_json,created_by,created_at,updated_at
-		FROM services WHERE id=?`, id)
+		FROM services WHERE id=? OR slug=?`, id, id)
 	return scanService(row)
 }
 
@@ -154,8 +154,8 @@ func (r *serviceRepo) ListForProject(ctx context.Context, projectID string) ([]*
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id,project_id,name,slug,kind,desired_state,runtime_status,
 		       internal_port,healthcheck_path,auto_deploy,resource_json,created_by,created_at,updated_at
-		FROM services WHERE project_id=? AND runtime_status != 'deleting'
-		ORDER BY created_at ASC`, projectID)
+		FROM services WHERE (project_id=? OR project_id IN (SELECT id FROM projects WHERE slug=?)) AND runtime_status != 'deleting'
+		ORDER BY created_at ASC`, projectID, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -247,8 +247,8 @@ func (r *deploymentRepo) ListForService(ctx context.Context, serviceID string, l
 		SELECT id,service_id,revision_id,sequence,trigger,triggered_by,
 		       status,build_driver,config_snapshot,image_ref,image_digest,docker_container_id,
 		       started_at,finished_at,exit_code,error_code,error_summary,rollback_of,created_at,updated_at
-		FROM deployments WHERE service_id=?
-		ORDER BY sequence DESC LIMIT ?`, serviceID, limit)
+		FROM deployments WHERE service_id=? OR service_id IN (SELECT id FROM services WHERE slug=?)
+		ORDER BY sequence DESC LIMIT ?`, serviceID, serviceID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -282,13 +282,13 @@ func (r *deploymentRepo) GetLatestHealthy(ctx context.Context, serviceID string)
 		SELECT id,service_id,revision_id,sequence,trigger,triggered_by,
 		       status,build_driver,config_snapshot,image_ref,image_digest,docker_container_id,
 		       started_at,finished_at,exit_code,error_code,error_summary,rollback_of,created_at,updated_at
-		FROM deployments WHERE service_id=? AND status='healthy'
-		ORDER BY sequence DESC LIMIT 1`, serviceID)
+		FROM deployments WHERE (service_id=? OR service_id IN (SELECT id FROM services WHERE slug=?)) AND status='healthy'
+		ORDER BY sequence DESC LIMIT 1`, serviceID, serviceID)
 	return scanDeployment(row)
 }
 
 func (r *deploymentRepo) GetNextSequence(ctx context.Context, serviceID string) (int64, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT COALESCE(MAX(sequence), 0) + 1 FROM deployments WHERE service_id=?`, serviceID)
+	row := r.db.QueryRowContext(ctx, `SELECT COALESCE(MAX(sequence), 0) + 1 FROM deployments WHERE service_id=? OR service_id IN (SELECT id FROM services WHERE slug=?)`, serviceID, serviceID)
 	var nextSeq int64
 	if err := row.Scan(&nextSeq); err != nil {
 		return 1, nil

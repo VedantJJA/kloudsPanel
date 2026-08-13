@@ -31,6 +31,7 @@
   let loading = $state(true);
   let actionLoading = $state(false);
   let copiedUrl = $state(false);
+  let bannerNotice = $state<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Variables state
   let envVars = $state<Array<{ key: string; value: string }>>([]);
@@ -53,7 +54,8 @@
         }
       } catch {}
 
-      const depRes = await fetch(`/api/v1/services/${id}/deployments`, { credentials: 'include' });
+      const targetId = service?.id || id;
+      const depRes = await fetch(`/api/v1/services/${targetId}/deployments`, { credentials: 'include' });
       if (depRes.ok) {
         deployments = (await depRes.json()).deployments ?? [];
       }
@@ -70,14 +72,22 @@
 
   async function triggerDeploy() {
     actionLoading = true;
+    bannerNotice = null;
     try {
-      const res = await fetch(`/api/v1/services/${id}/deploy`, { method: 'POST', credentials: 'include' });
+      const targetId = service?.id || id;
+      const res = await fetch(`/api/v1/services/${targetId}/deploy`, { method: 'POST', credentials: 'include' });
       if (!res.ok) {
-        alert('Failed to trigger deployment');
+        const d = await res.json().catch(() => ({}));
+        bannerNotice = { type: 'error', message: d.error || 'Failed to trigger deployment' };
+      } else {
+        bannerNotice = { type: 'success', message: '✓ Deployment initiated! Compiling and launching container in background.' };
+        if (tab !== 'logs') {
+          goto(`/services/${id}/logs`);
+        }
       }
       await loadService();
     } catch (e: any) {
-      alert('Error: ' + e.message);
+      bannerNotice = { type: 'error', message: 'Error: ' + e.message };
     } finally {
       actionLoading = false;
     }
@@ -85,14 +95,19 @@
 
   async function stopService() {
     actionLoading = true;
+    bannerNotice = null;
     try {
-      const res = await fetch(`/api/v1/services/${id}/stop`, { method: 'POST', credentials: 'include' });
+      const targetId = service?.id || id;
+      const res = await fetch(`/api/v1/services/${targetId}/stop`, { method: 'POST', credentials: 'include' });
       if (!res.ok) {
-        alert('Failed to stop service');
+        const d = await res.json().catch(() => ({}));
+        bannerNotice = { type: 'error', message: d.error || 'Failed to stop service' };
+      } else {
+        bannerNotice = { type: 'success', message: '✓ Service container stopped' };
       }
       await loadService();
     } catch (e: any) {
-      alert('Error: ' + e.message);
+      bannerNotice = { type: 'error', message: 'Error: ' + e.message };
     } finally {
       actionLoading = false;
     }
@@ -100,37 +115,44 @@
 
   async function startService() {
     actionLoading = true;
+    bannerNotice = null;
     try {
-      const res = await fetch(`/api/v1/services/${id}/start`, { method: 'POST', credentials: 'include' });
+      const targetId = service?.id || id;
+      const res = await fetch(`/api/v1/services/${targetId}/start`, { method: 'POST', credentials: 'include' });
       if (!res.ok) {
-        alert('Failed to start service');
+        const d = await res.json().catch(() => ({}));
+        bannerNotice = { type: 'error', message: d.error || 'Failed to start service' };
+      } else {
+        bannerNotice = { type: 'success', message: '✓ Service container started' };
       }
       await loadService();
     } catch (e: any) {
-      alert('Error: ' + e.message);
+      bannerNotice = { type: 'error', message: 'Error: ' + e.message };
     } finally {
       actionLoading = false;
     }
   }
 
   async function deleteService() {
-    if (!confirm(`Are you sure you want to permanently delete service "${service?.name || service?.Name || id}"? This action cannot be undone.`)) return;
+    if (!confirm(`Are you sure you want to permanently delete "${service?.name || service?.Name}"? This action cannot be undone.`)) return;
     actionLoading = true;
+    bannerNotice = null;
     try {
-      const res = await fetch(`/api/v1/services/${id}`, { method: 'DELETE', credentials: 'include' });
-      if (!res.ok) {
-        alert('Failed to delete service');
-        actionLoading = false;
-        return;
-      }
-      const projId = service?.project_id || service?.ProjectID;
-      if (projId) {
-        goto(`/projects/${projId}`);
+      const targetId = service?.id || id;
+      const res = await fetch(`/api/v1/services/${targetId}`, { method: 'DELETE', credentials: 'include' });
+      if (res.ok) {
+        if (service?.project_id || service?.ProjectID) {
+          goto(`/projects/${service.project_id || service.ProjectID}`);
+        } else {
+          goto('/workspaces');
+        }
       } else {
-        goto('/workspaces');
+        const d = await res.json().catch(() => ({}));
+        bannerNotice = { type: 'error', message: d.error || 'Failed to delete service' };
+        actionLoading = false;
       }
     } catch (e: any) {
-      alert('Error: ' + e.message);
+      bannerNotice = { type: 'error', message: 'Error: ' + e.message };
       actionLoading = false;
     }
   }
@@ -155,6 +177,7 @@
   async function saveEnvVars() {
     envSaving = true;
     envSuccess = false;
+    bannerNotice = null;
     try {
       const envMap: Record<string, string> = {};
       for (const item of envVars) {
@@ -168,7 +191,8 @@
       } catch {}
       currentR.env = envMap;
 
-      const res = await fetch(`/api/v1/services/${id}`, {
+      const targetId = service?.id || id;
+      const res = await fetch(`/api/v1/services/${targetId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -176,12 +200,14 @@
       });
       if (res.ok) {
         envSuccess = true;
+        bannerNotice = { type: 'success', message: '✓ Environment variables saved successfully' };
         setTimeout(() => envSuccess = false, 3000);
       } else {
-        alert('Failed to save variables');
+        const d = await res.json().catch(() => ({}));
+        bannerNotice = { type: 'error', message: d.error || 'Failed to save environment variables' };
       }
     } catch (e: any) {
-      alert('Error: ' + e.message);
+      bannerNotice = { type: 'error', message: 'Error: ' + e.message };
     } finally {
       envSaving = false;
     }
@@ -202,6 +228,13 @@
     <p>Loading service…</p>
   </div>
 {:else}
+  {#if bannerNotice}
+    <div style="margin-bottom: 1.25rem; padding: 0.75rem 1rem; border-radius: var(--radius-md); font-size: 0.875rem; display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; background: {bannerNotice.type === 'error' ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)'}; border: 1px solid {bannerNotice.type === 'error' ? 'rgba(239,68,68,0.3)' : 'rgba(16,185,129,0.3)'}; color: {bannerNotice.type === 'error' ? '#ef4444' : '#10b981'};">
+      <span>{bannerNotice.message}</span>
+      <button type="button" class="btn btn-secondary" style="padding: 2px 8px; height: auto; min-height: 0; font-size: 0.75rem;" onclick={() => bannerNotice = null}>✕</button>
+    </div>
+  {/if}
+
   <!-- Service header -->
   <div class="page-header">
     <div style="flex:1; min-width:0;">
