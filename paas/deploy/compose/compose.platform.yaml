@@ -61,7 +61,7 @@ services:
 
   # ── Sablier scale-to-zero ───────────────────────────────────────────────────
   sablier:
-    image: acouvreur/sablier:1.10
+    image: sablierapp/sablier:1.10
     container_name: klouds-sablier
     restart: unless-stopped
     networks:
