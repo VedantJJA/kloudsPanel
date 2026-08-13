@@ -1,4 +1,4 @@
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 COPY pnpm-lock.yaml package.json ./
@@ -8,7 +8,7 @@ COPY . .
 RUN pnpm install -r --offline
 RUN pnpm --filter web build
 
-FROM node:20-alpine
+FROM node:22-alpine
 WORKDIR /app
 COPY --from=builder /app/apps/web/build ./build
 COPY --from=builder /app/apps/web/package.json ./
