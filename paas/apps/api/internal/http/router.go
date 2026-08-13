@@ -117,7 +117,8 @@ func NewServer(log *slog.Logger, store repository.Store, addr string) *fiber.App
 	db.Post("/", h.handleCreateDatabase)
 	db.Get("/:id", h.handleGetDatabase)
 	db.Post("/:id/restart", h.handleRestartDatabase)
-	db.Get("/:id/logs", h.handleGetLogs)
+	db.Post("/:id/query", h.handleExecuteDatabaseQuery)
+	db.Get("/:id/logs", h.handleGetDatabaseLogs)
 	db.Delete("/:id", h.handleDeleteDatabase)
 
 	// Git Integrations routes

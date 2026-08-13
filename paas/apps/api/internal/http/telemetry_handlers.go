@@ -30,6 +30,20 @@ func (h *Handler) handleGetTelemetry(c fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{
+		"host": fiber.Map{
+			"cpu_percent":          cpuPct,
+			"load1":                avgLoad.Load1,
+			"load5":                avgLoad.Load5,
+			"load15":               avgLoad.Load15,
+			"memory_total_bytes":   vMem.Total,
+			"memory_used_bytes":    vMem.Used,
+			"memory_free_bytes":    vMem.Free,
+			"memory_used_percent":  vMem.UsedPercent,
+			"storage_total_bytes":  diskUsage.Total,
+			"storage_used_bytes":   diskUsage.Used,
+			"storage_free_bytes":   diskUsage.Free,
+			"storage_used_percent": diskUsage.UsedPercent,
+		},
 		"cpu": fiber.Map{
 			"percent": cpuPct,
 			"load1":   avgLoad.Load1,

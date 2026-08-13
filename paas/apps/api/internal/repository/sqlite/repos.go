@@ -383,7 +383,7 @@ func (r *databaseRepo) GetByID(ctx context.Context, id string) (*domain.Database
 	row := r.db.QueryRowContext(ctx, `
 		SELECT id,project_id,name,engine,engine_version,image_digest,runtime_status,
 		       internal_hostname,internal_port,database_name,credential_secret_id,resource_json,backup_policy_json,created_at,updated_at
-		FROM databases WHERE id=?`, id)
+		FROM databases WHERE id=? OR name=? OR internal_hostname=?`, id, id, id)
 	d := &domain.Database{}
 	var createdAt, updatedAt string
 	err := row.Scan(&d.ID, &d.ProjectID, &d.Name, &d.Engine, &d.EngineVersion, &d.ImageDigest, &d.RuntimeStatus,
@@ -404,8 +404,8 @@ func (r *databaseRepo) ListForProject(ctx context.Context, projectID string) ([]
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id,project_id,name,engine,engine_version,image_digest,runtime_status,
 		       internal_hostname,internal_port,database_name,credential_secret_id,resource_json,backup_policy_json,created_at,updated_at
-		FROM databases WHERE project_id=? AND runtime_status != 'deleting'
-		ORDER BY created_at ASC`, projectID)
+		FROM databases WHERE (project_id=? OR project_id IN (SELECT id FROM projects WHERE slug=?)) AND runtime_status != 'deleting'
+		ORDER BY created_at ASC`, projectID, projectID)
 	if err != nil {
 		return nil, err
 	}

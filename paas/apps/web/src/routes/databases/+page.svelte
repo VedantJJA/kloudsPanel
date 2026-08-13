@@ -86,16 +86,20 @@
       </thead>
       <tbody>
         {#each databases as db}
-          <tr>
-            <td style="font-weight:600;">{db.name || db.Name}</td>
-            <td><span class="badge" style="background:#e0f2fe; color:#0369a1; text-transform:uppercase;">{db.engine || db.Engine}</span></td>
+          <tr style="cursor:pointer;" onclick={() => goto(`/databases/${db.id || db.ID}/overview`)}>
+            <td style="font-weight:600;">
+              <a href="/databases/{db.id || db.ID}/overview" style="color:var(--color-ink); text-decoration:none; font-weight:700;">
+                {db.name || db.Name}
+              </a>
+            </td>
+            <td><span class="badge" style="background:#e0f2fe; color:#0369a1; text-transform:uppercase; font-weight:700;">{db.engine || db.Engine}</span></td>
             <td><span class="font-mono text-xs">{db.internal_hostname || db.InternalHostname || '—'}</span></td>
             <td><span class="font-mono text-xs">:{db.internal_port || db.InternalPort || '—'}</span></td>
             <td><span class={statusClass(db.runtime_status || db.RuntimeStatus)}>{db.runtime_status || db.RuntimeStatus || 'ready'}</span></td>
-            <td style="text-align:right;">
+            <td style="text-align:right;" onclick={(e) => e.stopPropagation()}>
               <button 
                 class="btn btn-secondary" 
-                style="padding:4px 8px; min-height:32px; color:var(--color-error); border-color:transparent;" 
+                style="padding:4px 8px; min-height:32px; color:var(--color-danger); border-color:transparent;" 
                 aria-label="Delete Database"
                 onclick={(e) => deleteDatabase(e, db)}
               >
