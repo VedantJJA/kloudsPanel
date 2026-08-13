@@ -108,6 +108,8 @@ services:
     volumes:
       - klouds-data:/data
       - agent-socket:/run/klouds:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ../traefik/dynamic:/traefik/dynamic
     environment:
       - LISTEN_ADDR=:8080
       - DB_DRIVER=${DB_DRIVER:-sqlite}

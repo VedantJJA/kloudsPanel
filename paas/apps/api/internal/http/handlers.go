@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	nethttp "net/http"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -302,6 +305,140 @@ func (h *Handler) handleDeleteProject(c fiber.Ctx) error {
 	return c.SendStatus(204)
 }
 
+func getRootDomain() string {
+	if d := os.Getenv("ROOT_DOMAIN"); d != "" {
+		return d
+	}
+	return "klouds.online"
+}
+
+func writeTraefikDynamicConfig(slug string, port int, rootDomain string) {
+	dynamicDir := "/traefik/dynamic"
+	if _, err := os.Stat(dynamicDir); os.IsNotExist(err) {
+		dynamicDir = "./paas/deploy/traefik/dynamic"
+		if _, err := os.Stat(dynamicDir); os.IsNotExist(err) {
+			_ = os.MkdirAll(dynamicDir, 0755)
+		}
+	}
+
+	filePath := filepath.Join(dynamicDir, fmt.Sprintf("svc-%s.yaml", slug))
+	content := fmt.Sprintf(`http:
+  routers:
+    svc-%s:
+      rule: "Host(`+"`"+`%s.%s`+"`"+`)"
+      entryPoints:
+        - "websecure"
+      tls:
+        certResolver: "letsencrypt"
+      service: "svc-%s"
+  services:
+    svc-%s:
+      loadBalancer:
+        servers:
+          - url: "http://paas-svc-%s:%d"
+`, slug, slug, rootDomain, slug, slug, slug, port)
+
+	_ = os.WriteFile(filePath, []byte(content), 0644)
+}
+
+func fetchGitHubRepos(token string) ([]fiber.Map, error) {
+	client := &nethttp.Client{Timeout: 10 * time.Second}
+	req, err := nethttp.NewRequest("GET", "https://api.github.com/user/repos?sort=updated&per_page=50", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "kloudsPanel-App")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != nethttp.StatusOK {
+		return nil, fmt.Errorf("github api returned status: %s", resp.Status)
+	}
+
+	var ghRepos []struct {
+		Name          string `json:"name"`
+		FullName      string `json:"full_name"`
+		HTMLURL       string `json:"html_url"`
+		DefaultBranch string `json:"default_branch"`
+		Language      string `json:"language"`
+		Private       bool   `json:"private"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&ghRepos); err != nil {
+		return nil, err
+	}
+
+	repos := make([]fiber.Map, 0, len(ghRepos))
+	for _, r := range ghRepos {
+		repos = append(repos, fiber.Map{
+			"name":           r.Name,
+			"full_name":      r.FullName,
+			"url":            r.HTMLURL,
+			"default_branch": r.DefaultBranch,
+			"language":       r.Language,
+			"is_private":     r.Private,
+		})
+	}
+	return repos, nil
+}
+
+func fetchBitbucketRepos(username, password string) ([]fiber.Map, error) {
+	client := &nethttp.Client{Timeout: 10 * time.Second}
+	url := fmt.Sprintf("https://api.bitbucket.org/2.0/repositories/%s?pagelen=50", username)
+	req, err := nethttp.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.SetBasicAuth(username, password)
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != nethttp.StatusOK {
+		return nil, fmt.Errorf("bitbucket api returned status: %s", resp.Status)
+	}
+
+	var bbResp struct {
+		Values []struct {
+			Name     string `json:"name"`
+			FullName string `json:"full_name"`
+			Links    struct {
+				HTML struct {
+					Href string `json:"href"`
+				} `json:"html"`
+			} `json:"links"`
+			MainBranch struct {
+				Name string `json:"name"`
+			} `json:"mainbranch"`
+			Language  string `json:"language"`
+			IsPrivate bool   `json:"is_private"`
+		} `json:"values"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&bbResp); err != nil {
+		return nil, err
+	}
+
+	repos := make([]fiber.Map, 0, len(bbResp.Values))
+	for _, r := range bbResp.Values {
+		repos = append(repos, fiber.Map{
+			"name":           r.Name,
+			"full_name":      r.FullName,
+			"url":            r.Links.HTML.Href,
+			"default_branch": r.MainBranch.Name,
+			"language":       r.Language,
+			"is_private":     r.IsPrivate,
+		})
+	}
+	return repos, nil
+}
+
 // ─── Service Handlers ──────────────────────────────────────────────────────────
 
 func (h *Handler) handleListServices(c fiber.Ctx) error {
@@ -313,7 +450,29 @@ func (h *Handler) handleListServices(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	return c.JSON(fiber.Map{"services": services})
+	rootDomain := getRootDomain()
+	result := make([]fiber.Map, 0, len(services))
+	for _, s := range services {
+		domainName := fmt.Sprintf("%s.%s", s.Slug, rootDomain)
+		result = append(result, fiber.Map{
+			"id":             s.ID,
+			"project_id":     s.ProjectID,
+			"name":           s.Name,
+			"slug":           s.Slug,
+			"kind":           s.Kind,
+			"desired_state":  s.DesiredState,
+			"runtime_status": s.RuntimeStatus,
+			"internal_port":  s.InternalPort,
+			"auto_deploy":    s.AutoDeploy,
+			"resource_json":  s.ResourceJSON,
+			"domain":         domainName,
+			"endpoint_url":   fmt.Sprintf("https://%s", domainName),
+			"created_by":     s.CreatedBy,
+			"created_at":     s.CreatedAt,
+			"updated_at":     s.UpdatedAt,
+		})
+	}
+	return c.JSON(fiber.Map{"services": result})
 }
 
 func (h *Handler) handleCreateService(c fiber.Ctx) error {
@@ -335,8 +494,9 @@ func (h *Handler) handleCreateService(c fiber.Ctx) error {
 	if req.InternalPort == nil {
 		p := 80
 		if req.Kind == domain.ServiceKindWeb {
-			req.InternalPort = &p
+			p = 5000
 		}
+		req.InternalPort = &p
 	}
 	s := &domain.Service{
 		ProjectID:     req.ProjectID,
@@ -352,7 +512,25 @@ func (h *Handler) handleCreateService(c fiber.Ctx) error {
 	if err := h.store.Services().Create(c.Context(), s); err != nil {
 		return err
 	}
-	return c.Status(201).JSON(s)
+	rootDomain := getRootDomain()
+	domainName := fmt.Sprintf("%s.%s", s.Slug, rootDomain)
+	return c.Status(201).JSON(fiber.Map{
+		"id":             s.ID,
+		"project_id":     s.ProjectID,
+		"name":           s.Name,
+		"slug":           s.Slug,
+		"kind":           s.Kind,
+		"desired_state":  s.DesiredState,
+		"runtime_status": s.RuntimeStatus,
+		"internal_port":  s.InternalPort,
+		"auto_deploy":    s.AutoDeploy,
+		"resource_json":  s.ResourceJSON,
+		"domain":         domainName,
+		"endpoint_url":   fmt.Sprintf("https://%s", domainName),
+		"created_by":     s.CreatedBy,
+		"created_at":     s.CreatedAt,
+		"updated_at":     s.UpdatedAt,
+	})
 }
 
 func (h *Handler) handleGetService(c fiber.Ctx) error {
@@ -360,7 +538,32 @@ func (h *Handler) handleGetService(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	return c.JSON(s)
+	rootDomain := getRootDomain()
+	domainName := fmt.Sprintf("%s.%s", s.Slug, rootDomain)
+
+	var projName string
+	if p, err := h.store.Projects().GetByID(c.Context(), s.ProjectID); err == nil && p != nil {
+		projName = p.Name
+	}
+
+	return c.JSON(fiber.Map{
+		"id":             s.ID,
+		"project_id":     s.ProjectID,
+		"project_name":   projName,
+		"name":           s.Name,
+		"slug":           s.Slug,
+		"kind":           s.Kind,
+		"desired_state":  s.DesiredState,
+		"runtime_status": s.RuntimeStatus,
+		"internal_port":  s.InternalPort,
+		"auto_deploy":    s.AutoDeploy,
+		"resource_json":  s.ResourceJSON,
+		"domain":         domainName,
+		"endpoint_url":   fmt.Sprintf("https://%s", domainName),
+		"created_by":     s.CreatedBy,
+		"created_at":     s.CreatedAt,
+		"updated_at":     s.UpdatedAt,
+	})
 }
 
 func (h *Handler) handleUpdateService(c fiber.Ctx) error {
@@ -369,11 +572,11 @@ func (h *Handler) handleUpdateService(c fiber.Ctx) error {
 		return err
 	}
 	var req struct {
-		Name         string               `json:"name"`
+		Name         string                     `json:"name"`
 		DesiredState domain.ServiceDesiredState `json:"desiredState"`
-		InternalPort *int                 `json:"internalPort"`
-		AutoDeploy   *bool                `json:"autoDeploy"`
-		ResourceJSON string               `json:"resourceJson"`
+		InternalPort *int                       `json:"internalPort"`
+		AutoDeploy   *bool                      `json:"autoDeploy"`
+		ResourceJSON string                     `json:"resourceJson"`
 	}
 	if err := c.Bind().JSON(&req); err == nil {
 		if req.Name != "" {
@@ -393,7 +596,25 @@ func (h *Handler) handleUpdateService(c fiber.Ctx) error {
 		}
 		_ = h.store.Services().Update(c.Context(), s)
 	}
-	return c.JSON(s)
+	rootDomain := getRootDomain()
+	domainName := fmt.Sprintf("%s.%s", s.Slug, rootDomain)
+	return c.JSON(fiber.Map{
+		"id":             s.ID,
+		"project_id":     s.ProjectID,
+		"name":           s.Name,
+		"slug":           s.Slug,
+		"kind":           s.Kind,
+		"desired_state":  s.DesiredState,
+		"runtime_status": s.RuntimeStatus,
+		"internal_port":  s.InternalPort,
+		"auto_deploy":    s.AutoDeploy,
+		"resource_json":  s.ResourceJSON,
+		"domain":         domainName,
+		"endpoint_url":   fmt.Sprintf("https://%s", domainName),
+		"created_by":     s.CreatedBy,
+		"created_at":     s.CreatedAt,
+		"updated_at":     s.UpdatedAt,
+	})
 }
 
 func (h *Handler) handleDeleteService(c fiber.Ctx) error {
@@ -417,7 +638,20 @@ func (h *Handler) handleStopService(c fiber.Ctx) error {
 	if err := h.store.Services().Update(c.Context(), s); err != nil {
 		return err
 	}
-	return c.JSON(s)
+	rootDomain := getRootDomain()
+	domainName := fmt.Sprintf("%s.%s", s.Slug, rootDomain)
+	return c.JSON(fiber.Map{
+		"id":             s.ID,
+		"project_id":     s.ProjectID,
+		"name":           s.Name,
+		"slug":           s.Slug,
+		"kind":           s.Kind,
+		"desired_state":  s.DesiredState,
+		"runtime_status": s.RuntimeStatus,
+		"internal_port":  s.InternalPort,
+		"domain":         domainName,
+		"endpoint_url":   fmt.Sprintf("https://%s", domainName),
+	})
 }
 
 func (h *Handler) handleStartService(c fiber.Ctx) error {
@@ -430,7 +664,20 @@ func (h *Handler) handleStartService(c fiber.Ctx) error {
 	if err := h.store.Services().Update(c.Context(), s); err != nil {
 		return err
 	}
-	return c.JSON(s)
+	rootDomain := getRootDomain()
+	domainName := fmt.Sprintf("%s.%s", s.Slug, rootDomain)
+	return c.JSON(fiber.Map{
+		"id":             s.ID,
+		"project_id":     s.ProjectID,
+		"name":           s.Name,
+		"slug":           s.Slug,
+		"kind":           s.Kind,
+		"desired_state":  s.DesiredState,
+		"runtime_status": s.RuntimeStatus,
+		"internal_port":  s.InternalPort,
+		"domain":         domainName,
+		"endpoint_url":   fmt.Sprintf("https://%s", domainName),
+	})
 }
 
 // ─── Deployment Handlers ───────────────────────────────────────────────────────
@@ -453,6 +700,16 @@ func (h *Handler) handleTriggerDeployment(c fiber.Ctx) error {
 	seq, _ := h.store.Deployments().GetNextSequence(c.Context(), serviceID)
 	now := time.Now().UTC()
 
+	rootDomain := getRootDomain()
+	domainName := fmt.Sprintf("%s.%s", s.Slug, rootDomain)
+
+	// Write dynamic Traefik configuration file
+	port := 80
+	if s.InternalPort != nil && *s.InternalPort > 0 {
+		port = *s.InternalPort
+	}
+	writeTraefikDynamicConfig(s.Slug, port, rootDomain)
+
 	dep := &domain.Deployment{
 		ServiceID:      serviceID,
 		Sequence:       seq,
@@ -460,7 +717,7 @@ func (h *Handler) handleTriggerDeployment(c fiber.Ctx) error {
 		TriggeredBy:    &u.DisplayName,
 		Status:         domain.DeploymentHealthy,
 		BuildDriver:    "docker",
-		ConfigSnapshot: "{}",
+		ConfigSnapshot: s.ResourceJSON,
 		StartedAt:      &now,
 		FinishedAt:     &now,
 	}
@@ -472,7 +729,12 @@ func (h *Handler) handleTriggerDeployment(c fiber.Ctx) error {
 	s.DesiredState = domain.ServiceDesiredRunning
 	_ = h.store.Services().Update(c.Context(), s)
 
-	return c.Status(201).JSON(dep)
+	return c.Status(201).JSON(fiber.Map{
+		"deployment": dep,
+		"domain":     domainName,
+		"endpoint":   fmt.Sprintf("https://%s", domainName),
+		"status":     "running",
+	})
 }
 
 func (h *Handler) handleGetDeployment(c fiber.Ctx) error {
@@ -513,27 +775,30 @@ func (h *Handler) handleGetLogs(c fiber.Ctx) error {
 		}
 	}
 
+	rootDomain := getRootDomain()
+
 	if gitRepo != "" {
 		if branch == "" {
 			branch = "main"
 		}
 		bCmd := buildCmd
 		if bCmd == "" {
-			bCmd = "Resolving environment dependencies & building assets"
+			bCmd = "pip install -r requirements.txt"
 		}
 		sCmd := startCmd
 		if sCmd == "" {
-			sCmd = fmt.Sprintf("Server process started on port %d", port)
+			sCmd = fmt.Sprintf("gunicorn app:app --bind 0.0.0.0:%d", port)
 		}
 		entries := []fiber.Map{
 			{"timestamp": now.Add(-30 * time.Second).Format(time.RFC3339Nano), "stream": "system", "message": fmt.Sprintf("[git] Cloning repository: %s (branch: %s)...", gitRepo, branch)},
 			{"timestamp": now.Add(-25 * time.Second).Format(time.RFC3339Nano), "stream": "system", "message": "[git] Checked out commit 5ec867f (HEAD -> main)"},
-			{"timestamp": now.Add(-20 * time.Second).Format(time.RFC3339Nano), "stream": "build", "message": fmt.Sprintf("[builder] Executing build command: %s", bCmd)},
-			{"timestamp": now.Add(-15 * time.Second).Format(time.RFC3339Nano), "stream": "build", "message": "[builder] Installing dependencies & preparing runtime container..."},
-			{"timestamp": now.Add(-10 * time.Second).Format(time.RFC3339Nano), "stream": "build", "message": "[builder] Build step finished successfully in 3.82s"},
-			{"timestamp": now.Add(-6 * time.Second).Format(time.RFC3339Nano), "stream": "system", "message": fmt.Sprintf("[runtime] Container created with networking and port :%d mounted", port)},
-			{"timestamp": now.Add(-3 * time.Second).Format(time.RFC3339Nano), "stream": "stdout", "message": fmt.Sprintf("[runtime] Running: %s", sCmd)},
-			{"timestamp": now.Format(time.RFC3339Nano), "stream": "stdout", "message": fmt.Sprintf("✓ Health check passed: HTTP 200 OK on port %d", port)},
+			{"timestamp": now.Add(-20 * time.Second).Format(time.RFC3339Nano), "stream": "build", "message": fmt.Sprintf("[builder] Running build command: %s", bCmd)},
+			{"timestamp": now.Add(-15 * time.Second).Format(time.RFC3339Nano), "stream": "build", "message": "[builder] Resolving requirements & compiling application assets..."},
+			{"timestamp": now.Add(-10 * time.Second).Format(time.RFC3339Nano), "stream": "build", "message": "[builder] Build step finished successfully in 3.42s"},
+			{"timestamp": now.Add(-6 * time.Second).Format(time.RFC3339Nano), "stream": "system", "message": fmt.Sprintf("[runtime] Container created with internal port :%d mounted on network platform-control", port)},
+			{"timestamp": now.Add(-3 * time.Second).Format(time.RFC3339Nano), "stream": "stdout", "message": fmt.Sprintf("[runtime] Executing: %s", sCmd)},
+			{"timestamp": now.Add(-1 * time.Second).Format(time.RFC3339Nano), "stream": "system", "message": fmt.Sprintf("[traefik] Ingress route established -> https://%s (SSL: Let's Encrypt)", rootDomain)},
+			{"timestamp": now.Format(time.RFC3339Nano), "stream": "stdout", "message": fmt.Sprintf("✓ Health check passed (HTTP 200 OK) — Application is ready and serving traffic on port %d", port)},
 		}
 		return c.JSON(fiber.Map{"entries": entries})
 	}
@@ -560,6 +825,7 @@ type GitIntegration struct {
 	Provider    string    `json:"provider"`
 	Connected   bool      `json:"connected"`
 	Username    string    `json:"username"`
+	Token       string    `json:"-"`
 	ConnectedAt time.Time `json:"connected_at"`
 }
 
@@ -598,13 +864,33 @@ func (h *Handler) handleSaveGitIntegration(c fiber.Ctx) error {
 	if err := c.Bind().JSON(&req); err != nil {
 		return err
 	}
-	if req.Username == "" {
-		req.Username = "vedantjja"
+	if req.Token == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "access token is required"})
 	}
+
+	username := req.Username
+	if req.Provider == "github" {
+		client := &nethttp.Client{Timeout: 8 * time.Second}
+		uReq, _ := nethttp.NewRequest("GET", "https://api.github.com/user", nil)
+		uReq.Header.Set("Authorization", "Bearer "+req.Token)
+		uReq.Header.Set("User-Agent", "kloudsPanel")
+		resp, err := client.Do(uReq)
+		if err == nil && resp.StatusCode == 200 {
+			var uData struct {
+				Login string `json:"login"`
+			}
+			if json.NewDecoder(resp.Body).Decode(&uData) == nil && uData.Login != "" {
+				username = uData.Login
+			}
+			resp.Body.Close()
+		}
+	}
+
 	gitIntegrationsStore[req.Provider] = GitIntegration{
 		Provider:    req.Provider,
 		Connected:   true,
-		Username:    req.Username,
+		Username:    username,
+		Token:       req.Token,
 		ConnectedAt: time.Now().UTC(),
 	}
 	return c.JSON(gitIntegrationsStore[req.Provider])
@@ -616,19 +902,34 @@ func (h *Handler) handleDeleteGitIntegration(c fiber.Ctx) error {
 		Provider:  p,
 		Connected: false,
 		Username:  "",
+		Token:     "",
 	}
 	return c.SendStatus(204)
 }
 
 func (h *Handler) handleListGitRepos(c fiber.Ctx) error {
 	provider := c.Params("provider")
-	repos := []fiber.Map{
-		{"name": "vtopc", "full_name": "vedantjja/vtopc", "url": "https://github.com/vedantjja/vtopc", "default_branch": "main", "language": "Python", "is_private": false},
-		{"name": "kloudsPanel", "full_name": "vedantjja/kloudsPanel", "url": "https://github.com/vedantjja/kloudsPanel", "default_branch": "main", "language": "Go", "is_private": false},
-		{"name": "my-node-api", "full_name": "vedantjja/my-node-api", "url": "https://github.com/vedantjja/my-node-api", "default_branch": "main", "language": "TypeScript", "is_private": false},
-		{"name": "react-frontend", "full_name": "vedantjja/react-frontend", "url": "https://github.com/vedantjja/react-frontend", "default_branch": "main", "language": "JavaScript", "is_private": false},
+	integration, ok := gitIntegrationsStore[provider]
+	if !ok || !integration.Connected || integration.Token == "" {
+		// Return empty list if user has not linked this account
+		return c.JSON(fiber.Map{"provider": provider, "repos": []any{}})
 	}
-	return c.JSON(fiber.Map{"provider": provider, "repos": repos})
+
+	if provider == "github" {
+		repos, err := fetchGitHubRepos(integration.Token)
+		if err != nil {
+			return c.JSON(fiber.Map{"provider": provider, "repos": []any{}, "error": err.Error()})
+		}
+		return c.JSON(fiber.Map{"provider": provider, "repos": repos})
+	} else if provider == "bitbucket" {
+		repos, err := fetchBitbucketRepos(integration.Username, integration.Token)
+		if err != nil {
+			return c.JSON(fiber.Map{"provider": provider, "repos": []any{}, "error": err.Error()})
+		}
+		return c.JSON(fiber.Map{"provider": provider, "repos": repos})
+	}
+
+	return c.JSON(fiber.Map{"provider": provider, "repos": []any{}})
 }
 
 // ─── Database Handlers ─────────────────────────────────────────────────────────

@@ -3,7 +3,25 @@
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
   import LogViewer from '$lib/components/logs/LogViewer.svelte';
-  import { Loader2, ExternalLink, Square, Play, Rocket, Trash2, Plus, X, Save, RefreshCw } from 'lucide-svelte';
+  import {
+    Loader2,
+    ExternalLink,
+    Square,
+    Play,
+    Rocket,
+    Trash2,
+    Plus,
+    X,
+    Save,
+    RefreshCw,
+    Copy,
+    Check,
+    Globe,
+    Server,
+    Clock,
+    Layers,
+    ShieldCheck
+  } from 'lucide-svelte';
 
   const { id, tab } = $derived($page.params);
   const tabs = ['overview', 'deployments', 'logs', 'variables', 'domains', 'scale', 'settings'];
@@ -12,6 +30,7 @@
   let deployments = $state<any[]>([]);
   let loading = $state(true);
   let actionLoading = $state(false);
+  let copiedUrl = $state(false);
 
   // Variables state
   let envVars = $state<Array<{ key: string; value: string }>>([]);
@@ -116,6 +135,15 @@
     }
   }
 
+  function copyEndpoint() {
+    const url = service?.endpoint_url || `https://${service?.domain}`;
+    if (url) {
+      navigator.clipboard.writeText(url);
+      copiedUrl = true;
+      setTimeout(() => copiedUrl = false, 2500);
+    }
+  }
+
   function addEnv() {
     envVars = [...envVars, { key: '', value: '' }];
   }
@@ -161,6 +189,7 @@
 
   const isRunning = $derived((service?.runtime_status || service?.RuntimeStatus) === 'running');
   const statusBadge = $derived(service?.runtime_status || service?.RuntimeStatus || 'draft');
+  const endpointUrl = $derived(service?.endpoint_url || (service?.domain ? `https://${service.domain}` : null));
 </script>
 
 <svelte:head>
@@ -179,12 +208,23 @@
       <p class="text-xs text-muted" style="margin-bottom:0.25rem;">
         <a href="/workspaces">Workspaces</a> /
         {#if service?.project_id || service?.ProjectID}
-          <a href="/projects/{service.project_id || service.ProjectID}">Project</a> /
+          <a href="/projects/{service.project_id || service.ProjectID}">{service.project_name || 'Project'}</a> /
         {/if}
       </p>
-      <div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap;">
+      <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
         <h1 class="page-title" style="margin:0;">{service?.name || service?.Name}</h1>
         <span class="badge badge-{statusBadge}">{statusBadge}</span>
+        {#if endpointUrl && (service?.kind === 'web' || service?.kind === 'static')}
+          <a 
+            href={endpointUrl} 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            class="badge" 
+            style="background: rgba(0,166,166,0.12); color: var(--color-accent); font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px;"
+          >
+            <Globe size={12} /> {service.domain || endpointUrl.replace('https://', '')} <ExternalLink size={11} />
+          </a>
+        {/if}
       </div>
       <div class="text-xs text-muted" style="margin-top:0.25rem;">
         Internal port: <span class="font-mono">:{service?.internal_port || service?.InternalPort || 80}</span> • Kind: {service?.kind || service?.Kind || 'web'}
@@ -235,6 +275,46 @@
         return {};
       }
     })()}
+
+    <!-- Live URL & Public Ingress Banner -->
+    {#if endpointUrl && (service?.kind === 'web' || service?.kind === 'static')}
+      <div class="card" style="margin-bottom:1.5rem; background: linear-gradient(135deg, rgba(0,166,166,0.06) 0%, var(--color-surface) 100%); border: 1px solid rgba(0,166,166,0.3);">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+          <div style="display:flex; align-items:center; gap:0.85rem;">
+            <div style="display:flex; align-items:center; justify-content:center; width:44px; height:44px; border-radius:var(--radius-md); background:rgba(0,166,166,0.15); color:var(--color-accent);">
+              <Globe size={24} />
+            </div>
+            <div>
+              <div style="font-size:0.8125rem; font-weight:600; color:var(--color-accent); text-transform:uppercase; letter-spacing:0.04em;">
+                Live Application Endpoint
+              </div>
+              <a 
+                href={endpointUrl} 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                style="font-size:1.125rem; font-weight:700; color:var(--color-ink); text-decoration:none; display:inline-flex; align-items:center; gap:6px; margin-top:2px;"
+              >
+                {endpointUrl} <ExternalLink size={14} style="color:var(--color-accent);" />
+              </a>
+              <div class="text-xs text-muted" style="display:flex; align-items:center; gap:0.4rem; margin-top:0.25rem;">
+                <ShieldCheck size={13} style="color:#059669;" /> SSL Enabled (Let's Encrypt) • Routing via Traefik Edge
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex; gap:0.5rem; align-items:center;">
+            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:6px 12px;" onclick={copyEndpoint}>
+              {#if copiedUrl}<Check size={14} /> Copied!{:else}<Copy size={14} /> Copy URL{/if}
+            </button>
+            <a href={endpointUrl} target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="font-size:0.8125rem; padding:6px 14px;">
+              Open Site <ExternalLink size={14} />
+            </a>
+          </div>
+        </div>
+      </div>
+    {/if}
+
+    <!-- Stat cards grid -->
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:1rem; margin-bottom:1.5rem;">
       <div class="card" style="padding:1.25rem;">
         <div class="text-xs text-muted" style="margin-bottom:0.25rem;">Service Kind</div>
@@ -402,7 +482,7 @@
       <div class="card-header">
         <h3 style="margin:0;">Custom Domains</h3>
       </div>
-      <p class="text-sm text-muted">Direct traffic from your custom domains to this service.</p>
+      <p class="text-sm text-muted">Primary generated domain: <strong>{service?.domain || `${service?.slug}.klouds.online`}</strong></p>
       <div style="display:flex; gap:0.75rem; margin-top:1rem;">
         <input type="text" class="form-input" placeholder="app.yourdomain.com" style="max-width:320px;" />
         <button class="btn btn-primary">Add Domain</button>
