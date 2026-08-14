@@ -23,20 +23,20 @@ func (h *Handler) handleListProjects(c fiber.Ctx) error {
 
 func (h *Handler) handleCreateProject(c fiber.Ctx) error {
 	var req struct {
-		WorkspaceID  string `json:"workspaceId"`
-		WorkspaceID2 string `json:"workspace_id"`
-		Name         string `json:"name"`
-		Slug         string `json:"slug"`
-		Description  string `json:"description"`
-		SourceKind   string `json:"sourceKind"`
-		SourceKind2  string `json:"source_kind"`
+		WorkspaceID string `json:"workspaceId"`
+		WorkspaceSlug string `json:"workspace_id"`
+		Name        string `json:"name"`
+		Slug        string `json:"slug"`
+		Description string `json:"description"`
+		SourceKind  string `json:"source_kind"`
+		SourceKindCamel string `json:"sourceKind"`
 	}
 	if err := c.Bind().JSON(&req); err != nil {
 		return err
 	}
 	wsID := req.WorkspaceID
 	if wsID == "" {
-		wsID = req.WorkspaceID2
+		wsID = req.WorkspaceSlug
 	}
 	if ws, err := h.store.Workspaces().GetByID(c.Context(), wsID); err == nil && ws != nil {
 		wsID = ws.ID
@@ -47,7 +47,7 @@ func (h *Handler) handleCreateProject(c fiber.Ctx) error {
 	}
 	sourceStr := strings.ToLower(strings.TrimSpace(req.SourceKind))
 	if sourceStr == "" {
-		sourceStr = strings.ToLower(strings.TrimSpace(req.SourceKind2))
+		sourceStr = strings.ToLower(strings.TrimSpace(req.SourceKindCamel))
 	}
 	sk := domain.SourceKindEmpty
 	if sourceStr == "git" {
