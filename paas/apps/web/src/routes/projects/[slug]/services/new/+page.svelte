@@ -1168,19 +1168,49 @@
 
     {:else if sourceType === 'image'}
       <div style="background: rgba(0,0,0,0.02); padding: 1.25rem; border-radius: var(--radius-md); border: 1px solid var(--color-border);">
-        <div class="form-group" style="margin:0;">
+        <div class="form-group" style="margin-bottom: 0.85rem;">
           <label for="direct-image-ref" class="form-label">Docker Container Image Tag</label>
           <input 
             id="direct-image-ref" 
             type="text" 
             class="form-input font-mono" 
-            placeholder="e.g. nginx:alpine, redis:7-alpine, or ghcr.io/org/image:tag" 
+            placeholder="e.g. nginx:alpine, redis:7.2-alpine, mongo:7.0, or ghcr.io/org/image:tag" 
             bind:value={imageRef} 
             required 
           />
           <p class="text-xs text-muted" style="margin-top: 0.4rem;">
-            Pulled directly from Docker Hub or specified registry without building source code.
+            Pulled directly from Docker Hub, GHCR, or your specified registry without building source code.
           </p>
+        </div>
+
+        <div>
+          <div class="text-xs text-muted" style="margin-bottom: 0.4rem; font-weight: 600;">Popular Docker Images:</div>
+          <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
+            {#each [
+              { name: 'Nginx', img: 'nginx:alpine', port: 80, kind: 'web' },
+              { name: 'Redis', img: 'redis:7.2-alpine', port: 6379, kind: 'web' },
+              { name: 'PostgreSQL', img: 'postgres:16-alpine', port: 5432, kind: 'web' },
+              { name: 'MySQL', img: 'mysql:8.0', port: 3306, kind: 'web' },
+              { name: 'MongoDB', img: 'mongo:7.0', port: 27017, kind: 'web' },
+              { name: 'ClickHouse', img: 'clickhouse/clickhouse-server:24.3-alpine', port: 8123, kind: 'web' },
+              { name: 'Metabase', img: 'metabase/metabase:latest', port: 3000, kind: 'web' },
+              { name: 'RabbitMQ', img: 'rabbitmq:3-management', port: 15672, kind: 'web' }
+            ] as pop}
+              <button
+                type="button"
+                class="btn btn-secondary"
+                style="padding: 3px 8px; font-size: 0.75rem;"
+                onclick={() => {
+                  imageRef = pop.img;
+                  if (!name) name = pop.name.toLowerCase();
+                  internalPort = pop.port;
+                  kind = pop.kind as any;
+                }}
+              >
+                {pop.name} ({pop.img})
+              </button>
+            {/each}
+          </div>
         </div>
       </div>
     {/if}

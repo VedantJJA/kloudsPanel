@@ -13,6 +13,7 @@ import (
 	"github.com/yourorg/klouds/api/internal/jobs"
 	"github.com/yourorg/klouds/api/internal/repository"
 	"github.com/yourorg/klouds/api/internal/repository/sqlite"
+	"github.com/yourorg/klouds/api/internal/system"
 )
 
 // Config holds all configuration read from environment.
@@ -87,6 +88,10 @@ func Run(ctx context.Context, logger *slog.Logger) error {
 	workerCtx, cancelWorker := context.WithCancel(ctx)
 	defer cancelWorker()
 	go worker.Run(workerCtx)
+
+	// Start system self-healing supervisor (reconciles databases, networks, images)
+	supervisor := system.NewSupervisor(logger, repo.(repository.Store))
+	supervisor.Start(ctx)
 
 	// Start HTTP server
 	srv := http.NewServer(logger, repo.(repository.Store), cfg.ListenAddr)

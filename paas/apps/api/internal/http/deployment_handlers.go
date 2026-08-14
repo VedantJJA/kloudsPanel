@@ -360,8 +360,34 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 
 	imageTag := fmt.Sprintf("paas-svc-%s:latest", service.Slug)
 
-	// Step 1: Clone Git Repository if URL is provided
-	if gitRepoUrl != "" {
+	// Step 1: Check for Direct Docker Image Deployment (No git repo required)
+	dockerImageName, _ := resMap["image"].(string)
+	if dockerImageName == "" {
+		if dImg, ok := resMap["dockerImage"].(string); ok {
+			dockerImageName = dImg
+		}
+	}
+
+	if gitRepoUrl == "" && dockerImageName != "" {
+		appendLog(serviceID, depID, "build", fmt.Sprintf("[docker-image] Pulling image '%s' from registry...", dockerImageName))
+		pullCmd := exec.Command("docker", "pull", dockerImageName)
+		pullOut, pullErr := pullCmd.CombinedOutput()
+		for _, line := range strings.Split(string(pullOut), "\n") {
+			if strings.TrimSpace(line) != "" {
+				appendLog(serviceID, depID, "stdout", line)
+			}
+		}
+		if pullErr != nil {
+			appendLog(serviceID, depID, "stderr", fmt.Sprintf("[docker-image] Failed to pull image: %v", pullErr))
+			dep.Status = domain.DeploymentFailed
+			_ = h.store.Deployments().Update(context.Background(), dep)
+			service.RuntimeStatus = domain.ServiceStatusFailed
+			_ = h.store.Services().Update(context.Background(), service)
+			return
+		}
+		imageTag = dockerImageName
+		appendLog(serviceID, depID, "build", fmt.Sprintf("✓ Docker image '%s' is ready.", dockerImageName))
+	} else if gitRepoUrl != "" {
 		appendLog(serviceID, depID, "system", fmt.Sprintf("[git] Cloning %s (branch: %s)...", gitRepoUrl, gitBranch))
 		cmd := exec.Command("git", "clone", "--depth", "1", "--branch", gitBranch, gitRepoUrl, workspaceDir)
 		out, err := cmd.CombinedOutput()
@@ -403,16 +429,22 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 			}
 		}
 
-		// Step 2: Auto-detect render.yaml or devpanel.yaml inside repository
-		renderFile := filepath.Join(workspaceDir, "render.yaml")
-		if _, err := os.Stat(renderFile); os.IsNotExist(err) {
-			renderFile = filepath.Join(workspaceDir, "render.yml")
+		// Step 2: Auto-detect klouds.yaml (primary) or render.yaml inside repository
+		blueprintFile := filepath.Join(workspaceDir, "klouds.yaml")
+		if _, err := os.Stat(blueprintFile); os.IsNotExist(err) {
+			blueprintFile = filepath.Join(workspaceDir, "klouds.yml")
 		}
-		if _, err := os.Stat(renderFile); os.IsNotExist(err) {
-			renderFile = filepath.Join(workspaceDir, "devpanel.yaml")
+		if _, err := os.Stat(blueprintFile); os.IsNotExist(err) {
+			blueprintFile = filepath.Join(workspaceDir, ".klouds.yaml")
 		}
-		if _, err := os.Stat(renderFile); err == nil {
-			if yamlBytes, err := os.ReadFile(renderFile); err == nil {
+		if _, err := os.Stat(blueprintFile); os.IsNotExist(err) {
+			blueprintFile = filepath.Join(workspaceDir, "render.yaml")
+		}
+		if _, err := os.Stat(blueprintFile); os.IsNotExist(err) {
+			blueprintFile = filepath.Join(workspaceDir, "render.yml")
+		}
+		if _, err := os.Stat(blueprintFile); err == nil {
+			if yamlBytes, err := os.ReadFile(blueprintFile); err == nil {
 				parsed := parseRenderYAMLString(string(yamlBytes))
 				if len(parsed.Services) > 0 {
 					var matchingSvc *ParsedRenderService
@@ -426,7 +458,7 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 						matchingSvc = &parsed.Services[0]
 					}
 					svc := *matchingSvc
-					appendLog(serviceID, depID, "system", fmt.Sprintf("[render] Applied config for '%s' (preset: %s, rootDir: %s, port: %d)", svc.Name, svc.Preset, svc.RootDir, svc.InternalPort))
+					appendLog(serviceID, depID, "system", fmt.Sprintf("[blueprint] Applied config for '%s' (preset: %s, rootDir: %s, port: %d)", svc.Name, svc.Preset, svc.RootDir, svc.InternalPort))
 					if svc.RootDir != "" && rootDirectory == "" {
 						rootDirectory = svc.RootDir
 						subDir := filepath.Join(workspaceDir, rootDirectory)

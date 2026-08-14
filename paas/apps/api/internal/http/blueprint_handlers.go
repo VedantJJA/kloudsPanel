@@ -449,24 +449,51 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 		}
 	}
 
-	// Post-process: identify required env vars across all services
+	// Deduplicate service names and slugs so frontend and backend never share the exact same name
+	usedSlugs := make(map[string]int)
 	for i := range res.Services {
-		svc := &res.Services[i]
-		reqMap := make(map[string]bool)
-		for _, rk := range svc.RequiredEnvVars {
-			reqMap[rk] = true
+		s := &res.Services[i]
+		if s.Name == "" {
+			s.Name = fmt.Sprintf("service-%d", i+1)
 		}
-		for k, v := range svc.EnvVars {
-			vLower := strings.ToLower(strings.TrimSpace(v))
-			if v == "" || strings.HasPrefix(vLower, "your_") || strings.HasPrefix(vLower, "replace_") || vLower == "changeme" || vLower == "todo" {
-				reqMap[k] = true
+		if s.Slug == "" {
+			s.Slug = strings.ToLower(strings.ReplaceAll(s.Name, "_", "-"))
+		}
+	}
+
+	// Disambiguate collisions based on kind / root directory
+	for i := range res.Services {
+		for j := range res.Services {
+			if i != j && strings.EqualFold(res.Services[i].Name, res.Services[j].Name) {
+				if res.Services[i].Kind == "static" || res.Services[i].Preset == "static-spa" || strings.Contains(strings.ToLower(res.Services[i].RootDir), "front") {
+					base := strings.TrimSuffix(res.Services[i].Name, "-backend")
+					if base == "" {
+						base = "frontend"
+					}
+					res.Services[i].Name = base + "-frontend"
+					res.Services[i].Slug = strings.ToLower(strings.ReplaceAll(res.Services[i].Name, "_", "-"))
+				} else if res.Services[j].Kind == "static" || res.Services[j].Preset == "static-spa" || strings.Contains(strings.ToLower(res.Services[j].RootDir), "front") {
+					base := strings.TrimSuffix(res.Services[j].Name, "-backend")
+					if base == "" {
+						base = "frontend"
+					}
+					res.Services[j].Name = base + "-frontend"
+					res.Services[j].Slug = strings.ToLower(strings.ReplaceAll(res.Services[j].Name, "_", "-"))
+				}
 			}
 		}
-		var finalReq []string
-		for k := range reqMap {
-			finalReq = append(finalReq, k)
+	}
+
+	// Guarantee distinct unique slugs
+	for i := range res.Services {
+		s := &res.Services[i]
+		baseSlug := s.Slug
+		count := usedSlugs[baseSlug]
+		if count > 0 {
+			s.Slug = fmt.Sprintf("%s-%d", baseSlug, count+1)
+			s.Name = fmt.Sprintf("%s (%d)", s.Name, count+1)
 		}
-		svc.RequiredEnvVars = finalReq
+		usedSlugs[baseSlug] = count + 1
 	}
 
 	return res

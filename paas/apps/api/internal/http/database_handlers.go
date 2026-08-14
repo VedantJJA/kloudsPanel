@@ -182,7 +182,86 @@ func (h *Handler) provisionDatabaseInternal(ctx context.Context, projectID, name
 	return db, nil
 }
 
+func (h *Handler) ensureDatabaseContainerRunning(ctx context.Context, db *domain.Database) error {
+	containerName := db.InternalHostname
+	if containerName == "" {
+		containerName = fmt.Sprintf("paas-db-%s", strings.ToLower(db.Name))
+	}
+
+	inspectCmd := exec.Command("docker", "inspect", "-f", "{{.State.Running}}", containerName)
+	out, err := inspectCmd.CombinedOutput()
+	if err == nil && strings.TrimSpace(string(out)) == "true" {
+		return nil
+	}
+
+	var meta struct {
+		Username     string  `json:"username"`
+		Password     string  `json:"password"`
+		DatabaseName string  `json:"databaseName"`
+		ExternalPort float64 `json:"externalPort"`
+	}
+	if db.ResourceJSON != "" {
+		_ = json.Unmarshal([]byte(db.ResourceJSON), &meta)
+	}
+
+	defaultUser := meta.Username
+	if defaultUser == "" {
+		defaultUser = "postgres"
+		if db.Engine == "mysql" {
+			defaultUser = "root"
+		} else if db.Engine == "mongodb" {
+			defaultUser = "admin"
+		} else if db.Engine == "redis" || db.Engine == "clickhouse" {
+			defaultUser = "default"
+		}
+	}
+
+	password := meta.Password
+	if password == "" {
+		password = fmt.Sprintf("kp_sec_%d", time.Now().UnixNano()%1000000)
+	}
+
+	dbName := meta.DatabaseName
+	if dbName == "" {
+		dbName = strings.ToLower(strings.ReplaceAll(db.Name, "_", "-"))
+	}
+
+	port := db.InternalPort
+	if port <= 0 {
+		switch db.Engine {
+		case "mysql":
+			port = 3306
+		case "redis":
+			port = 6379
+		case "mongodb":
+			port = 27017
+		case "clickhouse":
+			port = 8123
+		default:
+			port = 5432
+		}
+	}
+
+	externalPort := int(meta.ExternalPort)
+	if externalPort <= 0 {
+		externalPort = h.allocateExternalPort(ctx, string(db.Engine))
+	}
+
+	dbSlug := strings.ToLower(strings.ReplaceAll(db.Name, "_", "-"))
+	h.startDatabaseContainer(dbSlug, containerName, defaultUser, password, dbName, string(db.Engine), port, externalPort)
+
+	for i := 0; i < 8; i++ {
+		time.Sleep(500 * time.Millisecond)
+		checkCmd := exec.Command("docker", "inspect", "-f", "{{.State.Running}}", containerName)
+		if chkOut, chkErr := checkCmd.CombinedOutput(); chkErr == nil && strings.TrimSpace(string(chkOut)) == "true" {
+			return nil
+		}
+	}
+	return nil
+}
+
 func (h *Handler) startDatabaseContainer(dbSlug, containerName, defaultUser, password, dbName, engine string, internalPort, externalPort int) {
+	_ = exec.Command("docker", "network", "create", "platform-control").Run()
 	_ = exec.Command("docker", "rm", "-f", containerName).Run()
 
 	var runArgs []string
@@ -209,6 +288,7 @@ func (h *Handler) startDatabaseContainer(dbSlug, containerName, defaultUser, pas
 			"-p", fmt.Sprintf("%d:%d", externalPort, internalPort),
 			"-e", fmt.Sprintf("MYSQL_ROOT_PASSWORD=%s", password),
 			"-e", fmt.Sprintf("MYSQL_DATABASE=%s", dbName),
+			"-e", "MYSQL_ROOT_HOST=%",
 			"-v", fmt.Sprintf("paas-db-data-%s:/var/lib/mysql", dbSlug),
 			"mysql:8.0",
 		}
@@ -352,29 +432,60 @@ func (h *Handler) handleExecuteDatabaseQuery(c fiber.Ctx) error {
 		containerName = fmt.Sprintf("paas-db-%s", strings.ToLower(db.Name))
 	}
 
+	// 1. Ensure container is running, or auto-heal/start it immediately
+	_ = h.ensureDatabaseContainerRunning(c.Context(), db)
+
 	startTime := time.Now()
 
-	var cmd *exec.Cmd
-	switch db.Engine {
-	case "postgres":
-		cmd = exec.Command("docker", "exec", containerName, "psql", "-U", meta.Username, "-d", meta.DatabaseName, "-c", query, "--csv")
-	case "mysql":
-		cmd = exec.Command("docker", "exec", containerName, "mysql", "-u", meta.Username, fmt.Sprintf("-p%s", meta.Password), meta.DatabaseName, "-e", query, "--batch", "--raw")
-	case "redis":
-		args := append([]string{"exec", containerName, "redis-cli", "-a", meta.Password}, strings.Fields(query)...)
-		cmd = exec.Command("docker", args...)
-	case "mongodb":
-		cmd = exec.Command("docker", "exec", containerName, "mongosh", "-u", meta.Username, "-p", meta.Password, "--authenticationDatabase", "admin", meta.DatabaseName, "--eval", query)
-	case "clickhouse":
-		cmd = exec.Command("docker", "exec", containerName, "clickhouse-client", "--query", query, "--format", "CSVWithNames")
-	default:
-		cmd = exec.Command("docker", "exec", containerName, "psql", "-U", meta.Username, "-d", meta.DatabaseName, "-c", query, "--csv")
+	var out []byte
+	var execErr error
+
+	// Retry loop for databases that are starting up (e.g. MySQL initializing InnoDB buffer)
+	maxRetries := 4
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		var cmd *exec.Cmd
+		switch db.Engine {
+		case "postgres":
+			cmd = exec.Command("docker", "exec", containerName, "psql", "-U", meta.Username, "-d", meta.DatabaseName, "-c", query, "--csv")
+		case "mysql":
+			cmd = exec.Command("docker", "exec", containerName, "mysql", "-u", meta.Username, fmt.Sprintf("-p%s", meta.Password), meta.DatabaseName, "-e", query, "--batch", "--raw")
+		case "redis":
+			args := append([]string{"exec", containerName, "redis-cli", "-a", meta.Password}, strings.Fields(query)...)
+			cmd = exec.Command("docker", args...)
+		case "mongodb":
+			cmd = exec.Command("docker", "exec", containerName, "mongosh", "-u", meta.Username, "-p", meta.Password, "--authenticationDatabase", "admin", meta.DatabaseName, "--eval", query)
+		case "clickhouse":
+			cmd = exec.Command("docker", "exec", containerName, "clickhouse-client", "--query", query, "--format", "CSVWithNames")
+		default:
+			cmd = exec.Command("docker", "exec", containerName, "psql", "-U", meta.Username, "-d", meta.DatabaseName, "-c", query, "--csv")
+		}
+
+		out, execErr = cmd.CombinedOutput()
+		if execErr == nil {
+			break
+		}
+
+		outStr := string(out)
+		// If MySQL is initializing or container not ready yet, wait and retry
+		if strings.Contains(outStr, "Can't connect to local MySQL server") || strings.Contains(outStr, "is not running") || strings.Contains(outStr, "No such container") {
+			_ = h.ensureDatabaseContainerRunning(c.Context(), db)
+			time.Sleep(1 * time.Second)
+			continue
+		}
+		// If MongoDB mongosh failed, attempt mongo fallback
+		if db.Engine == "mongodb" && (strings.Contains(outStr, "mongosh: not found") || strings.Contains(outStr, "executable file not found")) {
+			fallbackCmd := exec.Command("docker", "exec", containerName, "mongo", "-u", meta.Username, "-p", meta.Password, "--authenticationDatabase", "admin", meta.DatabaseName, "--eval", query)
+			out, execErr = fallbackCmd.CombinedOutput()
+			if execErr == nil {
+				break
+			}
+		}
+		break
 	}
 
-	out, err := cmd.CombinedOutput()
 	durationMs := time.Since(startTime).Milliseconds()
 
-	if err != nil {
+	if execErr != nil {
 		return c.Status(400).JSON(fiber.Map{
 			"error":      string(out),
 			"durationMs": durationMs,
