@@ -372,12 +372,24 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 				}
 			}
 		} else if inEnvVars && strings.HasPrefix(trimmed, "fromDatabase:") {
-			// Database reference block started
+			parts := strings.SplitN(trimmed, ":", 2)
+			if len(parts) > 1 && strings.TrimSpace(parts[1]) != "" && currentEnvKey != "" {
+				dbRef := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
+				currentSvc.EnvVars[currentEnvKey] = fmt.Sprintf("paas-db-%s", dbRef)
+			}
+		} else if inEnvVars && strings.HasPrefix(trimmed, "fromService:") {
+			parts := strings.SplitN(trimmed, ":", 2)
+			if len(parts) > 1 && strings.TrimSpace(parts[1]) != "" && currentEnvKey != "" {
+				svcRef := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
+				currentSvc.EnvVars[currentEnvKey] = fmt.Sprintf("${services.%s.url}/api", svcRef)
+			}
 		} else if inEnvVars && strings.HasPrefix(trimmed, "name:") {
 			parts := strings.SplitN(trimmed, ":", 2)
 			if len(parts) > 1 && currentEnvKey != "" {
-				dbRef := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
-				currentSvc.EnvVars[currentEnvKey] = fmt.Sprintf("paas-db-%s", dbRef)
+				ref := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
+				if currentSvc.EnvVars[currentEnvKey] == "" {
+					currentSvc.EnvVars[currentEnvKey] = fmt.Sprintf("${services.%s.url}/api", ref)
+				}
 			}
 		} else if inEnvVars && strings.HasPrefix(trimmed, "property:") {
 			parts := strings.SplitN(trimmed, ":", 2)
@@ -416,19 +428,19 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 					s.EnvVars = make(map[string]string)
 				}
 				if _, ok := s.EnvVars["VITE_API_URL"]; !ok {
-					s.EnvVars["VITE_API_URL"] = fmt.Sprintf("https://%s.klouds.online/api", primaryBackendSlug)
+					s.EnvVars["VITE_API_URL"] = fmt.Sprintf("${services.%s.url}/api", primaryBackendSlug)
 				}
 				if _, ok := s.EnvVars["NEXT_PUBLIC_API_URL"]; !ok {
-					s.EnvVars["NEXT_PUBLIC_API_URL"] = fmt.Sprintf("https://%s.klouds.online/api", primaryBackendSlug)
+					s.EnvVars["NEXT_PUBLIC_API_URL"] = fmt.Sprintf("${services.%s.url}/api", primaryBackendSlug)
 				}
 				if _, ok := s.EnvVars["REACT_APP_API_URL"]; !ok {
-					s.EnvVars["REACT_APP_API_URL"] = fmt.Sprintf("https://%s.klouds.online/api", primaryBackendSlug)
+					s.EnvVars["REACT_APP_API_URL"] = fmt.Sprintf("${services.%s.url}/api", primaryBackendSlug)
 				}
 				if _, ok := s.EnvVars["API_URL"]; !ok {
-					s.EnvVars["API_URL"] = fmt.Sprintf("https://%s.klouds.online/api", primaryBackendSlug)
+					s.EnvVars["API_URL"] = fmt.Sprintf("${services.%s.url}/api", primaryBackendSlug)
 				}
 				if _, ok := s.EnvVars["BACKEND_URL"]; !ok {
-					s.EnvVars["BACKEND_URL"] = fmt.Sprintf("https://%s.klouds.online", primaryBackendSlug)
+					s.EnvVars["BACKEND_URL"] = fmt.Sprintf("${services.%s.url}", primaryBackendSlug)
 				}
 				if _, ok := s.EnvVars["INTERNAL_API_URL"]; !ok {
 					s.EnvVars["INTERNAL_API_URL"] = fmt.Sprintf("http://paas-svc-%s:%d", primaryBackendSlug, primaryBackendPort)
@@ -635,25 +647,80 @@ func (h *Handler) handleDeployBlueprint(c fiber.Ctx) error {
 		}
 	}
 
-	// 2. Provision all Services declared in blueprint
+	// 2. Pre-allocate unique slugs and mapping for all services in blueprint
+	rootDomain := getRootDomain()
+	if rootDomain == "" {
+		rootDomain = "klouds.online"
+	}
+	type serviceEntry struct {
+		info ParsedRenderService
+		svc  *domain.Service
+		port int
+	}
+	var entries []serviceEntry
+	slugMap := make(map[string]string)
+	urlMap := make(map[string]string)
+	internalUrlMap := make(map[string]string)
+
 	for _, svcInfo := range req.Services {
 		svcName := svcInfo.Name
 		if svcName == "" {
 			continue
 		}
-		svcSlug := svcInfo.Slug
-		if svcSlug == "" {
-			svcSlug = strings.ToLower(strings.ReplaceAll(svcName, "_", "-"))
+		baseSlug := svcInfo.Slug
+		if baseSlug == "" {
+			baseSlug = strings.ToLower(strings.ReplaceAll(svcName, "_", "-"))
 		}
-
-		kind := domain.ServiceKind(svcInfo.Kind)
-		if kind == "" {
-			kind = domain.ServiceKindWeb
-		}
-
+		
+		actualSlug := baseSlug
 		port := svcInfo.InternalPort
 		if port <= 0 {
 			port = 8080
+		}
+
+		s := &domain.Service{
+			ProjectID:     project.ID,
+			Name:          svcName,
+			Slug:          actualSlug,
+			Kind:          domain.ServiceKind(svcInfo.Kind),
+			CreatedBy:     u.ID,
+			InternalPort:  &port,
+			DesiredState:  domain.ServiceDesiredRunning,
+			RuntimeStatus: domain.ServiceStatusDeploying,
+		}
+		if s.Kind == "" {
+			s.Kind = domain.ServiceKindWeb
+		}
+		entries = append(entries, serviceEntry{info: svcInfo, svc: s, port: port})
+		slugMap[svcName] = actualSlug
+		slugMap[baseSlug] = actualSlug
+		urlMap[svcName] = fmt.Sprintf("https://%s.%s", actualSlug, rootDomain)
+		urlMap[baseSlug] = fmt.Sprintf("https://%s.%s", actualSlug, rootDomain)
+		internalUrlMap[svcName] = fmt.Sprintf("http://paas-svc-%s:%d", actualSlug, port)
+		internalUrlMap[baseSlug] = fmt.Sprintf("http://paas-svc-%s:%d", actualSlug, port)
+	}
+
+	// 3. Resolve dynamic template tags & create services in database
+	for _, entry := range entries {
+		s := entry.svc
+		svcInfo := entry.info
+
+		resolvedEnv := make(map[string]string)
+		for k, v := range svcInfo.EnvVars {
+			val := v
+			for refName, refUrl := range urlMap {
+				val = strings.ReplaceAll(val, fmt.Sprintf("${services.%s.url}", refName), refUrl)
+				val = strings.ReplaceAll(val, fmt.Sprintf("${%s.url}", refName), refUrl)
+			}
+			for refName, refSlug := range slugMap {
+				val = strings.ReplaceAll(val, fmt.Sprintf("${services.%s.host}", refName), fmt.Sprintf("%s.%s", refSlug, rootDomain))
+				val = strings.ReplaceAll(val, fmt.Sprintf("${%s.host}", refName), fmt.Sprintf("%s.%s", refSlug, rootDomain))
+			}
+			for refName, refIntUrl := range internalUrlMap {
+				val = strings.ReplaceAll(val, fmt.Sprintf("${services.%s.internalUrl}", refName), refIntUrl)
+				val = strings.ReplaceAll(val, fmt.Sprintf("${%s.internalUrl}", refName), refIntUrl)
+			}
+			resolvedEnv[k] = val
 		}
 
 		resMap := map[string]any{
@@ -664,21 +731,11 @@ func (h *Handler) handleDeployBlueprint(c fiber.Ctx) error {
 			"buildCommand":  svcInfo.BuildCommand,
 			"startCommand":  svcInfo.StartCommand,
 			"presetId":      svcInfo.Preset,
-			"env":           svcInfo.EnvVars,
+			"env":           resolvedEnv,
 		}
 		resJSON, _ := json.Marshal(resMap)
+		s.ResourceJSON = string(resJSON)
 
-		s := &domain.Service{
-			ProjectID:     project.ID,
-			Name:          svcName,
-			Slug:          svcSlug,
-			Kind:          kind,
-			CreatedBy:     u.ID,
-			InternalPort:  &port,
-			ResourceJSON:  string(resJSON),
-			DesiredState:  domain.ServiceDesiredRunning,
-			RuntimeStatus: domain.ServiceStatusDeploying,
-		}
 		if err := h.store.Services().Create(c.Context(), s); err != nil {
 			continue
 		}
@@ -697,7 +754,7 @@ func (h *Handler) handleDeployBlueprint(c fiber.Ctx) error {
 		}
 		_ = h.store.Deployments().Create(c.Context(), dep)
 
-		go h.executeDeployment(s, dep, getRootDomain())
+		go h.executeDeployment(s, dep, rootDomain)
 		createdServices = append(createdServices, s)
 	}
 
