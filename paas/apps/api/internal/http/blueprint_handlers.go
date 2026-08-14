@@ -167,11 +167,11 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 		}
 
 		// In services section: Detect new service start (either list item "- name:" / "- type:" or map key "  frontend:" / "  backend:" / "  redis:")
-		isMapServiceHeader := inServices && !strings.HasPrefix(trimmed, "-") && strings.HasSuffix(trimmed, ":") && !strings.Contains(trimmed, " ") &&
+		isMapServiceHeader := inServices && !inRoutes && !inEnvVars && !strings.HasPrefix(trimmed, "-") && strings.HasSuffix(trimmed, ":") && !strings.Contains(trimmed, " ") &&
 			(strings.HasPrefix(rawLine, "  ") || strings.HasPrefix(rawLine, "\t")) && !strings.HasPrefix(rawLine, "    ") && !strings.HasPrefix(rawLine, "\t\t") &&
-			trimmed != "env:" && trimmed != "envVars:" && trimmed != "source:" && trimmed != "build:" && trimmed != "deploy:" && trimmed != "resources:" && trimmed != "volumes:"
+			trimmed != "env:" && trimmed != "envVars:" && trimmed != "source:" && trimmed != "build:" && trimmed != "deploy:" && trimmed != "resources:" && trimmed != "volumes:" && trimmed != "routes:"
 
-		isListServiceHeader := strings.HasPrefix(trimmed, "- type:") || strings.HasPrefix(trimmed, "- name:") || (strings.HasPrefix(trimmed, "type:") && currentSvc == nil)
+		isListServiceHeader := inServices && !inRoutes && !inEnvVars && !strings.HasPrefix(rawLine, "    ") && !strings.HasPrefix(rawLine, "\t\t") && (strings.HasPrefix(trimmed, "- type:") || strings.HasPrefix(trimmed, "- name:") || (strings.HasPrefix(trimmed, "type:") && currentSvc == nil))
 
 		if isMapServiceHeader || isListServiceHeader {
 			flushCurrent()
@@ -212,6 +212,7 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 				EnvVars:      make(map[string]string),
 			}
 			inEnvVars = false
+			inRoutes = false
 			currentEnvKey = ""
 			continue
 		}
@@ -529,7 +530,7 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 		}
 	}
 
-	// Auto-wire VITE_API_URL into frontend static services
+	// Auto-wire VITE_API_URL into frontend static services (single clean variable like Render)
 	if primaryBackendSlug != "" {
 		for i := range res.Services {
 			s := &res.Services[i]
@@ -539,15 +540,6 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 				}
 				if _, ok := s.EnvVars["VITE_API_URL"]; !ok {
 					s.EnvVars["VITE_API_URL"] = fmt.Sprintf("${services.%s.url}", primaryBackendSlug)
-				}
-				if _, ok := s.EnvVars["NEXT_PUBLIC_API_URL"]; !ok {
-					s.EnvVars["NEXT_PUBLIC_API_URL"] = fmt.Sprintf("${services.%s.url}", primaryBackendSlug)
-				}
-				if _, ok := s.EnvVars["REACT_APP_API_URL"]; !ok {
-					s.EnvVars["REACT_APP_API_URL"] = fmt.Sprintf("${services.%s.url}", primaryBackendSlug)
-				}
-				if _, ok := s.EnvVars["API_URL"]; !ok {
-					s.EnvVars["API_URL"] = fmt.Sprintf("${services.%s.url}", primaryBackendSlug)
 				}
 			}
 		}
@@ -618,77 +610,71 @@ func (h *Handler) handleParseBlueprint(c fiber.Ctx) error {
 				if len(subparts) > 1 {
 					repoBase = subparts[1]
 				}
-				client := &nethttp.Client{Timeout: 6 * time.Second}
-				// 1. Primary Choice: klouds.yaml in repository root
-				primaryPaths := []string{
-					"main/klouds.yaml",
-					"main/klouds.yml",
-					"main/.klouds.yaml",
-					"master/klouds.yaml",
-					"master/klouds.yml",
-					"master/.klouds.yaml",
-				}
-				for _, p := range primaryPaths {
-					testURL := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s", parts[1], p)
-					resp, err := client.Get(testURL)
+
+				branches := []string{"main", "master", "HEAD", "dev", "develop"}
+				kloudsFilenames := []string{"klouds.yaml", "klouds.yml", ".klouds.yaml", ".klouds.yml"}
+				renderFilenames := []string{"render.yaml", "render.yml", ".render.yaml", ".render.yml"}
+
+				client := &nethttp.Client{Timeout: 8 * time.Second}
+				fetchRaw := func(repoPath, branch, filename string) string {
+					testURL := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s", repoPath, branch, filename)
+					r, err := nethttp.NewRequest("GET", testURL, nil)
+					if err != nil {
+						return ""
+					}
+					r.Header.Set("User-Agent", "kloudsPanel-App/1.0")
+					resp, err := client.Do(r)
 					if err == nil && resp.StatusCode == 200 {
 						var b strings.Builder
 						_, _ = io.Copy(&b, resp.Body)
-						content = b.String()
-						detectedSource = "klouds.yaml"
 						resp.Body.Close()
-						break
+						return b.String()
 					}
 					if resp != nil {
 						resp.Body.Close()
 					}
+					return ""
 				}
 
-				// 2. Fallback Option: render.yaml in repository root (only if klouds.yaml is NOT present)
-				if strings.TrimSpace(content) == "" {
-					fallbackPaths := []string{
-						"main/render.yaml",
-						"main/render.yml",
-						"master/render.yaml",
-						"master/render.yml",
-					}
-					for _, p := range fallbackPaths {
-						testURL := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s", parts[1], p)
-						resp, err := client.Get(testURL)
-						if err == nil && resp.StatusCode == 200 {
-							var b strings.Builder
-							_, _ = io.Copy(&b, resp.Body)
-							content = b.String()
-							detectedSource = "render.yaml"
-							resp.Body.Close()
-							break
-						}
-						if resp != nil {
-							resp.Body.Close()
+				var kloudsContent, renderContent string
+				for _, br := range branches {
+					if kloudsContent == "" {
+						for _, fn := range kloudsFilenames {
+							if res := fetchRaw(parts[1], br, fn); res != "" {
+								kloudsContent = res
+								break
+							}
 						}
 					}
+					if renderContent == "" {
+						for _, fn := range renderFilenames {
+							if res := fetchRaw(parts[1], br, fn); res != "" {
+								renderContent = res
+								break
+							}
+						}
+					}
+				}
+
+				if kloudsContent != "" && renderContent != "" {
+					content = kloudsContent
+					detectedSource = "both"
+				} else if kloudsContent != "" {
+					content = kloudsContent
+					detectedSource = "klouds.yaml"
+				} else if renderContent != "" {
+					content = renderContent
+					detectedSource = "render.yaml"
 				}
 
 				// If no blueprint found, check for root .env.example only
 				if strings.TrimSpace(content) == "" {
-					envPaths := []string{
-						"main/.env.example",
-						"master/.env.example",
-					}
-					for _, p := range envPaths {
-						testURL := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s", parts[1], p)
-						resp, err := client.Get(testURL)
-						if err == nil && resp.StatusCode == 200 {
-							var b strings.Builder
-							_, _ = io.Copy(&b, resp.Body)
-							content = b.String()
+					for _, br := range branches {
+						if res := fetchRaw(parts[1], br, ".env.example"); res != "" {
+							content = res
 							isDotEnv = true
 							detectedSource = ".env.example"
-							resp.Body.Close()
 							break
-						}
-						if resp != nil {
-							resp.Body.Close()
 						}
 					}
 				}

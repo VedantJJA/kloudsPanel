@@ -842,14 +842,34 @@ tbody tr:hover { background: rgba(244, 246, 248, 0.6); }
   }
 }
 
-.animate-spin,
-svg.animate-spin,
-span.animate-spin,
-div.animate-spin,
-i.animate-spin {
+.animate-spin {
   animation: spin 0.85s linear infinite !important;
   display: inline-block;
-  transform-origin: center center;
+  vertical-align: middle;
+  transform-origin: center center !important;
+  transform-box: fill-box !important;
+}
+
+svg.animate-spin {
+  animation: spin 0.85s linear infinite !important;
+  display: inline-block;
+  vertical-align: middle;
+  transform-origin: center center !important;
+  transform-box: fill-box !important;
+}
+
+div.animate-spin {
+  animation: none !important;
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  margin: 0 auto;
+}
+
+div.animate-spin > svg {
+  animation: spin 0.85s linear infinite !important;
+  transform-origin: center center !important;
+  transform-box: fill-box !important;
 }
 
 .animate-pulse {

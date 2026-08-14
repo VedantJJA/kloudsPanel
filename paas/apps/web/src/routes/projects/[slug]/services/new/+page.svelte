@@ -894,13 +894,22 @@
 
         {#if detectedServices.length > 0}
           {@const unfilledEnvList = getBlueprintUnfilledEnvVars()}
-          <div style="background: rgba(16,185,129,0.06); border: 1.5px solid #10b981; border-radius: var(--radius-md); padding: 1rem 1.25rem; margin-top: 1rem;">
+          <div style="background: rgba(16,185,129,0.06); border: 1.5px solid #10b981; border-radius: var(--radius-md); padding: 1rem 1.25rem; margin-top: 1rem; overflow: hidden; width: 100%; box-sizing: border-box;">
             <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.85rem;">
-              <div style="display: flex; align-items: center; gap: 0.75rem;">
+              <div style="display: flex; align-items: center; gap: 0.75rem; min-width: 0;">
                 <Sparkles size={22} style="color: #059669; flex-shrink: 0;" />
-                <div>
-                  <div style="font-weight: 700; color: #065f46; font-size: 0.9375rem;">
-                    {detectedBlueprintSource === 'klouds.yaml' ? 'klouds.yaml detected' : detectedBlueprintSource === 'render.yaml' ? 'render.yaml detected (Fallback)' : 'Blueprint detected'} ({detectedServices.length} Service{detectedServices.length > 1 ? 's' : ''}{detectedDatabases.length > 0 ? `, ${detectedDatabases.length} Database` : ''})
+                <div style="min-width: 0;">
+                  <div style="font-weight: 700; color: #065f46; font-size: 0.9375rem; overflow: hidden; text-overflow: ellipsis;">
+                    {#if detectedBlueprintSource === 'both'}
+                      klouds.yaml detected (render.yaml also found)
+                    {:else if detectedBlueprintSource === 'klouds.yaml'}
+                      klouds.yaml detected
+                    {:else if detectedBlueprintSource === 'render.yaml'}
+                      render.yaml detected (Fallback)
+                    {:else}
+                      Blueprint detected
+                    {/if}
+                    ({detectedServices.length} Service{detectedServices.length > 1 ? 's' : ''}{detectedDatabases.length > 0 ? `, ${detectedDatabases.length} Database` : ''})
                   </div>
                   <div class="text-xs" style="color: #047857; margin-top: 2px;">
                     This repository defines a multi-service stack. Review required environment variables below, or deploy all services together.
@@ -992,7 +1001,7 @@
               <div class="text-xs" style="font-weight: 700; color: #065f46; text-transform: uppercase; letter-spacing: 0.04em;">
                 Declared Blueprint Services & Databases:
               </div>
-              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.5rem;">
+              <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 0.5rem; width: 100%;">
                 {#each detectedServices as s, idx}
                   <button
                     type="button"
@@ -1005,27 +1014,29 @@
                       padding: 8px 12px; 
                       background: {selectedBlueprintIndex === idx ? 'rgba(5,150,105,0.15)' : 'var(--color-surface)'};
                       border-color: {selectedBlueprintIndex === idx ? '#059669' : 'var(--color-border)'};
+                      min-width: 0;
+                      overflow: hidden;
                     "
                     onclick={() => applyDetectedService(s, idx)}
                   >
-                    <div>
-                      <div style="font-weight: 700; font-size: 0.8125rem; color: var(--color-ink);">{s.name}</div>
-                      <div class="text-xs text-muted">
+                    <div style="min-width: 0; overflow: hidden; margin-right: 8px;">
+                      <div style="font-weight: 700; font-size: 0.8125rem; color: var(--color-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{s.name}</div>
+                      <div class="text-xs text-muted" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                         {s.kind} • {s.env || s.preset || 'custom'} {s.root_dir ? `• /${s.root_dir}` : ''} • :{s.internal_port}
                       </div>
                     </div>
-                    <span class="badge" style="background: rgba(16,185,129,0.2); color: #065f46; font-size: 0.7rem;">
+                    <span class="badge" style="background: rgba(16,185,129,0.2); color: #065f46; font-size: 0.7rem; flex-shrink: 0;">
                       {selectedBlueprintIndex === idx ? 'Active' : 'Customize'}
                     </span>
                   </button>
                 {/each}
 
                 {#each detectedDatabases as db}
-                  <div style="display: flex; align-items: center; gap: 0.5rem; padding: 8px 12px; border-radius: var(--radius-md); background: var(--color-surface); border: 1px solid var(--color-border);">
-                    <Database size={16} style="color: #0369a1;" />
-                    <div>
-                      <div style="font-weight: 700; font-size: 0.8125rem; color: var(--color-ink);">{db.name}</div>
-                      <div class="text-xs text-muted">Managed {db.engine || 'postgres'} database</div>
+                  <div style="display: flex; align-items: center; gap: 0.5rem; padding: 8px 12px; border-radius: var(--radius-md); background: var(--color-surface); border: 1px solid var(--color-border); min-width: 0; overflow: hidden;">
+                    <Database size={16} style="color: #0369a1; flex-shrink: 0;" />
+                    <div style="min-width: 0; overflow: hidden;">
+                      <div style="font-weight: 700; font-size: 0.8125rem; color: var(--color-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{db.name}</div>
+                      <div class="text-xs text-muted" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Managed {db.engine || 'postgres'} database</div>
                     </div>
                   </div>
                 {/each}
