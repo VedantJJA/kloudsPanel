@@ -134,7 +134,34 @@ func (h *Handler) provisionDatabaseInternal(ctx context.Context, projectID, name
 		engine = "postgres"
 	}
 
-	dbSlug := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(name), "_", "-"))
+	// Disambiguate database name and slug to avoid UNIQUE constraint collisions on (project_id, name) and internal_hostname
+	existingDbs, _ := h.store.Databases().ListAll(ctx)
+	existingNamesInProj := make(map[string]bool)
+	existingHostnames := make(map[string]bool)
+	for _, d := range existingDbs {
+		existingHostnames[strings.ToLower(d.InternalHostname)] = true
+		if d.ProjectID == projectID {
+			existingNamesInProj[strings.ToLower(d.Name)] = true
+		}
+	}
+
+	baseName := strings.TrimSpace(name)
+	baseSlug := strings.ToLower(strings.ReplaceAll(baseName, "_", "-"))
+
+	finalName := baseName
+	finalSlug := baseSlug
+	hostname := fmt.Sprintf("paas-db-%s", finalSlug)
+
+	counter := 1
+	for existingNamesInProj[strings.ToLower(finalName)] || existingHostnames[strings.ToLower(hostname)] {
+		counter++
+		finalName = fmt.Sprintf("%s-%d", baseName, counter)
+		finalSlug = fmt.Sprintf("%s-%d", baseSlug, counter)
+		hostname = fmt.Sprintf("paas-db-%s", finalSlug)
+	}
+
+	dbSlug := finalSlug
+	name = finalName
 	port := 5432
 	version := "16"
 	defaultUser := "postgres"
@@ -165,7 +192,6 @@ func (h *Handler) provisionDatabaseInternal(ctx context.Context, projectID, name
 
 	dbName := dbSlug
 	password := fmt.Sprintf("kp_sec_%d", time.Now().UnixNano()%1000000)
-	hostname := fmt.Sprintf("paas-db-%s", dbSlug)
 
 	var internalConnURI, externalConnURI string
 	switch engine {
