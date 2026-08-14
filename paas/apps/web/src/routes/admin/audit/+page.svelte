@@ -277,14 +277,17 @@
 {#if selectedEvent}
   <div 
     role="presentation"
-    style="position: fixed; inset: 0; background: rgba(11,31,58,0.6); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 1.5rem;"
+    style="position: fixed; inset: 0; background: rgba(11,31,58,0.65); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 1rem;"
     onclick={() => selectedEvent = null}
+    onkeydown={(e) => e.key === 'Escape' && (selectedEvent = null)}
   >
     <div 
       role="dialog"
       aria-label="Audit Event Details"
-      style="background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); width: 100%; max-width: 680px; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.3);"
+      tabindex="-1"
+      style="background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); width: 100%; max-width: 680px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.3);"
       onclick={(e) => e.stopPropagation()}
+      onkeydown={(e) => e.stopPropagation()}
     >
       <!-- Modal Header -->
       <div style="display: flex; justify-content: space-between; align-items: center; padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--color-border);">
@@ -302,8 +305,8 @@
       </div>
 
       <!-- Modal Body -->
-      <div style="padding: 1.5rem; overflow-y: auto; display: flex; flex-direction: column; gap: 1rem;">
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+      <div style="padding: 1.25rem 1.5rem; overflow-y: auto; display: flex; flex-direction: column; gap: 1rem;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem;">
           <div>
             <div class="text-xs text-muted" style="margin-bottom: 2px;">Event Action</div>
             <span class="badge" style="font-family: var(--font-mono); font-size: 0.8125rem;">

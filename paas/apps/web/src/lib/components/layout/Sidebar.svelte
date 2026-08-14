@@ -26,10 +26,11 @@
     PanelLeftOpen,
     FolderGit2,
     FolderOpen,
-    Box
+    Box,
+    X
   } from 'lucide-svelte';
+  import { isMobileNavOpen, closeMobileNav } from '$lib/stores/ui';
 
-  let sidebarOpen = $state(false);
   let isCollapsed = $state(false);
 
   // Detect context
@@ -177,7 +178,7 @@
   }
 </script>
 
-<nav class="sidebar" class:open={sidebarOpen} aria-label="Main navigation">
+<nav class="sidebar" class:open={$isMobileNavOpen} aria-label="Main navigation">
   <!-- Logo & Header with Collapse Toggle -->
   <div class="sidebar-logo" style="display:flex; justify-content:space-between; align-items:center; width:100%;">
     <div style="display:flex; align-items:center; gap:var(--sp-3);">
@@ -187,20 +188,33 @@
       {/if}
     </div>
 
-    <button
-      type="button"
-      class="btn btn-secondary"
-      style="padding:4px; min-height:28px; width:28px; height:28px; border-radius:var(--radius-sm); border:none; color:rgba(234,241,250,0.6); display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.06);"
-      onclick={toggleCollapse}
-      title={isCollapsed ? 'Expand Side Panel' : 'Contract Side Panel'}
-      aria-label={isCollapsed ? 'Expand Side Panel' : 'Contract Side Panel'}
-    >
-      {#if isCollapsed}
-        <ChevronRight size={16} />
-      {:else}
-        <ChevronLeft size={16} />
-      {/if}
-    </button>
+    <div style="display:flex; align-items:center; gap:4px;">
+      <!-- Mobile Close Button (visible only on mobile) -->
+      <button
+        type="button"
+        class="mobile-close-btn"
+        onclick={closeMobileNav}
+        aria-label="Close navigation"
+      >
+        <X size={18} />
+      </button>
+
+      <!-- Desktop Collapse Button -->
+      <button
+        type="button"
+        class="desktop-collapse-btn btn btn-secondary"
+        style="padding:4px; min-height:28px; width:28px; height:28px; border-radius:var(--radius-sm); border:none; color:rgba(234,241,250,0.6); display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.06);"
+        onclick={toggleCollapse}
+        title={isCollapsed ? 'Expand Side Panel' : 'Contract Side Panel'}
+        aria-label={isCollapsed ? 'Expand Side Panel' : 'Contract Side Panel'}
+      >
+        {#if isCollapsed}
+          <ChevronRight size={16} />
+        {:else}
+          <ChevronLeft size={16} />
+        {/if}
+      </button>
+    </div>
   </div>
 
   <!-- Context-Aware Sidebar Content -->
@@ -212,6 +226,7 @@
         class="nav-item" 
         style="padding: 6px var(--sp-2); min-height: 32px; font-size: 0.8125rem; color: rgba(234,241,250,0.6);"
         title="Back to Project"
+        onclick={closeMobileNav}
       >
         <ArrowLeft size={14} style="margin-right: 4px; flex-shrink:0;" /> 
         <span class="nav-item-text">Back to Project</span>
@@ -244,6 +259,7 @@
           class:active={isTabActive(item.href)}
           aria-current={isTabActive(item.href) ? 'page' : undefined}
           title={item.label}
+          onclick={closeMobileNav}
         >
           <span class="nav-item-icon" aria-hidden="true"><Icon size={18} /></span>
           <span class="nav-item-text">{item.label}</span>
@@ -259,6 +275,7 @@
         class="nav-item" 
         style="padding: 6px var(--sp-2); min-height: 32px; font-size: 0.8125rem; color: rgba(234,241,250,0.6);"
         title="Back to Databases"
+        onclick={closeMobileNav}
       >
         <ArrowLeft size={14} style="margin-right: 4px; flex-shrink:0;" /> 
         <span class="nav-item-text">Back to Databases</span>
@@ -291,6 +308,7 @@
           class:active={isTabActive(item.href)}
           aria-current={isTabActive(item.href) ? 'page' : undefined}
           title={item.label}
+          onclick={closeMobileNav}
         >
           <span class="nav-item-icon" aria-hidden="true"><Icon size={18} /></span>
           <span class="nav-item-text">{item.label}</span>
@@ -306,6 +324,7 @@
         class="nav-item" 
         style="padding: 6px var(--sp-2); min-height: 32px; font-size: 0.8125rem; color: rgba(234,241,250,0.6);"
         title="Back to All Workspaces"
+        onclick={closeMobileNav}
       >
         <ArrowLeft size={14} style="margin-right: 4px; flex-shrink:0;" /> 
         <span class="nav-item-text">All Workspaces</span>
@@ -338,6 +357,7 @@
           class:active={isWorkspaceTabActive(item.href)}
           aria-current={isWorkspaceTabActive(item.href) ? 'page' : undefined}
           title={item.label}
+          onclick={closeMobileNav}
         >
           <span class="nav-item-icon" aria-hidden="true"><Icon size={18} /></span>
           <span class="nav-item-text">{item.label}</span>
@@ -361,6 +381,7 @@
             class:active={isDefaultActive(item.href)}
             aria-current={isDefaultActive(item.href) ? 'page' : undefined}
             title={item.label}
+            onclick={closeMobileNav}
           >
             <span class="nav-item-icon" aria-hidden="true"><Icon size={20} /></span>
             <span class="nav-item-text">{item.label}</span>
@@ -375,7 +396,7 @@
     <button
       class="nav-item nav-item-logout"
       style="width:100%; color:rgba(234,241,250,0.6); font-size:0.8rem;"
-      onclick={handleLogout}
+      onclick={() => { closeMobileNav(); handleLogout(); }}
       title="Sign Out"
       aria-label="Sign out"
     >
@@ -385,17 +406,14 @@
   </div>
 </nav>
 
-<!-- Mobile overlay -->
-<button
-  class="sidebar-overlay"
-  style="display:{sidebarOpen ? 'block' : 'none'}; position:fixed; inset:0; z-index:99; background:rgba(11,31,58,0.5); border:none; cursor:pointer;"
-  onclick={() => (sidebarOpen = false)}
-  aria-label="Close navigation"
-></button>
-
-<style>
-  .sidebar-overlay { display: none; }
-  @media (max-width: 960px) {
-    .sidebar-overlay { display: block; }
-  }
-</style>
+<!-- Mobile backdrop overlay -->
+{#if $isMobileNavOpen}
+  <div
+    class="sidebar-backdrop"
+    onclick={closeMobileNav}
+    onkeydown={(e) => e.key === 'Escape' && closeMobileNav()}
+    tabindex="0"
+    role="button"
+    aria-label="Close navigation overlay"
+  ></div>
+{/if}

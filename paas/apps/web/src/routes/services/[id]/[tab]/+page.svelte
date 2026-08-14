@@ -449,7 +449,7 @@
   </div>
 
   <!-- Tabs -->
-  <div style="display:flex; gap:0; border-bottom:2px solid var(--color-border); margin-bottom:1.5rem; overflow-x:auto;">
+  <div class="tabs-bar" style="display:flex; gap:0; border-bottom:2px solid var(--color-border); margin-bottom:1.5rem; overflow-x:auto;">
     {#each tabs as t}
       <a
         href="/services/{id}/{t}"

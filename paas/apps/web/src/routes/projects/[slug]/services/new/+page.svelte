@@ -777,8 +777,8 @@
     <!-- Conditional Source Inputs -->
     {#if sourceType === 'git_public'}
       <div style="background: rgba(0,0,0,0.02); padding: 1.25rem; border-radius: var(--radius-md); border: 1px solid var(--color-border);">
-        <div style="display: grid; grid-template-columns: 1fr 180px 120px; gap: 1rem; align-items: flex-end;">
-          <div class="form-group" style="margin:0;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; align-items: flex-end;">
+          <div class="form-group" style="margin:0; min-width: 220px; flex: 2;">
             <label for="public-repo-url" class="form-label">Public Repository URL</label>
             <input 
               id="public-repo-url" 
@@ -1341,7 +1341,7 @@
         </div>
       {/if}
 
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.25rem;">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.25rem; margin-bottom: 1.25rem;">
         <div class="form-group" style="margin:0;">
           <label for="svc-name-input" class="form-label">Service Name</label>
           <input id="svc-name-input" type="text" class="form-input" placeholder="e.g. my-api-service" bind:value={name} required />
@@ -1367,7 +1367,7 @@
       </div>
 
       <!-- Build and Start Commands -->
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.25rem;">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.25rem; margin-bottom: 1.25rem;">
         <div class="form-group" style="margin:0;">
           <label for="build-cmd-input" class="form-label">Build Command</label>
           <input 

@@ -211,7 +211,7 @@
 </div>
 
 <!-- Provider Navigation Tabs -->
-<div style="display:flex; gap:0.75rem; margin-bottom:1.5rem; border-bottom:1px solid var(--color-border); padding-bottom:0.75rem; flex-wrap:wrap;">
+<div class="tabs-bar" style="display:flex; gap:0.75rem; margin-bottom:1.5rem; border-bottom:1px solid var(--color-border); padding-bottom:0.75rem; flex-wrap:wrap;">
   {#each (['github', 'gitlab', 'bitbucket'] as ProviderKey[]) as prov}
     {@const meta = providerMeta[prov]}
     {@const connected = gitIntegrations.find(g => g.provider === prov && g.connected)}
@@ -316,7 +316,7 @@
     </ol>
 
     <!-- App Credentials Form -->
-    <form onsubmit={saveOAuth} style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)) auto; gap:0.75rem; align-items:flex-end; border-top:1px solid var(--color-border); padding-top:1rem;">
+    <form onsubmit={saveOAuth} style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:0.75rem; align-items:flex-end; border-top:1px solid var(--color-border); padding-top:1rem;">
       <div class="form-group" style="margin:0;">
         <label class="form-label" for="app-client-id" style="font-size:0.8125rem;">{current.keyLabel}</label>
         {#if activeTab === 'github'}
@@ -364,7 +364,7 @@
           </div>
         {/if}
 
-        <form onsubmit={saveManualToken} style="display:grid; grid-template-columns:1fr 2fr auto; gap:0.75rem; align-items:flex-end;">
+        <form onsubmit={saveManualToken} style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:0.75rem; align-items:flex-end;">
           <div class="form-group" style="margin:0;">
             <label class="form-label" for="manual-username" style="font-size:0.8125rem;">Username</label>
             <input id="manual-username" type="text" class="form-input" placeholder="e.g. your-git-username" bind:value={manualUsername} required />
