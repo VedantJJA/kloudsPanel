@@ -277,18 +277,18 @@ RUN %s
 RUN mkdir -p /dist && if [ -d dist ]; then cp -a dist/. /dist/; elif [ -d build ]; then cp -a build/. /dist/; elif [ -d public ]; then cp -a public/. /dist/; else cp -a . /dist/; fi
 
 FROM nginx:alpine
-RUN printf 'server {\n    listen 80;\n    server_name _;\n    root /usr/share/nginx/html;\n    index index.html;\n%s    location / {\n        try_files $uri $uri/ /index.html;\n    }\n}\n' > /etc/nginx/conf.d/default.conf
+COPY nginx.default.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder /dist /usr/share/nginx/html
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
-`, bCmd, proxyDirective)
+`, bCmd)
 		}
 		return fmt.Sprintf(`FROM nginx:alpine
-RUN printf 'server {\n    listen 80;\n    server_name _;\n    root /usr/share/nginx/html;\n    index index.html;\n%s    location / {\n        try_files $uri $uri/ /index.html;\n    }\n}\n' > /etc/nginx/conf.d/default.conf
+COPY nginx.default.conf /etc/nginx/conf.d/default.conf
 COPY . /usr/share/nginx/html
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
-`, proxyDirective)
+`)
 
 	default:
 		sCmd := startCmd
@@ -549,6 +549,10 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 					}
 				}
 			}
+
+			// Generate nginx.default.conf on disk so COPY in Dockerfile works without shell escaping issues
+			nginxConf := fmt.Sprintf("server {\n    listen 80;\n    server_name _;\n    root /usr/share/nginx/html;\n    index index.html;\n%s    location / {\n        try_files $uri $uri/ /index.html;\n    }\n}\n", backendProxyDirective)
+			_ = os.WriteFile(filepath.Join(contextDir, "nginx.default.conf"), []byte(nginxConf), 0644)
 		}
 
 		// Step 4: Check if Dockerfile exists or generate one
