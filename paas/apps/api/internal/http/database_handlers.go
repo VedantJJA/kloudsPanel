@@ -671,6 +671,245 @@ func cleanupDatabaseResources(name, internalHostname string) {
 	}
 }
 
+type SchemaColumn struct {
+	Name         string `json:"name"`
+	Type         string `json:"type"`
+	IsPrimary    bool   `json:"is_primary"`
+	IsForeign    bool   `json:"is_foreign"`
+	Nullable     bool   `json:"nullable"`
+	DefaultValue string `json:"default_value,omitempty"`
+}
+
+type SchemaTable struct {
+	Name        string         `json:"name"`
+	Columns     []SchemaColumn `json:"columns"`
+	ColumnCount int            `json:"column_count"`
+}
+
+type SchemaRelationship struct {
+	FromTable      string `json:"from_table"`
+	FromColumn     string `json:"from_column"`
+	ToTable        string `json:"to_table"`
+	ToColumn       string `json:"to_column"`
+	ConstraintName string `json:"constraint_name,omitempty"`
+}
+
+type DatabaseSchemaResponse struct {
+	Engine        string               `json:"engine"`
+	DatabaseName  string               `json:"database_name"`
+	Tables        []SchemaTable        `json:"tables"`
+	Relationships []SchemaRelationship `json:"relationships"`
+	TableCount    int                  `json:"table_count"`
+}
+
+func (h *Handler) handleGetDatabaseSchema(c fiber.Ctx) error {
+	id := c.Params("id")
+	db, err := h.store.Databases().GetByID(c.Context(), id)
+	if err != nil || db == nil {
+		return c.Status(404).JSON(fiber.Map{"error": "database not found"})
+	}
+
+	var meta struct {
+		Username     string `json:"username"`
+		Password     string `json:"password"`
+		DatabaseName string `json:"databaseName"`
+	}
+	_ = json.Unmarshal([]byte(db.ResourceJSON), &meta)
+
+	containerName := db.InternalHostname
+	if containerName == "" {
+		containerName = fmt.Sprintf("paas-db-%s", strings.ToLower(db.Name))
+	}
+
+	_ = h.ensureDatabaseContainerRunning(c.Context(), db)
+
+	tablesMap := make(map[string]*SchemaTable)
+	var tablesOrder []string
+	var relationships []SchemaRelationship
+
+	if db.Engine == "postgres" || db.Engine == "" {
+		// 1. Fetch columns and primary keys
+		colsQuery := `SELECT c.table_name, c.column_name, c.data_type, c.is_nullable, COALESCE(c.column_default, '') as column_default, CASE WHEN tc.constraint_type = 'PRIMARY KEY' THEN 'true' ELSE 'false' END as is_primary FROM information_schema.columns c LEFT JOIN information_schema.key_column_usage kcu ON c.table_name = kcu.table_name AND c.column_name = kcu.column_name AND c.table_schema = kcu.table_schema LEFT JOIN information_schema.table_constraints tc ON kcu.constraint_name = tc.constraint_name AND kcu.table_schema = tc.table_schema AND tc.constraint_type = 'PRIMARY KEY' WHERE c.table_schema = 'public' ORDER BY c.table_name, c.ordinal_position;`
+		cmd := exec.Command("docker", "exec", containerName, "psql", "-U", meta.Username, "-d", meta.DatabaseName, "-c", colsQuery, "--csv")
+		out, err := cmd.CombinedOutput()
+		if err == nil {
+			r := csv.NewReader(bytes.NewReader(out))
+			rows, _ := r.ReadAll()
+			if len(rows) > 1 {
+				for _, row := range rows[1:] {
+					if len(row) >= 6 {
+						tableName := row[0]
+						colName := row[1]
+						dataType := row[2]
+						isNullable := row[3] == "YES"
+						colDef := row[4]
+						isPrimary := row[5] == "true"
+
+						tbl, exists := tablesMap[tableName]
+						if !exists {
+							tbl = &SchemaTable{Name: tableName, Columns: []SchemaColumn{}}
+							tablesMap[tableName] = tbl
+							tablesOrder = append(tablesOrder, tableName)
+						}
+						tbl.Columns = append(tbl.Columns, SchemaColumn{
+							Name:         colName,
+							Type:         dataType,
+							IsPrimary:    isPrimary,
+							Nullable:     isNullable,
+							DefaultValue: colDef,
+						})
+					}
+				}
+			}
+		}
+
+		// 2. Fetch foreign key relationships
+		fkQuery := `SELECT tc.table_name as from_table, kcu.column_name as from_column, ccu.table_name AS to_table, ccu.column_name AS to_column, tc.constraint_name FROM information_schema.table_constraints AS tc JOIN information_schema.key_column_usage AS kcu ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema JOIN information_schema.constraint_column_usage AS ccu ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = 'public';`
+		fkCmd := exec.Command("docker", "exec", containerName, "psql", "-U", meta.Username, "-d", meta.DatabaseName, "-c", fkQuery, "--csv")
+		fkOut, fkErr := fkCmd.CombinedOutput()
+		if fkErr == nil {
+			r := csv.NewReader(bytes.NewReader(fkOut))
+			rows, _ := r.ReadAll()
+			if len(rows) > 1 {
+				for _, row := range rows[1:] {
+					if len(row) >= 4 {
+						fromTbl := row[0]
+						fromCol := row[1]
+						toTbl := row[2]
+						toCol := row[3]
+						cName := ""
+						if len(row) >= 5 {
+							cName = row[4]
+						}
+						relationships = append(relationships, SchemaRelationship{
+							FromTable:      fromTbl,
+							FromColumn:     fromCol,
+							ToTable:        toTbl,
+							ToColumn:       toCol,
+							ConstraintName: cName,
+						})
+						// Mark column as foreign in tablesMap
+						if tbl, ok := tablesMap[fromTbl]; ok {
+							for i := range tbl.Columns {
+								if tbl.Columns[i].Name == fromCol {
+									tbl.Columns[i].IsForeign = true
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	} else if db.Engine == "mysql" {
+		// MySQL schema extraction
+		colsQuery := fmt.Sprintf("SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COALESCE(COLUMN_DEFAULT, ''), CASE WHEN COLUMN_KEY = 'PRI' THEN '1' ELSE '0' END FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = '%s' ORDER BY TABLE_NAME, ORDINAL_POSITION;", meta.DatabaseName)
+		cmd := exec.Command("docker", "exec", containerName, "mysql", "-u", meta.Username, fmt.Sprintf("-p%s", meta.Password), meta.DatabaseName, "-e", colsQuery, "--batch", "--raw")
+		out, err := cmd.CombinedOutput()
+		if err == nil {
+			lines := strings.Split(string(out), "\n")
+			if len(lines) > 1 {
+				for _, line := range lines[1:] {
+					parts := strings.Split(line, "\t")
+					if len(parts) >= 6 {
+						tableName := parts[0]
+						colName := parts[1]
+						dataType := parts[2]
+						isNullable := parts[3] == "YES"
+						colDef := parts[4]
+						isPrimary := parts[5] == "1"
+
+						tbl, exists := tablesMap[tableName]
+						if !exists {
+							tbl = &SchemaTable{Name: tableName, Columns: []SchemaColumn{}}
+							tablesMap[tableName] = tbl
+							tablesOrder = append(tablesOrder, tableName)
+						}
+						tbl.Columns = append(tbl.Columns, SchemaColumn{
+							Name:         colName,
+							Type:         dataType,
+							IsPrimary:    isPrimary,
+							Nullable:     isNullable,
+							DefaultValue: colDef,
+						})
+					}
+				}
+			}
+		}
+
+		fkQuery := fmt.Sprintf("SELECT TABLE_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME, CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = '%s' AND REFERENCED_TABLE_NAME IS NOT NULL;", meta.DatabaseName)
+		fkCmd := exec.Command("docker", "exec", containerName, "mysql", "-u", meta.Username, fmt.Sprintf("-p%s", meta.Password), meta.DatabaseName, "-e", fkQuery, "--batch", "--raw")
+		fkOut, fkErr := fkCmd.CombinedOutput()
+		if fkErr == nil {
+			lines := strings.Split(string(fkOut), "\n")
+			if len(lines) > 1 {
+				for _, line := range lines[1:] {
+					parts := strings.Split(line, "\t")
+					if len(parts) >= 4 {
+						fromTbl := parts[0]
+						fromCol := parts[1]
+						toTbl := parts[2]
+						toCol := parts[3]
+						cName := ""
+						if len(parts) >= 5 {
+							cName = parts[4]
+						}
+						relationships = append(relationships, SchemaRelationship{
+							FromTable:      fromTbl,
+							FromColumn:     fromCol,
+							ToTable:        toTbl,
+							ToColumn:       toCol,
+							ConstraintName: cName,
+						})
+						if tbl, ok := tablesMap[fromTbl]; ok {
+							for i := range tbl.Columns {
+								if tbl.Columns[i].Name == fromCol {
+									tbl.Columns[i].IsForeign = true
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	} else if db.Engine == "mongodb" {
+		// MongoDB collections
+		cmd := exec.Command("docker", "exec", containerName, "mongosh", "-u", meta.Username, "-p", meta.Password, "--authenticationDatabase", "admin", meta.DatabaseName, "--quiet", "--eval", "db.getCollectionNames().join(',')")
+		out, err := cmd.CombinedOutput()
+		if err == nil {
+			colls := strings.Split(strings.TrimSpace(string(out)), ",")
+			for _, cName := range colls {
+				cName = strings.TrimSpace(cName)
+				if cName != "" {
+					tablesMap[cName] = &SchemaTable{
+						Name: cName,
+						Columns: []SchemaColumn{
+							{Name: "_id", Type: "ObjectId", IsPrimary: true},
+							{Name: "document", Type: "BSON / Object", IsPrimary: false},
+						},
+					}
+					tablesOrder = append(tablesOrder, cName)
+				}
+			}
+		}
+	}
+
+	var tables []SchemaTable
+	for _, name := range tablesOrder {
+		if t, ok := tablesMap[name]; ok {
+			t.ColumnCount = len(t.Columns)
+			tables = append(tables, *t)
+		}
+	}
+
+	return c.JSON(DatabaseSchemaResponse{
+		Engine:        string(db.Engine),
+		DatabaseName:  meta.DatabaseName,
+		Tables:        tables,
+		Relationships: relationships,
+		TableCount:    len(tables),
+	})
+}
+
 func (h *Handler) handleDeleteDatabase(c fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" || id == "undefined" {

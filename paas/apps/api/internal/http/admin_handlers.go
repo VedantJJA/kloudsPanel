@@ -113,19 +113,10 @@ func (h *Handler) handleListAuditEvents(c fiber.Ctx) error {
 	return c.JSON(fiber.Map{"events": events})
 }
 
-var (
-	dbAidMu      sync.RWMutex
-	dbAidEnabled = true
-)
-
 func (h *Handler) handleGetPlatformSettings(c fiber.Ctx) error {
 	autoApproveMu.RLock()
 	autoApprove := autoApproveUsers
 	autoApproveMu.RUnlock()
-
-	dbAidMu.RLock()
-	dbAid := dbAidEnabled
-	dbAidMu.RUnlock()
 
 	ghClient, ghSecret := getProviderOAuthCredentials("github")
 	glClient, glSecret := getProviderOAuthCredentials("gitlab")
@@ -137,7 +128,6 @@ func (h *Handler) handleGetPlatformSettings(c fiber.Ctx) error {
 			"acme_email":              "",
 			"dns_mode":                "http-01",
 			"auto_approve_users":      autoApprove,
-			"db_aid_enabled":          dbAid,
 			"github_client_id":        ghClient,
 			"github_client_secret":    ghSecret,
 			"gitlab_client_id":        glClient,
@@ -151,7 +141,6 @@ func (h *Handler) handleGetPlatformSettings(c fiber.Ctx) error {
 func (h *Handler) handleUpdatePlatformSettings(c fiber.Ctx) error {
 	var req struct {
 		AutoApproveUsers      *bool  `json:"auto_approve_users"`
-		DbAidEnabled          *bool  `json:"db_aid_enabled"`
 		GitHubClientID        string `json:"github_client_id"`
 		GitHubClientSecret    string `json:"github_client_secret"`
 		GitLabClientID        string `json:"gitlab_client_id"`
@@ -164,11 +153,6 @@ func (h *Handler) handleUpdatePlatformSettings(c fiber.Ctx) error {
 			autoApproveMu.Lock()
 			autoApproveUsers = *req.AutoApproveUsers
 			autoApproveMu.Unlock()
-		}
-		if req.DbAidEnabled != nil {
-			dbAidMu.Lock()
-			dbAidEnabled = *req.DbAidEnabled
-			dbAidMu.Unlock()
 		}
 		if req.GitHubClientID != "" {
 			setProviderOAuthCredentials("github", req.GitHubClientID, req.GitHubClientSecret)
@@ -229,13 +213,9 @@ func (h *Handler) handlePruneStorage(c fiber.Ctx) error {
 		logs = append(logs, "Stopped build containers removed.")
 	}
 
-	// 4. Prune orphaned anonymous volumes
-	out4, _ := exec.Command("docker", "volume", "prune", "-f").CombinedOutput()
-	if len(out4) > 0 {
-		logs = append(logs, "Orphaned volumes removed.")
-	}
+	// NOTE: Volumes are NEVER pruned during storage reclamation to guarantee all database and persistent volumes remain 100% intact.
 
-	// 5. Clean systemd journal logs (Linux VPS)
+	// 4. Clean systemd journal logs (Linux VPS)
 	_ = exec.Command("journalctl", "--vacuum-time=2d").Run()
 
 	// 6. Clean APT package cache

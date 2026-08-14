@@ -23,16 +23,15 @@
     Sparkles
   } from 'lucide-svelte';
 
-  type SettingsTab = 'assist' | 'domain' | 'git' | 'security';
+  type SettingsTab = 'general' | 'domain' | 'git' | 'security';
 
-  let activeTab = $state<SettingsTab>('assist');
+  let activeTab = $state<SettingsTab>('general');
 
   // Platform state
   let rootDomain = $state('');
   let acmeEmail = $state('');
   let dnsMode = $state('http-01');
   let autoApprove = $state(true);
-  let dbAidEnabled = $state(true);
 
   // Storage Maintenance state
   let pruning = $state(false);
@@ -53,7 +52,6 @@
   let saved = $state(false);
   let error = $state('');
 
-  let dbAidSaving = $state(false);
   let autoApproveSaving = $state(false);
 
   async function handleReclaimStorage() {
@@ -95,7 +93,6 @@
         acmeEmail = s.acme_email ?? '';
         dnsMode = s.dns_mode ?? 'http-01';
         autoApprove = s.auto_approve_users ?? true;
-        dbAidEnabled = s.db_aid_enabled ?? true;
         githubClientId = s.github_client_id ?? '';
         githubClientSecret = s.github_client_secret ?? '';
         gitlabClientId = s.gitlab_client_id ?? '';
@@ -108,24 +105,6 @@
       }
     } catch {} finally {
       loading = false;
-    }
-  }
-
-  async function toggleDbAid() {
-    dbAidSaving = true;
-    try {
-      const nextVal = !dbAidEnabled;
-      const res = await fetch('/api/v1/admin/settings', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ db_aid_enabled: nextVal })
-      });
-      if (res.ok) {
-        dbAidEnabled = nextVal;
-      }
-    } catch {} finally {
-      dbAidSaving = false;
     }
   }
 
@@ -199,7 +178,7 @@
   });
 
   const tabs: Array<{ id: SettingsTab; label: string; icon: any; count?: number }> = [
-    { id: 'assist', label: 'Assist & Preferences', icon: Zap },
+    { id: 'general', label: 'General & Maintenance', icon: Sliders },
     { id: 'domain', label: 'Domain & SSL/TLS', icon: Globe },
     { id: 'git', label: 'Git Integrations', icon: FolderGit2 },
     { id: 'security', label: 'Security & Access', icon: ShieldCheck }
@@ -213,7 +192,7 @@
 <div class="page-header" style="margin-bottom: 1.25rem;">
   <div>
     <h1 class="page-title">Platform Settings & Setup</h1>
-    <p class="page-subtitle">Configure root domain, TLS certificates, database assist mode, and platform infrastructure</p>
+    <p class="page-subtitle">Configure root domain, TLS certificates, storage maintenance, and platform infrastructure</p>
   </div>
 </div>
 
@@ -256,49 +235,10 @@
   </div>
 {:else}
   <!-- ══════════════════════════════════════════════════════════════════════════ -->
-  <!-- TAB 1: ASSIST MODE & PREFERENCES                                          -->
+  <!-- TAB 1: GENERAL & MAINTENANCE                                               -->
   <!-- ══════════════════════════════════════════════════════════════════════════ -->
-  {#if activeTab === 'assist'}
+  {#if activeTab === 'general'}
     <div style="display:flex; flex-direction:column; gap:1.5rem; max-width:840px;">
-      <!-- Database Assist Mode Card -->
-      <div class="card" style="background: var(--color-surface); border: 1.5px solid var(--color-accent); padding: 1.5rem;">
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
-          <div style="display:flex; align-items:flex-start; gap:1rem; max-width:580px;">
-            <div style="width:44px; height:44px; border-radius:var(--radius-md); background:rgba(0,166,166,0.12); color:var(--color-accent); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-              <Zap size={24} />
-            </div>
-            <div>
-              <div style="font-weight:700; font-size:1.05rem; color:var(--color-ink); display:flex; align-items:center; gap:8px;">
-                Database Assist Mode & Command Abstractions
-                {#if dbAidEnabled}
-                  <span class="badge badge-running" style="font-size:0.75rem;">Active</span>
-                {:else}
-                  <span class="badge badge-stopped" style="font-size:0.75rem;">Disabled</span>
-                {/if}
-              </div>
-              <p class="text-xs text-muted" style="margin:4px 0 0 0; line-height:1.5;">
-                When active, all PostgreSQL, MySQL, Redis, MongoDB, and ClickHouse instances expose 1-click execution buttons for table statistics, vacuuming, active processlists, and cache flushes directly in the console.
-              </p>
-            </div>
-          </div>
-
-          <button 
-            type="button" 
-            class="btn {dbAidEnabled ? 'btn-primary' : 'btn-secondary'}" 
-            onclick={toggleDbAid}
-            disabled={dbAidSaving}
-            style="padding:10px 22px; font-weight:700; font-size:0.875rem;"
-          >
-            {#if dbAidSaving}
-              <Loader2 size={16} class="animate-spin" /> Updating…
-            {:else if dbAidEnabled}
-              Assist Mode: ON (Disable)
-            {:else}
-              Assist Mode: OFF (Enable)
-            {/if}
-          </button>
-        </div>
-      </div>
 
       <!-- User Auto-Approve Policy Card -->
       <div class="card" style="background: var(--color-surface); border: 1px solid var(--color-border); padding: 1.5rem;">

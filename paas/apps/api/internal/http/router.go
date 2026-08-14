@@ -124,6 +124,7 @@ func NewServer(log *slog.Logger, store repository.Store, addr string) *fiber.App
 	db.Get("/:id", h.handleGetDatabase)
 	db.Post("/:id/restart", h.handleRestartDatabase)
 	db.Post("/:id/query", h.handleExecuteDatabaseQuery)
+	db.Get("/:id/schema", h.handleGetDatabaseSchema)
 	db.Get("/:id/logs", h.handleGetDatabaseLogs)
 	db.Delete("/:id", h.handleDeleteDatabase)
 

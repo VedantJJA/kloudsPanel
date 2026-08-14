@@ -24,14 +24,24 @@
     Download,
     Zap,
     Sparkles,
-    Wrench
+    Wrench,
+    Network,
+    Table,
+    Link,
+    Search,
+    ZoomIn,
+    ZoomOut,
+    Maximize2,
+    Move,
+    Layers,
+    Share2,
+    Plus
   } from 'lucide-svelte';
 
   const { id, tab } = $derived($page.params);
-  const tabs = ['overview', 'query', 'logs', 'settings'];
+  const tabs = ['overview', 'query', 'visualizer', 'logs', 'settings'];
 
   let database = $state<any>(null);
-  let dbAidEnabled = $state(true);
   let loading = $state(true);
   let actionLoading = $state(false);
   let copied = $state(false);
@@ -52,6 +62,19 @@
     rawOutput?: string;
     error?: string;
   } | null>(null);
+
+  // Database Schema & ER Diagram state
+  let schemaData = $state<any>(null);
+  let schemaLoading = $state(false);
+  let searchTable = $state('');
+  let zoomLevel = $state(1);
+  let panOffset = $state({ x: 50, y: 50 });
+  let isPanning = $state(false);
+  let panStart = $state({ x: 0, y: 0 });
+  let tablePositions = $state<Record<string, { x: number; y: number }>>({});
+  let activeDragTable = $state<string | null>(null);
+  let dragOffset = $state({ x: 0, y: 0 });
+  let selectedTable = $state<string | null>(null);
 
   async function loadDatabase() {
     try {
@@ -90,35 +113,209 @@
     } catch {}
   }
 
-  async function checkDbAidStatus() {
+  async function loadSchema() {
+    schemaLoading = true;
     try {
-      const res = await fetch('/api/v1/admin/settings', { credentials: 'include' });
+      const res = await fetch(`/api/v1/databases/${id}/schema`, { credentials: 'include' });
       if (res.ok) {
-        const d = await res.json();
-        if (d.settings?.db_aid_enabled !== undefined) {
-          dbAidEnabled = d.settings.db_aid_enabled;
-        }
+        schemaData = await res.json();
+        autoArrangeTables(schemaData.tables || []);
       }
-    } catch {}
+    } catch (e) {
+      console.error(e);
+    } finally {
+      schemaLoading = false;
+    }
   }
 
-  let dbAidSaving = $state(false);
+  function autoArrangeTables(tables: any[]) {
+    const cols = Math.ceil(Math.sqrt(tables.length || 1)) || 3;
+    const colWidth = 320;
+    const rowHeight = 340;
+    const pos: Record<string, { x: number; y: number }> = {};
+    tables.forEach((t, i) => {
+      if (!tablePositions[t.name]) {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        pos[t.name] = {
+          x: 60 + col * colWidth,
+          y: 60 + row * rowHeight
+        };
+      } else {
+        pos[t.name] = tablePositions[t.name];
+      }
+    });
+    tablePositions = pos;
+  }
 
-  async function toggleDbAid() {
-    dbAidSaving = true;
+  function handleCanvasMouseDown(e: MouseEvent) {
+    if ((e.target as HTMLElement).closest('.table-node') || (e.target as HTMLElement).closest('.canvas-toolbar') || (e.target as HTMLElement).closest('button') || (e.target as HTMLElement).closest('input')) {
+      return;
+    }
+    isPanning = true;
+    panStart = { x: e.clientX - panOffset.x, y: e.clientY - panOffset.y };
+  }
+
+  function handleCanvasMouseMove(e: MouseEvent) {
+    if (isPanning) {
+      panOffset = {
+        x: e.clientX - panStart.x,
+        y: e.clientY - panStart.y
+      };
+    } else if (activeDragTable) {
+      tablePositions = {
+        ...tablePositions,
+        [activeDragTable]: {
+          x: Math.max(0, (e.clientX - dragOffset.x - panOffset.x) / zoomLevel),
+          y: Math.max(0, (e.clientY - dragOffset.y - panOffset.y) / zoomLevel)
+        }
+      };
+    }
+  }
+
+  function handleCanvasMouseUp() {
+    isPanning = false;
+    activeDragTable = null;
+  }
+
+  function handleTableMouseDown(e: MouseEvent, tableName: string) {
+    e.stopPropagation();
+    activeDragTable = tableName;
+    const currentPos = tablePositions[tableName] || { x: 100, y: 100 };
+    dragOffset = {
+      x: e.clientX - (currentPos.x * zoomLevel + panOffset.x),
+      y: e.clientY - (currentPos.y * zoomLevel + panOffset.y)
+    };
+    selectedTable = tableName;
+  }
+
+  function zoomIn() {
+    zoomLevel = Math.min(2.0, Number((zoomLevel + 0.15).toFixed(2)));
+  }
+
+  function zoomOut() {
+    zoomLevel = Math.max(0.4, Number((zoomLevel - 0.15).toFixed(2)));
+  }
+
+  function resetView() {
+    zoomLevel = 1;
+    panOffset = { x: 50, y: 50 };
+    if (schemaData?.tables) {
+      autoArrangeTables(schemaData.tables);
+    }
+  }
+
+  function calculateConnectorPath(rel: any) {
+    const fromPos = tablePositions[rel.from_table];
+    const toPos = tablePositions[rel.to_table];
+    if (!fromPos || !toPos) return '';
+
+    const width = 270;
+    const fromX = fromPos.x < toPos.x ? fromPos.x + width : fromPos.x;
+    const fromY = fromPos.y + 45;
+    const toX = fromPos.x < toPos.x ? toPos.x : toPos.x + width;
+    const toY = toPos.y + 45;
+
+    const dx = Math.abs(toX - fromX) * 0.5;
+    const cx1 = fromPos.x < toPos.x ? fromX + dx : fromX - dx;
+    const cx2 = fromPos.x < toPos.x ? toX - dx : toX + dx;
+
+    return `M ${fromX} ${fromY} C ${cx1} ${fromY}, ${cx2} ${toY}, ${toX} ${toY}`;
+  }
+
+  async function createSampleEcommerceSchema() {
+    if (!confirm('Load sample E-Commerce schema (Users, Categories, Products, Orders, OrderItems)?')) return;
+    actionLoading = true;
     try {
-      const nextVal = !dbAidEnabled;
-      const res = await fetch('/api/v1/admin/settings', {
-        method: 'PATCH',
+      let sampleSql = '';
+      if (database?.engine === 'mysql') {
+        sampleSql = `
+          CREATE TABLE IF NOT EXISTS users (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            email VARCHAR(255) NOT NULL UNIQUE,
+            full_name VARCHAR(100) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );
+          CREATE TABLE IF NOT EXISTS categories (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100) NOT NULL,
+            slug VARCHAR(100) NOT NULL UNIQUE
+          );
+          CREATE TABLE IF NOT EXISTS products (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            category_id INT NOT NULL,
+            name VARCHAR(255) NOT NULL,
+            price DECIMAL(10,2) NOT NULL,
+            stock INT DEFAULT 0,
+            FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+          );
+          CREATE TABLE IF NOT EXISTS orders (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            total_amount DECIMAL(10,2) NOT NULL,
+            status VARCHAR(50) DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+          );
+          CREATE TABLE IF NOT EXISTS order_items (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            order_id INT NOT NULL,
+            product_id INT NOT NULL,
+            quantity INT NOT NULL,
+            price DECIMAL(10,2) NOT NULL,
+            FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+            FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+          );
+        `;
+      } else {
+        sampleSql = `
+          CREATE TABLE IF NOT EXISTS users (
+            id BIGSERIAL PRIMARY KEY,
+            email VARCHAR(255) NOT NULL UNIQUE,
+            full_name VARCHAR(100) NOT NULL,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          );
+          CREATE TABLE IF NOT EXISTS categories (
+            id BIGSERIAL PRIMARY KEY,
+            name VARCHAR(100) NOT NULL,
+            slug VARCHAR(100) NOT NULL UNIQUE
+          );
+          CREATE TABLE IF NOT EXISTS products (
+            id BIGSERIAL PRIMARY KEY,
+            category_id BIGINT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+            name VARCHAR(255) NOT NULL,
+            price NUMERIC(10,2) NOT NULL,
+            stock INT DEFAULT 0
+          );
+          CREATE TABLE IF NOT EXISTS orders (
+            id BIGSERIAL PRIMARY KEY,
+            user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            total_amount NUMERIC(10,2) NOT NULL,
+            status VARCHAR(50) DEFAULT 'pending',
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          );
+          CREATE TABLE IF NOT EXISTS order_items (
+            id BIGSERIAL PRIMARY KEY,
+            order_id BIGINT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+            product_id BIGINT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+            quantity INT NOT NULL,
+            price NUMERIC(10,2) NOT NULL
+          );
+        `;
+      }
+      const res = await fetch(`/api/v1/databases/${id}/query`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ db_aid_enabled: nextVal })
+        body: JSON.stringify({ query: sampleSql })
       });
       if (res.ok) {
-        dbAidEnabled = nextVal;
+        await loadSchema();
       }
-    } catch {} finally {
-      dbAidSaving = false;
+    } catch (e: any) {
+      alert('Failed to create sample schema: ' + e.message);
+    } finally {
+      actionLoading = false;
     }
   }
 
@@ -146,19 +343,8 @@
     }
   }
 
-  function executeAidCommand(cmd: string) {
-    queryText = cmd;
-    if (tab !== 'query') {
-      goto(`/databases/${id}/query`);
-    }
-    setTimeout(() => {
-      runQuery();
-    }, 150);
-  }
-
   onMount(() => {
     loadDatabase();
-    checkDbAidStatus();
     pollInterval = setInterval(() => {
       if (tab === 'logs') {
         fetchLogs();
@@ -168,6 +354,12 @@
         loadDatabase();
       }
     }, 2500);
+  });
+
+  $effect(() => {
+    if (tab === 'visualizer' && !schemaData && !schemaLoading) {
+      loadSchema();
+    }
   });
 
   onDestroy(() => {
@@ -198,84 +390,60 @@
       username: user,
       password: pass,
       databaseName: dbName,
-      internalHost,
-      internalPort,
-      externalHost,
-      externalPort,
       internalConnectionUri: internalUri,
       externalConnectionUri: externalUri,
-      connectionUri: externalUri,
-      psqlCommand: raw.psqlCommand || (engine === 'postgres' ? `psql "${externalUri}?sslmode=disable"` : `mysql -h ${externalHost} -P ${externalPort} -u ${user} -p ${dbName}`)
+      externalHost: externalHost,
+      externalPort: externalPort
     };
   });
 
-  function copyText(text: string, fieldName: string = 'main') {
-    navigator.clipboard.writeText(text);
-    if (fieldName === 'main') {
-      copied = true;
-      setTimeout(() => copied = false, 2500);
-    } else {
-      copiedField = fieldName;
-      setTimeout(() => copiedField = null, 2500);
+  const cliCommand = $derived.by(() => {
+    const engine = database?.engine || 'postgres';
+    const m = parsedMeta;
+    switch (engine) {
+      case 'postgres':
+        return `psql "${m.externalConnectionUri}"`;
+      case 'mysql':
+        return `mysql -h ${m.externalHost} -P ${m.externalPort} -u ${m.username} -p ${m.databaseName}`;
+      case 'redis':
+        return `redis-cli -h ${m.externalHost} -p ${m.externalPort} -a "${m.password}"`;
+      case 'mongodb':
+        return `mongosh "${m.externalConnectionUri}"`;
+      case 'clickhouse':
+        return `clickhouse-client --host ${m.externalHost} --port ${m.externalPort} --user ${m.username} --password "${m.password}" --database ${m.databaseName}`;
+      default:
+        return `psql "${m.externalConnectionUri}"`;
     }
-  }
+  });
 
-  async function runQuery() {
-    if (!queryText.trim() || queryLoading) return;
-    queryLoading = true;
-    queryResult = null;
-
+  async function copyText(text: string, fieldName: string = 'general') {
     try {
-      const res = await fetch(`/api/v1/databases/${id}/query`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ query: queryText.trim() })
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        queryResult = {
-          error: data.error || 'Query execution failed',
-          durationMs: data.durationMs || 0
-        };
-      } else {
-        queryResult = data;
-      }
-    } catch (e: any) {
-      queryResult = {
-        error: 'Network / API Error: ' + e.message,
-        durationMs: 0
-      };
-    } finally {
-      queryLoading = false;
+      await navigator.clipboard.writeText(text);
+      copied = true;
+      copiedField = fieldName;
+      setTimeout(() => {
+        copied = false;
+        copiedField = null;
+      }, 2000);
+    } catch (e) {
+      console.error(e);
     }
-  }
-
-  function setTemplateQuery(q: string) {
-    queryText = q;
-    runQuery();
   }
 
   async function restartDatabase() {
-    if (!confirm('Are you sure you want to restart this database container?')) return;
     actionLoading = true;
     try {
       const res = await fetch(`/api/v1/databases/${id}/restart`, { method: 'POST', credentials: 'include' });
       if (res.ok) {
         await loadDatabase();
-      } else {
-        alert('Failed to restart database');
       }
-    } catch (e: any) {
-      alert('Error: ' + e.message);
     } finally {
       actionLoading = false;
     }
   }
 
   async function deleteDatabase() {
-    if (!confirm(`Are you sure you want to permanently delete database "${database?.name || id}"? All stored data and tables will be erased.`)) return;
+    if (!confirm(`Are you sure you want to permanently delete database "${database?.name}"? All data inside will be permanently lost.`)) return;
     actionLoading = true;
     try {
       const res = await fetch(`/api/v1/databases/${id}`, { method: 'DELETE', credentials: 'include' });
@@ -283,38 +451,48 @@
         goto('/databases');
       } else {
         alert('Failed to delete database');
-        actionLoading = false;
       }
-    } catch (e: any) {
-      alert('Error: ' + e.message);
+    } finally {
       actionLoading = false;
     }
   }
 
-  const cliCommand = $derived.by(() => {
-    const eng = database?.engine || 'postgres';
-    const extUri = parsedMeta.externalConnectionUri;
-    const extHost = parsedMeta.externalHost;
-    const extPort = parsedMeta.externalPort;
-    const user = parsedMeta.username;
-    const db = parsedMeta.databaseName;
-
-    switch (eng) {
-      case 'postgres': {
-        const uri = extUri?.includes('sslmode=') ? extUri : (extUri?.includes('?') ? `${extUri}&sslmode=disable` : `${extUri}?sslmode=disable`);
-        return `psql "${uri}"`;
+  async function runQuery() {
+    if (!queryText.trim()) return;
+    queryLoading = true;
+    queryResult = null;
+    try {
+      const res = await fetch(`/api/v1/databases/${id}/query`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ query: queryText })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        queryResult = data;
+      } else {
+        queryResult = { error: data.error || 'Failed to execute query' };
       }
-      case 'mysql':
-        return `mysql -h ${extHost} -P ${extPort} -u ${user} -p ${db}`;
-      case 'redis':
-        return `redis-cli -h ${extHost} -p ${extPort} -a "${parsedMeta.password}"`;
-      case 'mongodb':
-        return `mongosh "${extUri}"`;
-      case 'clickhouse':
-        return `clickhouse-client --host ${extHost} --port ${extPort} --user ${user} --database ${db}`;
-      default:
-        return `${eng} "${extUri}"`;
+    } catch (e: any) {
+      queryResult = { error: e.message };
+    } finally {
+      queryLoading = false;
     }
+  }
+
+  function setTemplateQuery(q: string) {
+    queryText = q;
+  }
+
+  const filteredTables = $derived.by(() => {
+    if (!schemaData?.tables) return [];
+    if (!searchTable.trim()) return schemaData.tables;
+    const q = searchTable.toLowerCase().trim();
+    return schemaData.tables.filter((t: any) => 
+      t.name.toLowerCase().includes(q) || 
+      t.columns?.some((c: any) => c.name.toLowerCase().includes(q))
+    );
   });
 </script>
 
@@ -325,7 +503,7 @@
 {#if loading}
   <div class="empty-state">
     <div class="animate-spin text-muted" style="margin-bottom:1rem"><Loader2 size={48} /></div>
-    <p>Loading database…</p>
+    <p>Loading database details...</p>
   </div>
 {:else}
   <!-- Header -->
@@ -378,9 +556,10 @@
       >
         {#if t === 'overview'}<Database size={15} />{/if}
         {#if t === 'query'}<Terminal size={15} />{/if}
+        {#if t === 'visualizer'}<Network size={15} />{/if}
         {#if t === 'logs'}<Code size={15} />{/if}
         {#if t === 'settings'}<Settings size={15} />{/if}
-        {t === 'query' ? 'SQL / Query Console' : t.charAt(0).toUpperCase() + t.slice(1)}
+        {t === 'query' ? 'SQL / Query Studio' : t === 'visualizer' ? 'ER Diagram & Schema' : t.charAt(0).toUpperCase() + t.slice(1)}
       </a>
     {/each}
   </div>
@@ -488,84 +667,6 @@
       </div>
     </div>
 
-    <!-- Database Aid: 1-Click Command Abstractions -->
-    {#if dbAidEnabled}
-      <div class="card" style="margin-bottom:1.5rem; background: linear-gradient(135deg, rgba(0,166,166,0.05) 0%, rgba(15,23,42,0.02) 100%); border: 1px solid rgba(0,166,166,0.3); border-radius: var(--radius-lg); padding: 1.25rem;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.85rem; flex-wrap:wrap; gap:0.5rem;">
-          <div style="display:flex; align-items:center; gap:0.6rem;">
-            <div style="width:28px; height:28px; border-radius:var(--radius-sm); background:var(--color-accent); color:#fff; display:flex; align-items:center; justify-content:center;">
-              <Zap size={15} />
-            </div>
-            <div>
-              <div style="font-weight:700; font-size:0.9375rem; color:var(--color-ink);">Database Aid • 1-Click Command Abstractions</div>
-              <p class="text-xs text-muted" style="margin:0;">Pre-built database operations and diagnostic tools for {database?.engine?.toUpperCase()}.</p>
-            </div>
-          </div>
-          <span class="badge badge-running" style="font-size:0.7rem;">Active</span>
-        </div>
-
-        <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
-          {#if database?.engine === 'postgres'}
-            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px; background:var(--color-surface);" onclick={() => executeAidCommand("SELECT pid, usename, state, age(clock_timestamp(), query_start) AS duration, query FROM pg_stat_activity WHERE state != 'idle' LIMIT 20;")}>
-              <Activity size={13} style="color:var(--color-accent);" /> Active Connections
-            </button>
-            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px; background:var(--color-surface);" onclick={() => executeAidCommand("SELECT relname AS table_name, pg_size_pretty(pg_total_relation_size(relid)) AS total_size, n_live_tup AS estimated_rows FROM pg_catalog.pg_statio_user_tables ORDER BY pg_total_relation_size(relid) DESC;")}>
-              <HardDrive size={13} style="color:#0284c7;" /> Table Sizes & Disk
-            </button>
-            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px; background:var(--color-surface);" onclick={() => executeAidCommand("VACUUM ANALYZE;")}>
-              <Sparkles size={13} style="color:#059669;" /> Optimize & Vacuum
-            </button>
-            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px; background:var(--color-surface);" onclick={() => executeAidCommand("SELECT now() - pg_postmaster_start_time() AS server_uptime, version();")}>
-              <Clock size={13} style="color:#d97706;" /> Server Uptime
-            </button>
-            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px; background:var(--color-surface);" onclick={() => executeAidCommand("SELECT locktype, relation::regclass, mode, granted FROM pg_locks WHERE NOT granted;")}>
-              <ShieldAlert size={13} style="color:#ef4444;" /> Check Locks
-            </button>
-          {:else if database?.engine === 'mysql'}
-            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px; background:var(--color-surface);" onclick={() => executeAidCommand("SHOW FULL PROCESSLIST;")}>
-              <Activity size={13} style="color:var(--color-accent);" /> Active Processlist
-            </button>
-            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px; background:var(--color-surface);" onclick={() => executeAidCommand("SHOW TABLE STATUS;")}>
-              <HardDrive size={13} style="color:#0284c7;" /> Table Status & Engine
-            </button>
-            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px; background:var(--color-surface);" onclick={() => executeAidCommand("SHOW STATUS LIKE 'Threads%';")}>
-              <Zap size={13} style="color:#059669;" /> Thread Metrics
-            </button>
-            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px; background:var(--color-surface);" onclick={() => executeAidCommand("SHOW STATUS LIKE 'Uptime%';")}>
-              <Clock size={13} style="color:#d97706;" /> Server Uptime
-            </button>
-          {:else if database?.engine === 'redis'}
-            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px; background:var(--color-surface);" onclick={() => executeAidCommand("INFO memory")}>
-              <HardDrive size={13} style="color:#0284c7;" /> Memory Statistics
-            </button>
-            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px; background:var(--color-surface);" onclick={() => executeAidCommand("CLIENT LIST")}>
-              <Activity size={13} style="color:var(--color-accent);" /> Connected Clients
-            </button>
-            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px; background:var(--color-surface);" onclick={() => executeAidCommand("DBSIZE")}>
-              <Database size={13} style="color:#059669;" /> Total Keys (DBSIZE)
-            </button>
-            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px; background:var(--color-surface);" onclick={() => executeAidCommand("SLOWLOG GET 10")}>
-              <Clock size={13} style="color:#d97706;" /> Slow Log (Top 10)
-            </button>
-          {:else if database?.engine === 'mongodb'}
-            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px; background:var(--color-surface);" onclick={() => executeAidCommand("db.serverStatus()")}>
-              <Activity size={13} style="color:var(--color-accent);" /> Server Status
-            </button>
-            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px; background:var(--color-surface);" onclick={() => executeAidCommand("db.stats()")}>
-              <HardDrive size={13} style="color:#0284c7;" /> DB Stats
-            </button>
-            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px; background:var(--color-surface);" onclick={() => executeAidCommand("db.currentOp()")}>
-              <Zap size={13} style="color:#059669;" /> Current Operations
-            </button>
-          {:else}
-            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px; background:var(--color-surface);" onclick={() => executeAidCommand("SELECT 1;")}>
-              <Activity size={13} style="color:var(--color-accent);" /> Ping Database
-            </button>
-          {/if}
-        </div>
-      </div>
-    {/if}
-
   {:else if tab === 'query'}
     <!-- SQL / Query Console -->
     <div class="card" style="margin-bottom:1.5rem; padding: 1.25rem; background: var(--color-surface); border: 1px solid var(--color-border);">
@@ -599,54 +700,53 @@
             <button type="button" class="btn btn-secondary" style="font-size: 0.75rem; padding: 3px 8px;" onclick={() => setTemplateQuery('INFO')}>
               INFO
             </button>
-            <button type="button" class="btn btn-secondary" style="font-size: 0.75rem; padding: 3px 8px;" onclick={() => setTemplateQuery('KEYS *')}>
-              KEYS *
+            <button type="button" class="btn btn-secondary" style="font-size: 0.75rem; padding: 3px 8px;" onclick={() => setTemplateQuery('DBSIZE')}>
+              DBSIZE
+            </button>
+          {:else if database?.engine === 'mongodb'}
+            <button type="button" class="btn btn-secondary" style="font-size: 0.75rem; padding: 3px 8px;" onclick={() => setTemplateQuery('db.stats()')}>
+              DB Stats
+            </button>
+            <button type="button" class="btn btn-secondary" style="font-size: 0.75rem; padding: 3px 8px;" onclick={() => setTemplateQuery('db.getCollectionNames()')}>
+              Collections
             </button>
           {/if}
         </div>
       </div>
 
-      <!-- Editor Area -->
-      <div style="position: relative; margin-bottom: 1rem;">
+      <div style="position: relative; margin-bottom: 0.85rem;">
         <textarea
-          rows={5}
           class="form-input font-mono"
-          style="width: 100%; font-size: 0.875rem; line-height: 1.45; background: #0d1117; color: #58a6ff; border-radius: var(--radius-md); padding: 0.85rem; border: 1px solid #30363d; resize: vertical;"
           bind:value={queryText}
-          placeholder="Enter query here (e.g. SELECT * FROM users;)"
-          onkeydown={(e) => {
-            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-              e.preventDefault();
-              runQuery();
-            }
-          }}
+          rows="4"
+          style="width: 100%; resize: vertical; font-size: 0.875rem; background: #0d1117; color: #58a6ff; border-color: #30363d; border-radius: var(--radius-md); padding: 0.75rem 1rem;"
+          placeholder="Enter SQL query or command..."
         ></textarea>
       </div>
 
-      <!-- Execution Action Bar -->
-      <div style="display: flex; justify-content: space-between; align-items: center;">
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
         <div class="text-xs text-muted">
-          Press <kbd style="background: rgba(0,0,0,0.06); padding: 2px 5px; border-radius: 3px; font-family: var(--font-mono);">Ctrl + Enter</kbd> to execute query
+          Tip: Select queries return formatted tabular output.
         </div>
         <button
           type="button"
           class="btn btn-primary"
-          style="display: flex; align-items: center; gap: 6px; padding: 6px 16px;"
+          style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 18px; font-weight: 600;"
           onclick={runQuery}
           disabled={queryLoading}
         >
           {#if queryLoading}
-            <Loader2 size={14} class="animate-spin" /> Executing…
+            <Loader2 size={15} class="animate-spin" /> Executing...
           {:else}
-            <Play size={14} fill="currentColor" /> Run Query
+            <Play size={15} /> Execute Query
           {/if}
         </button>
       </div>
     </div>
 
-    <!-- Query Results Section -->
+    <!-- Query Results Container -->
     {#if queryResult}
-      <div class="card" style="padding: 1.25rem; background: var(--color-surface); border: 1px solid var(--color-border); margin-bottom: 2rem; max-width: 100%; overflow: hidden; box-sizing: border-box;">
+      <div class="card" style="margin-bottom: 1.5rem; padding: 1.25rem; background: var(--color-surface); border: 1px solid var(--color-border);">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.85rem; flex-wrap: wrap; gap: 0.5rem;">
           <div style="display: flex; align-items: center; gap: 0.75rem;">
             <div style="font-weight: 700; font-size: 0.9375rem;">Execution Results</div>
@@ -709,6 +809,272 @@
       </div>
     {/if}
 
+  <!-- ══════════════════════════════════════════════════════════════════════════ -->
+  <!-- TAB 3: ER DIAGRAM & SCHEMA VISUALIZER                                      -->
+  <!-- ══════════════════════════════════════════════════════════════════════════ -->
+  {:else if tab === 'visualizer'}
+    <div class="card" style="padding: 1.25rem; margin-bottom: 1.5rem; background: var(--color-surface); border: 1px solid var(--color-border);">
+      <!-- Visualizer Control Toolbar -->
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.75rem;">
+        <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+          <div style="font-weight: 700; font-size: 1.05rem; display: flex; align-items: center; gap: 6px;">
+            <Network size={18} style="color: var(--color-accent);" /> ER Diagram & Schema Visualizer
+          </div>
+          {#if schemaData}
+            <span class="badge" style="background: rgba(0,166,166,0.1); color: var(--color-accent); font-weight: 600;">
+              {schemaData.table_count || 0} Tables
+            </span>
+            <span class="badge" style="background: rgba(16,185,129,0.1); color: #059669; font-weight: 600;">
+              {schemaData.relationships?.length || 0} Relations
+            </span>
+          {/if}
+        </div>
+
+        <!-- Controls: Search, Zoom, Reset, Refresh -->
+        <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+          <div style="position: relative; width: 180px;">
+            <input 
+              type="text" 
+              class="form-input" 
+              style="padding: 4px 8px 4px 28px; font-size: 0.8125rem; height: 30px;"
+              placeholder="Search tables..."
+              bind:value={searchTable}
+            />
+            <Search size={14} style="position: absolute; left: 8px; top: 8px; color: var(--color-ink-muted);" />
+          </div>
+
+          <div style="display: flex; align-items: center; background: var(--color-surface-sunken); border-radius: var(--radius-md); border: 1px solid var(--color-border); padding: 2px;">
+            <button class="btn btn-secondary" style="padding: 3px 8px; height: 26px; border: none;" onclick={zoomOut} title="Zoom Out">
+              <ZoomOut size={13} />
+            </button>
+            <span style="font-family: var(--font-mono); font-size: 0.75rem; padding: 0 6px; min-width: 44px; text-align: center; font-weight: 600;">
+              {Math.round(zoomLevel * 100)}%
+            </span>
+            <button class="btn btn-secondary" style="padding: 3px 8px; height: 26px; border: none;" onclick={zoomIn} title="Zoom In">
+              <ZoomIn size={13} />
+            </button>
+          </div>
+
+          <button class="btn btn-secondary" style="padding: 4px 10px; height: 30px; font-size: 0.8125rem;" onclick={resetView} title="Reset view and rearrange layout">
+            <Maximize2 size={13} /> Reset Grid
+          </button>
+
+          <button class="btn btn-secondary" style="padding: 4px 10px; height: 30px; font-size: 0.8125rem;" onclick={loadSchema} disabled={schemaLoading}>
+            {#if schemaLoading}<Loader2 size={13} class="animate-spin" />{:else}<RefreshCw size={13} />{/if} Refresh
+          </button>
+        </div>
+      </div>
+
+      <!-- Interactive Canvas Viewport -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div 
+        class="er-canvas-container"
+        style="
+          position: relative;
+          height: 600px;
+          background: #090d16;
+          border-radius: var(--radius-md);
+          border: 1px solid #1e293b;
+          overflow: hidden;
+          cursor: {isPanning ? 'grabbing' : 'grab'};
+          user-select: none;
+          background-image: radial-gradient(rgba(255,255,255,0.08) 1px, transparent 1px);
+          background-size: 24px 24px;
+        "
+        onmousedown={handleCanvasMouseDown}
+        onmousemove={handleCanvasMouseMove}
+        onmouseup={handleCanvasMouseUp}
+      >
+        <!-- Canvas Instructions overlay -->
+        <div style="position: absolute; bottom: 12px; left: 12px; z-index: 10; pointer-events: none; background: rgba(15,23,42,0.85); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 4px 10px; font-size: 0.75rem; color: #94a3b8; display: flex; align-items: center; gap: 8px;">
+          <Move size={12} /> Drag canvas to pan • Drag table headers to reposition • Click tables to inspect
+        </div>
+
+        {#if schemaLoading}
+          <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #94a3b8;">
+            <Loader2 size={36} class="animate-spin" style="color: var(--color-accent); margin-bottom: 0.75rem;" />
+            <p style="font-size: 0.875rem;">Inspecting database schema & relationships...</p>
+          </div>
+        {:else if !schemaData || (schemaData.tables && schemaData.tables.length === 0)}
+          <!-- Empty State with 1-click sample schema creator -->
+          <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center; padding: 2rem;">
+            <div style="width: 56px; height: 56px; border-radius: 50%; background: rgba(0,166,166,0.12); color: var(--color-accent); display: flex; align-items: center; justify-content: center; margin-bottom: 1rem;">
+              <Network size={28} />
+            </div>
+            <h3 style="color: #fff; margin: 0 0 0.5rem 0; font-size: 1.15rem;">No Tables Found in Database</h3>
+            <p style="color: #94a3b8; font-size: 0.875rem; max-width: 460px; margin-bottom: 1.25rem; line-height: 1.5;">
+              Database <span class="font-mono" style="color:#7dd3fc;">{parsedMeta.databaseName}</span> has no tables created yet. You can load a sample schema or create tables via SQL Studio.
+            </p>
+            <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; justify-content: center;">
+              <button 
+                class="btn btn-primary" 
+                style="font-weight: 600; font-size: 0.875rem; padding: 8px 18px; display: inline-flex; align-items: center; gap: 6px;"
+                onclick={createSampleEcommerceSchema}
+                disabled={actionLoading}
+              >
+                {#if actionLoading}<Loader2 size={14} class="animate-spin" />{:else}<Sparkles size={14} />{/if}
+                Load Sample E-Commerce Schema
+              </button>
+              <a 
+                href="/databases/{id}/query" 
+                class="btn btn-secondary" 
+                style="background: rgba(255,255,255,0.06); color: #fff; border-color: rgba(255,255,255,0.15); font-size: 0.875rem; padding: 8px 18px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;"
+              >
+                <Terminal size={14} /> Open SQL Studio
+              </a>
+            </div>
+          </div>
+        {:else}
+          <!-- Canvas Graph Inner Transform Container -->
+          <div 
+            class="canvas-world"
+            style="
+              position: absolute;
+              top: 0;
+              left: 0;
+              transform-origin: 0 0;
+              transform: translate({panOffset.x}px, {panOffset.y}px) scale({zoomLevel});
+              width: 3000px;
+              height: 3000px;
+            "
+          >
+            <!-- SVG Relationships Curves Layer -->
+            <svg style="position: absolute; top: 0; left: 0; width: 3000px; height: 3000px; pointer-events: none; overflow: visible;">
+              <defs>
+                <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 1 L 10 5 L 0 9 z" fill="#0284c7" />
+                </marker>
+                <linearGradient id="relGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" stop-color="#0284c7" />
+                  <stop offset="100%" stop-color="#38bdf8" />
+                </linearGradient>
+              </defs>
+
+              {#if schemaData?.relationships}
+                {#each schemaData.relationships as rel}
+                  {@const path = calculateConnectorPath(rel)}
+                  {#if path}
+                    <path
+                      d={path}
+                      fill="none"
+                      stroke="url(#relGradient)"
+                      stroke-width="2.5"
+                      stroke-dasharray="6,3"
+                      marker-end="url(#arrow)"
+                      style="opacity: 0.85; transition: stroke-width 0.2s;"
+                    />
+                  {/if}
+                {/each}
+              {/if}
+            </svg>
+
+            <!-- Table Nodes -->
+            {#each filteredTables as table}
+              {@const pos = tablePositions[table.name] || { x: 60, y: 60 }}
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <!-- svelte-ignore a11y_click_events_have_key_events -->
+              <div 
+                class="table-node"
+                style="
+                  position: absolute;
+                  left: {pos.x}px;
+                  top: {pos.y}px;
+                  width: 270px;
+                  background: #0f172a;
+                  border: 1.5px solid {selectedTable === table.name ? 'var(--color-accent)' : '#334155'};
+                  border-radius: 8px;
+                  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.6), 0 8px 10px -6px rgba(0, 0, 0, 0.6);
+                  overflow: hidden;
+                  z-index: {selectedTable === table.name ? 5 : 2};
+                  transition: border-color 0.15s, box-shadow 0.15s;
+                "
+                onclick={() => selectedTable = table.name}
+              >
+                <!-- Table Header (Draggable) -->
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <div 
+                  style="
+                    background: #1e293b;
+                    padding: 8px 12px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    border-bottom: 1px solid #334155;
+                    cursor: move;
+                  "
+                  onmousedown={(e) => handleTableMouseDown(e, table.name)}
+                >
+                  <div style="display: flex; align-items: center; gap: 7px; overflow: hidden;">
+                    <Table size={14} style="color: var(--color-accent); flex-shrink: 0;" />
+                    <span style="font-weight: 700; font-size: 0.875rem; color: #f8fafc; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
+                      {table.name}
+                    </span>
+                  </div>
+                  <span style="font-size: 0.6875rem; background: rgba(255,255,255,0.08); color: #94a3b8; padding: 1px 6px; border-radius: 4px; font-weight: 600;">
+                    {table.column_count || table.columns?.length || 0}
+                  </span>
+                </div>
+
+                <!-- Column Items -->
+                <div style="padding: 4px 0; max-height: 240px; overflow-y: auto; background: #0f172a;">
+                  {#if table.columns && table.columns.length > 0}
+                    {#each table.columns as col}
+                      <div style="
+                        display: flex;
+                        align-items: center;
+                        justify-content: space-between;
+                        padding: 5px 12px;
+                        font-size: 0.75rem;
+                        border-bottom: 1px solid rgba(255,255,255,0.03);
+                        gap: 6px;
+                      ">
+                        <div style="display: flex; align-items: center; gap: 6px; min-width: 0;">
+                          {#if col.is_primary}
+                            <span title="Primary Key" style="display:inline-flex;"><Key size={12} style="color: #f59e0b; flex-shrink: 0;" /></span>
+                          {:else if col.is_foreign}
+                            <span title="Foreign Key" style="display:inline-flex;"><Link size={12} style="color: #38bdf8; flex-shrink: 0;" /></span>
+                          {:else}
+                            <div style="width: 5px; height: 5px; border-radius: 50%; background: #475569; flex-shrink: 0; margin: 0 3px;"></div>
+                          {/if}
+                          <span style="
+                            font-family: var(--font-mono);
+                            font-weight: {col.is_primary ? 700 : 500};
+                            color: {col.is_primary ? '#fbbf24' : col.is_foreign ? '#7dd3fc' : '#e2e8f0'};
+                            text-overflow: ellipsis;
+                            overflow: hidden;
+                            white-space: nowrap;
+                          ">
+                            {col.name}
+                          </span>
+                        </div>
+
+                        <span style="
+                          font-family: var(--font-mono);
+                          font-size: 0.6875rem;
+                          color: #94a3b8;
+                          background: rgba(255,255,255,0.05);
+                          padding: 1px 5px;
+                          border-radius: 3px;
+                          white-space: nowrap;
+                          flex-shrink: 0;
+                        ">
+                          {col.type}
+                        </span>
+                      </div>
+                    {/each}
+                  {:else}
+                    <div style="padding: 8px 12px; color: #64748b; font-size: 0.75rem; text-align: center;">
+                      No column metadata
+                    </div>
+                  {/if}
+                </div>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    </div>
+
   {:else if tab === 'logs'}
     <div class="card" style="padding:0; overflow:hidden; border: 1px solid var(--color-border);">
       <div class="card-header" style="padding:0.85rem 1.25rem; margin:0; border-bottom:1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center;">
@@ -733,46 +1099,6 @@
     </div>
 
   {:else if tab === 'settings'}
-    <!-- Database Assist Mode Settings -->
-    <div class="card" style="margin-bottom:1.5rem; background: var(--color-surface); border: 1px solid var(--color-border); padding: 1.25rem;">
-      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
-        <div style="display:flex; align-items:flex-start; gap:0.85rem; max-width:600px;">
-          <div style="width:38px; height:38px; border-radius:var(--radius-md); background:rgba(0,166,166,0.12); color:var(--color-accent); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-            <Zap size={20} />
-          </div>
-          <div>
-            <div style="font-weight:700; font-size:0.9375rem; color:var(--color-ink); display:flex; align-items:center; gap:8px;">
-              Assist Mode • 1-Click Database Command Abstractions
-              {#if dbAidEnabled}
-                <span class="badge badge-running" style="font-size:0.7rem;">Active</span>
-              {:else}
-                <span class="badge badge-stopped" style="font-size:0.7rem;">Disabled</span>
-              {/if}
-            </div>
-            <p class="text-xs text-muted" style="margin:3px 0 0 0; line-height:1.45;">
-              Controls whether 1-click execution buttons for table statistics, vacuuming, active connection checks, and diagnostics are displayed.
-            </p>
-          </div>
-        </div>
-
-        <button 
-          type="button" 
-          class="btn {dbAidEnabled ? 'btn-primary' : 'btn-secondary'}" 
-          onclick={toggleDbAid}
-          disabled={dbAidSaving}
-          style="padding:6px 16px; font-weight:600; font-size:0.8125rem;"
-        >
-          {#if dbAidSaving}
-            <Loader2 size={13} class="animate-spin" /> Updating…
-          {:else if dbAidEnabled}
-            Assist Mode: ON (Click to Disable)
-          {:else}
-            Assist Mode: OFF (Click to Enable)
-          {/if}
-        </button>
-      </div>
-    </div>
-
     <div class="card" style="border-color:#fca5a5; margin-bottom:1.5rem; background: var(--color-surface);">
       <div class="card-header" style="border-bottom-color:#fee2e2;">
         <h3 style="color:var(--color-danger); margin:0;">Danger Zone</h3>
@@ -780,7 +1106,7 @@
       <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem; padding:0.5rem 0;">
         <div>
           <div style="font-weight:600; color:var(--color-ink);">Delete this Database</div>
-          <div class="text-sm text-muted">Permanently erase this database instance, its Docker container, and stored data.</div>
+          <div class="text-sm text-muted">Permanently erase this database instance, its Docker container, and stored data volume.</div>
         </div>
         <button class="btn btn-danger" onclick={deleteDatabase} disabled={actionLoading}>
           <Trash2 size={16} /> Delete Database
