@@ -656,9 +656,22 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 				}
 			}
 
-			// For static frontend apps (like VtopC / React / Vite), configure Nginx reverse proxy to backend
+			// For static frontend apps (like VtopC / React / Vite), auto-wire VITE_API_URL and base API variables to the backend
 			if service.Kind == domain.ServiceKindStatic || presetId == "static" || presetId == "static-spa" {
 				if primaryBackend != nil {
+					backendPublicUrl := fmt.Sprintf("https://%s.%s", primaryBackend.Slug, rootDomain)
+					if cur, ok := envMap["VITE_API_URL"]; !ok || cur == "" || strings.HasPrefix(cur, "${") {
+						envMap["VITE_API_URL"] = backendPublicUrl
+					}
+					if cur, ok := envMap["NEXT_PUBLIC_API_URL"]; !ok || cur == "" || strings.HasPrefix(cur, "${") {
+						envMap["NEXT_PUBLIC_API_URL"] = backendPublicUrl
+					}
+					if cur, ok := envMap["REACT_APP_API_URL"]; !ok || cur == "" || strings.HasPrefix(cur, "${") {
+						envMap["REACT_APP_API_URL"] = backendPublicUrl
+					}
+					if cur, ok := envMap["API_URL"]; !ok || cur == "" || strings.HasPrefix(cur, "${") {
+						envMap["API_URL"] = backendPublicUrl
+					}
 					otherPort := 8080
 					if primaryBackend.InternalPort != nil && *primaryBackend.InternalPort > 0 {
 						otherPort = *primaryBackend.InternalPort

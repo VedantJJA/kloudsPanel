@@ -457,6 +457,39 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 		usedSlugs[baseSlug] = count + 1
 	}
 
+	// Find primary backend service
+	var primaryBackendSlug string
+	for _, s := range res.Services {
+		if s.Kind == "web" || s.Kind == "api" {
+			primaryBackendSlug = s.Slug
+			break
+		}
+	}
+
+	// Auto-wire VITE_API_URL into frontend static services
+	if primaryBackendSlug != "" {
+		for i := range res.Services {
+			s := &res.Services[i]
+			if s.Kind == "static" || s.Preset == "static-spa" || s.StaticPublishPath != "" || strings.Contains(strings.ToLower(s.RootDir), "front") || strings.Contains(strings.ToLower(s.RootDir), "web") || strings.Contains(strings.ToLower(s.RootDir), "ui") || strings.Contains(strings.ToLower(s.RootDir), "client") {
+				if s.EnvVars == nil {
+					s.EnvVars = make(map[string]string)
+				}
+				if _, ok := s.EnvVars["VITE_API_URL"]; !ok {
+					s.EnvVars["VITE_API_URL"] = fmt.Sprintf("${services.%s.url}", primaryBackendSlug)
+				}
+				if _, ok := s.EnvVars["NEXT_PUBLIC_API_URL"]; !ok {
+					s.EnvVars["NEXT_PUBLIC_API_URL"] = fmt.Sprintf("${services.%s.url}", primaryBackendSlug)
+				}
+				if _, ok := s.EnvVars["REACT_APP_API_URL"]; !ok {
+					s.EnvVars["REACT_APP_API_URL"] = fmt.Sprintf("${services.%s.url}", primaryBackendSlug)
+				}
+				if _, ok := s.EnvVars["API_URL"]; !ok {
+					s.EnvVars["API_URL"] = fmt.Sprintf("${services.%s.url}", primaryBackendSlug)
+				}
+			}
+		}
+	}
+
 	return res
 }
 
