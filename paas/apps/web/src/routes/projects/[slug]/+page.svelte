@@ -33,8 +33,14 @@
     }
   }
 
+  let pollInterval: any = null;
+
   onMount(() => {
     loadProjectData();
+    pollInterval = setInterval(loadProjectData, 4000);
+    return () => {
+      if (pollInterval) clearInterval(pollInterval);
+    };
   });
 
   async function deleteService(e: Event, svc: any) {
@@ -151,23 +157,46 @@
         <thead>
           <tr>
             <th>Name</th>
-            <th>Kind</th>
+            <th>Type</th>
             <th>Status</th>
+            <th>Live Endpoint</th>
             <th>Port</th>
-            <th>Actions</th>
+            <th style="text-align:right;">Actions</th>
           </tr>
         </thead>
         <tbody>
           {#each services as svc}
             {@const svcId = svc.id || svc.ID}
+            {@const svcSlug = svc.slug || svc.Slug}
             <tr>
               <td>
-                <a href="/services/{svcId}/overview" style="font-weight:600; color:var(--color-ink);">
+                <a href="/services/{svcId}/overview" style="font-weight:600; color:var(--color-ink); font-size: 0.9375rem;">
                   {svc.name || svc.Name}
                 </a>
               </td>
               <td><span class="badge" style="background:#f1f5f9; color:#334155; text-transform:capitalize;">{svc.kind || svc.Kind || 'web'}</span></td>
-              <td><span class={statusClass(svc.runtime_status || svc.RuntimeStatus)}>{svc.runtime_status || svc.RuntimeStatus || 'draft'}</span></td>
+              <td>
+                <span class={statusClass(svc.runtime_status || svc.RuntimeStatus)}>
+                  {#if (svc.runtime_status || svc.RuntimeStatus) === 'deploying'}
+                    <span class="animate-spin" style="display:inline-block; margin-right:4px;">⟳</span>
+                  {/if}
+                  {svc.runtime_status || svc.RuntimeStatus || 'draft'}
+                </span>
+              </td>
+              <td>
+                {#if svc.endpoint_url || svcSlug}
+                  <a 
+                    href={svc.endpoint_url || `https://${svcSlug}.klouds.online`} 
+                    target="_blank" 
+                    rel="noreferrer"
+                    style="display:inline-flex; align-items:center; gap:4px; font-size:0.8125rem; color:var(--color-accent); font-weight:500;"
+                  >
+                    <Globe size={13} /> {svcSlug}.klouds.online <ExternalLink size={11} />
+                  </a>
+                {:else}
+                  <span class="text-muted text-xs">—</span>
+                {/if}
+              </td>
               <td><span class="font-mono text-xs">:{svc.internal_port || svc.InternalPort || 80}</span></td>
               <td style="text-align:right;">
                 <div style="display:inline-flex; align-items:center; gap:0.5rem;">

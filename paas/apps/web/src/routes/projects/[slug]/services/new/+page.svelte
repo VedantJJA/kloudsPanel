@@ -41,11 +41,14 @@
   let gitBranch = $state('main');
   let rootDirectory = $state('.');
 
-  // render.yaml auto-detect state
+  // render.yaml / blueprint auto-detect state
   let parsingYaml = $state(false);
   let detectedBlueprint = $state<any>(null);
-  let yamlParsedInfo = $state<string | null>(null);
+  let detectedServices = $state<any[]>([]);
   let detectedDatabases = $state<any[]>([]);
+  let selectedBlueprintIndex = $state(0);
+  let deployingBlueprint = $state(false);
+  let yamlParsedInfo = $state<string | null>(null);
 
   // Git Provider integration state
   let gitIntegrations = $state<any[]>([]);
@@ -378,6 +381,8 @@
     if (!gitRepoUrl.trim()) return;
     parsingYaml = true;
     detectedBlueprint = null;
+    detectedServices = [];
+    detectedDatabases = [];
     yamlParsedInfo = null;
     try {
       const res = await fetch('/api/v1/services/parse-render-yaml', {
@@ -391,6 +396,7 @@
       if (res.ok) {
         const data = await res.json();
         if (data.services && data.services.length > 0) {
+          detectedServices = data.services;
           detectedBlueprint = data.services[0];
           detectedDatabases = data.databases || [];
         }
@@ -400,12 +406,13 @@
     }
   }
 
-  function applyDetectedBlueprint() {
-    if (!detectedBlueprint) return;
-    const svc = detectedBlueprint;
+  function applyDetectedService(svc: any, idx: number) {
+    selectedBlueprintIndex = idx;
+    detectedBlueprint = svc;
     name = svc.name || name;
     svcSlug = svc.slug || svcSlug;
     kind = svc.kind || kind;
+    rootDirectory = svc.root_dir || svc.rootDir || '.';
 
     const matchingPreset = presets.find(p => p.id === svc.preset) || 
                           presets.find(p => p.kind === svc.kind) || 
@@ -419,7 +426,36 @@
     if (svc.env_vars && Object.keys(svc.env_vars).length > 0) {
       envVars = Object.entries(svc.env_vars).map(([k, v]) => ({ key: k, value: String(v) }));
     }
-    yamlParsedInfo = `✓ Applied render.yaml configuration for "${svc.name}" (${svc.kind.toUpperCase()} • ${svc.env || svc.preset} on port :${internalPort})`;
+    yamlParsedInfo = `✓ Configured "${svc.name}" (${svc.kind.toUpperCase()} • ${svc.env || svc.preset} in ${rootDirectory === '.' ? 'root' : '/' + rootDirectory} on port :${internalPort})`;
+  }
+
+  async function deployEntireBlueprint() {
+    if (detectedServices.length === 0 || !project || deployingBlueprint) return;
+    deployingBlueprint = true;
+    try {
+      const projId = project.id || project.ID || slug;
+      const res = await fetch(`/api/v1/projects/${encodeURIComponent(projId)}/blueprint/deploy`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          repoUrl: gitRepoUrl,
+          branch: gitBranch,
+          services: detectedServices,
+          databases: detectedDatabases
+        })
+      });
+      if (res.ok) {
+        goto(`/projects/${slug}`);
+      } else {
+        const d = await res.json().catch(() => ({}));
+        alert(d.error || 'Failed to deploy blueprint services');
+      }
+    } catch (e: any) {
+      alert('Error deploying blueprint: ' + e.message);
+    } finally {
+      deployingBlueprint = false;
+    }
   }
 
   function selectProviderRepo(repo: any) {
@@ -684,27 +720,82 @@
           </button>
         </div>
 
-        {#if detectedBlueprint}
-          <div style="background: rgba(16,185,129,0.08); border: 1.5px solid #10b981; border-radius: var(--radius-md); padding: 0.9rem 1.1rem; margin-top: 0.85rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
-            <div style="display: flex; align-items: center; gap: 0.75rem;">
-              <Sparkles size={20} style="color: #059669; flex-shrink: 0;" />
-              <div>
-                <div style="font-weight: 700; color: #065f46; font-size: 0.875rem;">
-                  render.yaml blueprint detected in repository!
-                </div>
-                <div class="text-xs" style="color: #047857; margin-top: 2px;">
-                  Found service config for <strong>{detectedBlueprint.name}</strong> ({detectedBlueprint.env || detectedBlueprint.preset} runtime • port :{detectedBlueprint.internal_port})
+        {#if detectedServices.length > 0}
+          <div style="background: rgba(16,185,129,0.06); border: 1.5px solid #10b981; border-radius: var(--radius-md); padding: 1rem 1.25rem; margin-top: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.85rem;">
+              <div style="display: flex; align-items: center; gap: 0.75rem;">
+                <Sparkles size={22} style="color: #059669; flex-shrink: 0;" />
+                <div>
+                  <div style="font-weight: 700; color: #065f46; font-size: 0.9375rem;">
+                    render.yaml / Blueprint detected ({detectedServices.length} Service{detectedServices.length > 1 ? 's' : ''}{detectedDatabases.length > 0 ? `, ${detectedDatabases.length} Database` : ''})
+                  </div>
+                  <div class="text-xs" style="color: #047857; margin-top: 2px;">
+                    This repository defines a multi-service stack. Deploy all services together or customize individually.
+                  </div>
                 </div>
               </div>
+
+              {#if detectedServices.length > 1 || detectedDatabases.length > 0}
+                <button 
+                  type="button" 
+                  class="btn btn-primary" 
+                  style="font-size: 0.8125rem; padding: 7px 16px; background: #059669; border-color: #059669; display: flex; align-items: center; gap: 6px;"
+                  onclick={deployEntireBlueprint}
+                  disabled={deployingBlueprint}
+                >
+                  {#if deployingBlueprint}
+                    <Loader2 size={14} class="animate-spin" /> Deploying All Services...
+                  {:else}
+                    <Rocket size={14} /> Deploy All {detectedServices.length + detectedDatabases.length} Stack Services
+                  {/if}
+                </button>
+              {/if}
             </div>
-            <button 
-              type="button" 
-              class="btn btn-primary" 
-              style="font-size: 0.8125rem; padding: 6px 14px; background: #059669; border-color: #059669;"
-              onclick={applyDetectedBlueprint}
-            >
-              Apply render.yaml Config
-            </button>
+
+            <!-- Discovered Items Grid -->
+            <div style="display: flex; flex-direction: column; gap: 0.5rem; border-top: 1px solid rgba(16,185,129,0.2); padding-top: 0.75rem;">
+              <div class="text-xs" style="font-weight: 700; color: #065f46; text-transform: uppercase; letter-spacing: 0.04em;">
+                Declared Blueprint Services & Databases:
+              </div>
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.5rem;">
+                {#each detectedServices as s, idx}
+                  <button
+                    type="button"
+                    class="btn btn-secondary"
+                    style="
+                      text-align: left; 
+                      display: flex; 
+                      align-items: center; 
+                      justify-content: space-between; 
+                      padding: 8px 12px; 
+                      background: {selectedBlueprintIndex === idx ? 'rgba(5,150,105,0.15)' : 'var(--color-surface)'};
+                      border-color: {selectedBlueprintIndex === idx ? '#059669' : 'var(--color-border)'};
+                    "
+                    onclick={() => applyDetectedService(s, idx)}
+                  >
+                    <div>
+                      <div style="font-weight: 700; font-size: 0.8125rem; color: var(--color-ink);">{s.name}</div>
+                      <div class="text-xs text-muted">
+                        {s.kind} • {s.env || s.preset || 'custom'} {s.root_dir ? `• /${s.root_dir}` : ''} • :{s.internal_port}
+                      </div>
+                    </div>
+                    <span class="badge" style="background: rgba(16,185,129,0.2); color: #065f46; font-size: 0.7rem;">
+                      {selectedBlueprintIndex === idx ? 'Active' : 'Customize'}
+                    </span>
+                  </button>
+                {/each}
+
+                {#each detectedDatabases as db}
+                  <div style="display: flex; align-items: center; gap: 0.5rem; padding: 8px 12px; border-radius: var(--radius-md); background: var(--color-surface); border: 1px solid var(--color-border);">
+                    <Database size={16} style="color: #0369a1;" />
+                    <div>
+                      <div style="font-weight: 700; font-size: 0.8125rem; color: var(--color-ink);">{db.name}</div>
+                      <div class="text-xs text-muted">Managed {db.engine || 'postgres'} database</div>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            </div>
           </div>
         {/if}
 
@@ -851,27 +942,82 @@
           </div>
         {/if}
 
-        {#if detectedBlueprint}
-          <div style="background: rgba(16,185,129,0.08); border: 1.5px solid #10b981; border-radius: var(--radius-md); padding: 0.9rem 1.1rem; margin-top: 0.85rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
-            <div style="display: flex; align-items: center; gap: 0.75rem;">
-              <Sparkles size={20} style="color: #059669; flex-shrink: 0;" />
-              <div>
-                <div style="font-weight: 700; color: #065f46; font-size: 0.875rem;">
-                  render.yaml blueprint detected in repository!
-                </div>
-                <div class="text-xs" style="color: #047857; margin-top: 2px;">
-                  Found service config for <strong>{detectedBlueprint.name}</strong> ({detectedBlueprint.env || detectedBlueprint.preset} runtime • port :{detectedBlueprint.internal_port})
+        {#if detectedServices.length > 0}
+          <div style="background: rgba(16,185,129,0.06); border: 1.5px solid #10b981; border-radius: var(--radius-md); padding: 1rem 1.25rem; margin-top: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.85rem;">
+              <div style="display: flex; align-items: center; gap: 0.75rem;">
+                <Sparkles size={22} style="color: #059669; flex-shrink: 0;" />
+                <div>
+                  <div style="font-weight: 700; color: #065f46; font-size: 0.9375rem;">
+                    render.yaml / Blueprint detected ({detectedServices.length} Service{detectedServices.length > 1 ? 's' : ''}{detectedDatabases.length > 0 ? `, ${detectedDatabases.length} Database` : ''})
+                  </div>
+                  <div class="text-xs" style="color: #047857; margin-top: 2px;">
+                    This repository defines a multi-service stack. Deploy all services together or customize individually.
+                  </div>
                 </div>
               </div>
+
+              {#if detectedServices.length > 1 || detectedDatabases.length > 0}
+                <button 
+                  type="button" 
+                  class="btn btn-primary" 
+                  style="font-size: 0.8125rem; padding: 7px 16px; background: #059669; border-color: #059669; display: flex; align-items: center; gap: 6px;"
+                  onclick={deployEntireBlueprint}
+                  disabled={deployingBlueprint}
+                >
+                  {#if deployingBlueprint}
+                    <Loader2 size={14} class="animate-spin" /> Deploying All Services...
+                  {:else}
+                    <Rocket size={14} /> Deploy All {detectedServices.length + detectedDatabases.length} Stack Services
+                  {/if}
+                </button>
+              {/if}
             </div>
-            <button 
-              type="button" 
-              class="btn btn-primary" 
-              style="font-size: 0.8125rem; padding: 6px 14px; background: #059669; border-color: #059669;"
-              onclick={applyDetectedBlueprint}
-            >
-              Apply render.yaml Config
-            </button>
+
+            <!-- Discovered Items Grid -->
+            <div style="display: flex; flex-direction: column; gap: 0.5rem; border-top: 1px solid rgba(16,185,129,0.2); padding-top: 0.75rem;">
+              <div class="text-xs" style="font-weight: 700; color: #065f46; text-transform: uppercase; letter-spacing: 0.04em;">
+                Declared Blueprint Services & Databases:
+              </div>
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.5rem;">
+                {#each detectedServices as s, idx}
+                  <button
+                    type="button"
+                    class="btn btn-secondary"
+                    style="
+                      text-align: left; 
+                      display: flex; 
+                      align-items: center; 
+                      justify-content: space-between; 
+                      padding: 8px 12px; 
+                      background: {selectedBlueprintIndex === idx ? 'rgba(5,150,105,0.15)' : 'var(--color-surface)'};
+                      border-color: {selectedBlueprintIndex === idx ? '#059669' : 'var(--color-border)'};
+                    "
+                    onclick={() => applyDetectedService(s, idx)}
+                  >
+                    <div>
+                      <div style="font-weight: 700; font-size: 0.8125rem; color: var(--color-ink);">{s.name}</div>
+                      <div class="text-xs text-muted">
+                        {s.kind} • {s.env || s.preset || 'custom'} {s.root_dir ? `• /${s.root_dir}` : ''} • :{s.internal_port}
+                      </div>
+                    </div>
+                    <span class="badge" style="background: rgba(16,185,129,0.2); color: #065f46; font-size: 0.7rem;">
+                      {selectedBlueprintIndex === idx ? 'Active' : 'Customize'}
+                    </span>
+                  </button>
+                {/each}
+
+                {#each detectedDatabases as db}
+                  <div style="display: flex; align-items: center; gap: 0.5rem; padding: 8px 12px; border-radius: var(--radius-md); background: var(--color-surface); border: 1px solid var(--color-border);">
+                    <Database size={16} style="color: #0369a1;" />
+                    <div>
+                      <div style="font-weight: 700; font-size: 0.8125rem; color: var(--color-ink);">{db.name}</div>
+                      <div class="text-xs text-muted">Managed {db.engine || 'postgres'} database</div>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            </div>
           </div>
         {/if}
 

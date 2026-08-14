@@ -82,6 +82,7 @@ func NewServer(log *slog.Logger, store repository.Store, addr string) *fiber.App
 	proj.Get("/:id", h.handleGetProject)
 	proj.Patch("/:id", h.handleUpdateProject)
 	proj.Delete("/:id", h.handleDeleteProject)
+	proj.Post("/:id/blueprint/deploy", h.handleDeployBlueprint)
 
 	// Service routes
 	svc := v1.Group("/services", h.requireSession)

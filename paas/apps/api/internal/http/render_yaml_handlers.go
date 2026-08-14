@@ -1,6 +1,7 @@
 package http
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	nethttp "net/http"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/yourorg/klouds/api/internal/domain"
 )
 
 // ─── Render / DevPanel YAML Parser ────────────────────────────────────────────
@@ -323,5 +325,115 @@ func (h *Handler) handleParseRenderYaml(c fiber.Ctx) error {
 		"success":   true,
 		"services":  result.Services,
 		"databases": result.Databases,
+	})
+}
+
+func (h *Handler) handleDeployBlueprint(c fiber.Ctx) error {
+	u := c.Locals("user").(*domain.User)
+	projectSlugOrID := c.Params("id")
+
+	project, err := h.store.Projects().GetByID(c.Context(), projectSlugOrID)
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "Project not found"})
+	}
+
+	var req struct {
+		RepoURL   string                `json:"repoUrl"`
+		Branch    string                `json:"branch"`
+		Services  []ParsedRenderService `json:"services"`
+		Databases []fiber.Map           `json:"databases"`
+	}
+	if err := c.Bind().JSON(&req); err != nil {
+		return err
+	}
+
+	branch := req.Branch
+	if branch == "" {
+		branch = "main"
+	}
+
+	createdDatabases := []any{}
+	createdServices := []any{}
+
+	// 1. Provision Databases declared in blueprint
+	for _, dbInfo := range req.Databases {
+		dbName := fmt.Sprintf("%v", dbInfo["name"])
+		engine := fmt.Sprintf("%v", dbInfo["engine"])
+		if dbName == "" {
+			continue
+		}
+
+		dbRec, err := h.provisionDatabaseInternal(c.Context(), project.ID, dbName, engine)
+		if err == nil && dbRec != nil {
+			createdDatabases = append(createdDatabases, dbRec)
+		}
+	}
+
+	// 2. Provision all Services declared in blueprint
+	for _, svcInfo := range req.Services {
+		svcName := svcInfo.Name
+		if svcName == "" {
+			continue
+		}
+		svcSlug := svcInfo.Slug
+		if svcSlug == "" {
+			svcSlug = strings.ToLower(strings.ReplaceAll(svcName, "_", "-"))
+		}
+
+		kind := domain.ServiceKind(svcInfo.Kind)
+		if kind == "" {
+			kind = domain.ServiceKindWeb
+		}
+
+		port := svcInfo.InternalPort
+		if port <= 0 {
+			port = 8080
+		}
+
+		resMap := map[string]any{
+			"gitRepoUrl":    req.RepoURL,
+			"gitBranch":     branch,
+			"rootDir":       svcInfo.RootDir,
+			"rootDirectory": svcInfo.RootDir,
+			"buildCommand":  svcInfo.BuildCommand,
+			"startCommand":  svcInfo.StartCommand,
+			"presetId":      svcInfo.Preset,
+			"env":           svcInfo.EnvVars,
+		}
+		resJSON, _ := json.Marshal(resMap)
+
+		s := &domain.Service{
+			ProjectID:     project.ID,
+			Name:          svcName,
+			Slug:          svcSlug,
+			Kind:          kind,
+			CreatedBy:     u.ID,
+			InternalPort:  &port,
+			ResourceJSON:  string(resJSON),
+			DesiredState:  domain.ServiceDesiredRunning,
+			RuntimeStatus: domain.ServiceStatusDeploying,
+		}
+		if err := h.store.Services().Create(c.Context(), s); err != nil {
+			continue
+		}
+
+		// Trigger deployment
+		dep := &domain.Deployment{
+			ServiceID:   s.ID,
+			Trigger:     domain.TriggerManual,
+			TriggeredBy: &u.ID,
+			Status:      domain.DeploymentQueued,
+			BuildDriver: "docker",
+		}
+		_ = h.store.Deployments().Create(c.Context(), dep)
+
+		go h.executeDeployment(s, dep, getRootDomain())
+		createdServices = append(createdServices, s)
+	}
+
+	return c.JSON(fiber.Map{
+		"success":   true,
+		"services":  createdServices,
+		"databases": createdDatabases,
 	})
 }

@@ -2,6 +2,7 @@ package http
 
 import (
 	"bytes"
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -44,24 +45,39 @@ func (h *Handler) handleCreateDatabase(c fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "database name is required"})
 	}
 
-	dbSlug := strings.ToLower(strings.TrimSpace(req.Name))
+	db, err := h.provisionDatabaseInternal(c.Context(), req.ProjectID, req.Name, req.Engine)
+	if err != nil {
+		return err
+	}
+	return c.Status(201).JSON(db)
+}
+
+func (h *Handler) provisionDatabaseInternal(ctx context.Context, projectID, name, engine string) (*domain.Database, error) {
+	if name == "" {
+		return nil, fmt.Errorf("database name is required")
+	}
+	if engine == "" {
+		engine = "postgres"
+	}
+
+	dbSlug := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(name), "_", "-"))
 	port := 5432
 	version := "16"
 	defaultUser := "postgres"
 
-	if req.Engine == "mysql" {
+	if engine == "mysql" {
 		port = 3306
 		version = "8.0"
 		defaultUser = "root"
-	} else if req.Engine == "redis" {
+	} else if engine == "redis" {
 		port = 6379
 		version = "7.2"
 		defaultUser = "default"
-	} else if req.Engine == "mongodb" {
+	} else if engine == "mongodb" {
 		port = 27017
 		version = "7.0"
 		defaultUser = "admin"
-	} else if req.Engine == "clickhouse" {
+	} else if engine == "clickhouse" {
 		port = 8123
 		version = "24.3"
 		defaultUser = "default"
@@ -72,7 +88,7 @@ func (h *Handler) handleCreateDatabase(c fiber.Ctx) error {
 	hostname := fmt.Sprintf("paas-db-%s", dbSlug)
 
 	var connURI string
-	switch req.Engine {
+	switch engine {
 	case "postgres":
 		connURI = fmt.Sprintf("postgresql://%s:%s@%s:%d/%s?sslmode=disable", defaultUser, password, hostname, port, dbName)
 	case "mysql":
@@ -84,15 +100,15 @@ func (h *Handler) handleCreateDatabase(c fiber.Ctx) error {
 	case "clickhouse":
 		connURI = fmt.Sprintf("clickhouse://%s:%s@%s:%d/%s", defaultUser, password, hostname, port, dbName)
 	default:
-		connURI = fmt.Sprintf("%s://%s:%s@%s:%d/%s", req.Engine, defaultUser, password, hostname, port, dbName)
+		connURI = fmt.Sprintf("%s://%s:%s@%s:%d/%s", engine, defaultUser, password, hostname, port, dbName)
 	}
 
 	metaJSON := fmt.Sprintf(`{"username":"%s","password":"%s","databaseName":"%s","connectionUri":"%s"}`, defaultUser, password, dbName, connURI)
 
 	db := &domain.Database{
-		ProjectID:        req.ProjectID,
-		Name:             req.Name,
-		Engine:           domain.DatabaseEngine(req.Engine),
+		ProjectID:        projectID,
+		Name:             name,
+		Engine:           domain.DatabaseEngine(engine),
 		EngineVersion:    version,
 		RuntimeStatus:    domain.DBStatusReady,
 		InternalHostname: hostname,
@@ -100,8 +116,8 @@ func (h *Handler) handleCreateDatabase(c fiber.Ctx) error {
 		DatabaseName:     &dbName,
 		ResourceJSON:     metaJSON,
 	}
-	if err := h.store.Databases().Create(c.Context(), db); err != nil {
-		return err
+	if err := h.store.Databases().Create(ctx, db); err != nil {
+		return nil, err
 	}
 
 	// Launch Real Docker Database Container asynchronously
@@ -110,7 +126,7 @@ func (h *Handler) handleCreateDatabase(c fiber.Ctx) error {
 		_ = exec.Command("docker", "rm", "-f", containerName).Run()
 
 		var runArgs []string
-		switch req.Engine {
+		switch engine {
 		case "postgres":
 			runArgs = []string{
 				"run", "-d",
@@ -177,7 +193,7 @@ func (h *Handler) handleCreateDatabase(c fiber.Ctx) error {
 		_ = exec.Command("docker", runArgs...).Run()
 	}()
 
-	return c.Status(201).JSON(db)
+	return db, nil
 }
 
 func (h *Handler) handleGetDatabase(c fiber.Ctx) error {
