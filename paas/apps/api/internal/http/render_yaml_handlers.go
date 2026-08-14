@@ -53,9 +53,44 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 
 	lines := strings.Split(yamlStr, "\n")
 	var currentSvc *ParsedRenderService
+	var currentDb *fiber.Map
 	var inEnvVars bool
 	var inDatabases bool
+	var inServices bool
 	var currentEnvKey string
+
+	flushCurrent := func() {
+		if currentDb != nil {
+			res.Databases = append(res.Databases, *currentDb)
+			currentDb = nil
+		}
+		if currentSvc != nil {
+			// Check if this service is actually a database
+			lowerKind := strings.ToLower(currentSvc.Kind)
+			lowerImg := strings.ToLower(currentSvc.Image)
+			lowerName := strings.ToLower(currentSvc.Name)
+			if lowerKind == "database" || lowerKind == "redis" || lowerKind == "postgres" || lowerKind == "mysql" || lowerKind == "mongodb" || lowerKind == "clickhouse" ||
+				strings.Contains(lowerImg, "redis") || strings.Contains(lowerImg, "postgres") || strings.Contains(lowerImg, "mysql") || strings.Contains(lowerImg, "mongo") || strings.Contains(lowerImg, "clickhouse") {
+				engine := "postgres"
+				if strings.Contains(lowerKind, "redis") || strings.Contains(lowerImg, "redis") || strings.Contains(lowerName, "redis") {
+					engine = "redis"
+				} else if strings.Contains(lowerKind, "mysql") || strings.Contains(lowerImg, "mysql") || strings.Contains(lowerName, "mysql") {
+					engine = "mysql"
+				} else if strings.Contains(lowerKind, "mongo") || strings.Contains(lowerImg, "mongo") || strings.Contains(lowerName, "mongo") {
+					engine = "mongodb"
+				} else if strings.Contains(lowerKind, "clickhouse") || strings.Contains(lowerImg, "clickhouse") || strings.Contains(lowerName, "clickhouse") {
+					engine = "clickhouse"
+				}
+				res.Databases = append(res.Databases, fiber.Map{
+					"name":   currentSvc.Name,
+					"engine": engine,
+				})
+			} else {
+				res.Services = append(res.Services, *currentSvc)
+			}
+			currentSvc = nil
+		}
+	}
 
 	for _, rawLine := range lines {
 		trimmed := strings.TrimSpace(rawLine)
@@ -63,73 +98,101 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 			continue
 		}
 
+		// Top-level sections
 		if trimmed == "databases:" {
+			flushCurrent()
 			inDatabases = true
+			inServices = false
 			inEnvVars = false
-			if currentSvc != nil {
-				res.Services = append(res.Services, *currentSvc)
-				currentSvc = nil
-			}
 			continue
 		} else if trimmed == "services:" {
+			flushCurrent()
+			inServices = true
 			inDatabases = false
 			inEnvVars = false
-			if currentSvc != nil {
-				res.Services = append(res.Services, *currentSvc)
-				currentSvc = nil
-			}
 			continue
 		}
 
+		// Database list items (e.g. "- name: devpanel-postgres" or "- name: devpanel-redis")
 		if inDatabases {
 			if strings.HasPrefix(trimmed, "- name:") || strings.HasPrefix(trimmed, "name:") {
 				parts := strings.SplitN(trimmed, ":", 2)
 				if len(parts) > 1 {
 					dbName := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
 					engine := "postgres"
-					if strings.Contains(strings.ToLower(dbName), "redis") {
+					lower := strings.ToLower(dbName)
+					if strings.Contains(lower, "redis") {
 						engine = "redis"
-					} else if strings.Contains(strings.ToLower(dbName), "mysql") {
+					} else if strings.Contains(lower, "mysql") {
 						engine = "mysql"
-					} else if strings.Contains(strings.ToLower(dbName), "mongo") {
+					} else if strings.Contains(lower, "mongo") {
 						engine = "mongodb"
+					} else if strings.Contains(lower, "clickhouse") {
+						engine = "clickhouse"
 					}
-					res.Databases = append(res.Databases, fiber.Map{
+					newDb := fiber.Map{
 						"name":   dbName,
 						"engine": engine,
-					})
+					}
+					res.Databases = append(res.Databases, newDb)
 				}
-			} else if strings.HasPrefix(trimmed, "image:") && len(res.Databases) > 0 {
+			} else if (strings.HasPrefix(trimmed, "engine:") || strings.HasPrefix(trimmed, "image:")) && len(res.Databases) > 0 {
 				parts := strings.SplitN(trimmed, ":", 2)
 				if len(parts) > 1 {
-					img := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
-					if strings.Contains(img, "redis") {
+					val := strings.ToLower(strings.Trim(strings.TrimSpace(parts[1]), "\"'"))
+					if strings.Contains(val, "redis") {
 						res.Databases[len(res.Databases)-1]["engine"] = "redis"
-					} else if strings.Contains(img, "mysql") {
+					} else if strings.Contains(val, "mysql") {
 						res.Databases[len(res.Databases)-1]["engine"] = "mysql"
-					} else if strings.Contains(img, "mongo") {
+					} else if strings.Contains(val, "mongo") {
 						res.Databases[len(res.Databases)-1]["engine"] = "mongodb"
+					} else if strings.Contains(val, "clickhouse") {
+						res.Databases[len(res.Databases)-1]["engine"] = "clickhouse"
+					} else if strings.Contains(val, "postgres") {
+						res.Databases[len(res.Databases)-1]["engine"] = "postgres"
 					}
 				}
 			}
 			continue
 		}
 
-		if strings.HasPrefix(trimmed, "- type:") || strings.HasPrefix(trimmed, "- name:") || (strings.HasPrefix(trimmed, "type:") && currentSvc == nil) {
-			if currentSvc != nil {
-				res.Services = append(res.Services, *currentSvc)
-			}
+		// In services section: Detect new service start (either list item "- name:" / "- type:" or map key "  frontend:" / "  backend:" / "  redis:")
+		isMapServiceHeader := inServices && !strings.HasPrefix(trimmed, "-") && strings.HasSuffix(trimmed, ":") && !strings.Contains(trimmed, " ") &&
+			(strings.HasPrefix(rawLine, "  ") || strings.HasPrefix(rawLine, "\t")) && !strings.HasPrefix(rawLine, "    ") && !strings.HasPrefix(rawLine, "\t\t") &&
+			trimmed != "env:" && trimmed != "envVars:" && trimmed != "source:" && trimmed != "build:" && trimmed != "deploy:" && trimmed != "resources:" && trimmed != "volumes:"
+
+		isListServiceHeader := strings.HasPrefix(trimmed, "- type:") || strings.HasPrefix(trimmed, "- name:") || (strings.HasPrefix(trimmed, "type:") && currentSvc == nil)
+
+		if isMapServiceHeader || isListServiceHeader {
+			flushCurrent()
+
 			svcType := "web"
 			svcName := ""
-			parts := strings.SplitN(trimmed, ":", 2)
-			if len(parts) > 1 {
-				val := strings.ToLower(strings.TrimSpace(parts[1]))
-				if strings.HasPrefix(trimmed, "- type:") || strings.HasPrefix(trimmed, "type:") {
-					svcType = val
-				} else if strings.HasPrefix(trimmed, "- name:") {
-					svcName = strings.Trim(strings.TrimSpace(parts[1]), "\"'")
+
+			if isMapServiceHeader {
+				svcName = strings.TrimSuffix(trimmed, ":")
+				lowerKey := strings.ToLower(svcName)
+				if strings.Contains(lowerKey, "redis") || lowerKey == "redis-cache" || lowerKey == "cache" {
+					svcType = "database"
+				} else if strings.Contains(lowerKey, "postgres") || strings.Contains(lowerKey, "database") || lowerKey == "db" {
+					svcType = "database"
+				} else if strings.Contains(lowerKey, "mysql") || strings.Contains(lowerKey, "mongo") || strings.Contains(lowerKey, "clickhouse") {
+					svcType = "database"
+				} else if strings.Contains(lowerKey, "front") || strings.Contains(lowerKey, "web") || strings.Contains(lowerKey, "client") || strings.Contains(lowerKey, "ui") {
+					svcType = "static"
+				}
+			} else {
+				parts := strings.SplitN(trimmed, ":", 2)
+				if len(parts) > 1 {
+					val := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
+					if strings.HasPrefix(trimmed, "- type:") || strings.HasPrefix(trimmed, "type:") {
+						svcType = strings.ToLower(val)
+					} else if strings.HasPrefix(trimmed, "- name:") {
+						svcName = val
+					}
 				}
 			}
+
 			currentSvc = &ParsedRenderService{
 				Name:         svcName,
 				Slug:         strings.ToLower(svcName),
@@ -147,6 +210,7 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 			continue
 		}
 
+		// Property Parsing inside current service
 		if !inEnvVars && strings.HasPrefix(trimmed, "name:") {
 			parts := strings.SplitN(trimmed, ":", 2)
 			if len(parts) > 1 {
@@ -154,7 +218,7 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 				currentSvc.Name = val
 				currentSvc.Slug = strings.ToLower(val)
 			}
-		} else if !inEnvVars && (strings.HasPrefix(trimmed, "type:")) {
+		} else if !inEnvVars && strings.HasPrefix(trimmed, "type:") {
 			parts := strings.SplitN(trimmed, ":", 2)
 			if len(parts) > 1 {
 				currentSvc.Kind = strings.ToLower(strings.TrimSpace(parts[1]))
@@ -170,9 +234,19 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 				currentSvc.StaticPublishPath = strings.Trim(strings.TrimSpace(parts[1]), "\"'")
 				currentSvc.Kind = "static"
 			}
-		} else if !inEnvVars && (strings.HasPrefix(trimmed, "env:") || strings.HasPrefix(trimmed, "runtime:")) {
+		} else if !inEnvVars && strings.HasPrefix(trimmed, "image:") {
 			parts := strings.SplitN(trimmed, ":", 2)
 			if len(parts) > 1 {
+				img := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
+				currentSvc.Image = img
+				lowerImg := strings.ToLower(img)
+				if strings.Contains(lowerImg, "redis") || strings.Contains(lowerImg, "postgres") || strings.Contains(lowerImg, "mysql") || strings.Contains(lowerImg, "mongo") || strings.Contains(lowerImg, "clickhouse") {
+					currentSvc.Kind = "database"
+				}
+			}
+		} else if !inEnvVars && (strings.HasPrefix(trimmed, "env:") || strings.HasPrefix(trimmed, "runtime:") || strings.HasPrefix(trimmed, "engine:")) {
+			parts := strings.SplitN(trimmed, ":", 2)
+			if len(parts) > 1 && strings.TrimSpace(parts[1]) != "" {
 				val := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
 				currentSvc.Env = val
 				switch strings.ToLower(val) {
@@ -318,8 +392,49 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 		}
 	}
 
-	if currentSvc != nil {
-		res.Services = append(res.Services, *currentSvc)
+	flushCurrent()
+
+	// Find any backend service for auto-connecting frontend
+	var primaryBackendSlug string
+	var primaryBackendPort = 8080
+	for _, s := range res.Services {
+		if s.Kind == "web" || s.Kind == "api" {
+			primaryBackendSlug = s.Slug
+			if s.InternalPort > 0 {
+				primaryBackendPort = s.InternalPort
+			}
+			break
+		}
+	}
+
+	// Auto-wire backend URLs into frontend services if not already specified
+	if primaryBackendSlug != "" {
+		for i := range res.Services {
+			s := &res.Services[i]
+			if s.Kind == "static" || s.Preset == "static-spa" || s.StaticPublishPath != "" {
+				if s.EnvVars == nil {
+					s.EnvVars = make(map[string]string)
+				}
+				if _, ok := s.EnvVars["VITE_API_URL"]; !ok {
+					s.EnvVars["VITE_API_URL"] = fmt.Sprintf("https://%s.klouds.online/api", primaryBackendSlug)
+				}
+				if _, ok := s.EnvVars["NEXT_PUBLIC_API_URL"]; !ok {
+					s.EnvVars["NEXT_PUBLIC_API_URL"] = fmt.Sprintf("https://%s.klouds.online/api", primaryBackendSlug)
+				}
+				if _, ok := s.EnvVars["REACT_APP_API_URL"]; !ok {
+					s.EnvVars["REACT_APP_API_URL"] = fmt.Sprintf("https://%s.klouds.online/api", primaryBackendSlug)
+				}
+				if _, ok := s.EnvVars["API_URL"]; !ok {
+					s.EnvVars["API_URL"] = fmt.Sprintf("https://%s.klouds.online/api", primaryBackendSlug)
+				}
+				if _, ok := s.EnvVars["BACKEND_URL"]; !ok {
+					s.EnvVars["BACKEND_URL"] = fmt.Sprintf("https://%s.klouds.online", primaryBackendSlug)
+				}
+				if _, ok := s.EnvVars["INTERNAL_API_URL"]; !ok {
+					s.EnvVars["INTERNAL_API_URL"] = fmt.Sprintf("http://paas-svc-%s:%d", primaryBackendSlug, primaryBackendPort)
+				}
+			}
+		}
 	}
 
 	// Post-process: identify required env vars across all services
