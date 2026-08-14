@@ -1101,23 +1101,14 @@
                   <X size={13} />
                 </button>
               </div>
-            {:else if oauthEnabledMap[selectedProvider]}
+            {:else}
               <button 
                 type="button" 
                 class="btn btn-primary" 
                 style="font-size: 0.8125rem; padding: 4px 14px; background: {selectedProvider === 'github' ? '#24292f' : selectedProvider === 'gitlab' ? '#fc6d26' : '#0052cc'}; border-color: transparent; display: flex; align-items: center; gap: 6px;"
                 onclick={() => authorizeGitOAuth(selectedProvider)}
               >
-                <FolderGit2 size={14} /> Authorize with {selectedProvider.charAt(0).toUpperCase() + selectedProvider.slice(1)}
-              </button>
-            {:else}
-              <button 
-                type="button" 
-                class="btn btn-primary" 
-                style="font-size: 0.8125rem; padding: 4px 12px;"
-                onclick={() => showConnectModal = true}
-              >
-                <Plus size={14} /> Link Account
+                <FolderGit2 size={14} /> Connect with {selectedProvider.charAt(0).toUpperCase() + selectedProvider.slice(1)}
               </button>
             {/if}
           </div>
@@ -1126,20 +1117,14 @@
         {#if providerRepos.length === 0}
           <div style="text-align: center; padding: 1.5rem 0;">
             <p class="text-sm text-muted" style="margin-bottom: 0.75rem;">No linked {selectedProvider} repositories found.</p>
-            {#if oauthEnabledMap[selectedProvider]}
-              <button 
-                type="button" 
-                class="btn btn-primary" 
-                style="font-size: 0.8125rem; background: {selectedProvider === 'github' ? '#24292f' : selectedProvider === 'gitlab' ? '#fc6d26' : '#0052cc'}; border-color: transparent; display: inline-flex; align-items: center; gap: 6px;" 
-                onclick={() => authorizeGitOAuth(selectedProvider)}
-              >
-                <FolderGit2 size={14} /> Connect {selectedProvider.charAt(0).toUpperCase() + selectedProvider.slice(1)} (1-Click OAuth)
-              </button>
-            {:else}
-              <button type="button" class="btn btn-secondary" style="font-size: 0.8125rem;" onclick={() => showConnectModal = true}>
-                Connect {selectedProvider} Account
-              </button>
-            {/if}
+            <button 
+              type="button" 
+              class="btn btn-primary" 
+              style="font-size: 0.8125rem; background: {selectedProvider === 'github' ? '#24292f' : selectedProvider === 'gitlab' ? '#fc6d26' : '#0052cc'}; border-color: transparent; display: inline-flex; align-items: center; gap: 6px;" 
+              onclick={() => authorizeGitOAuth(selectedProvider)}
+            >
+              <FolderGit2 size={14} /> Connect {selectedProvider.charAt(0).toUpperCase() + selectedProvider.slice(1)} (1-Click Auth)
+            </button>
           </div>
         {:else}
           <div class="form-group" style="margin-bottom: 0.75rem;">

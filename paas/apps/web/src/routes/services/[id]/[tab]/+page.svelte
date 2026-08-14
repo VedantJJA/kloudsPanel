@@ -123,6 +123,75 @@
     }
   }
 
+  let testSimPath = $state('');
+
+  function simulateRuleMatch(path: string, rules: Array<{ type: string; source: string; destination: string }>) {
+    const urlParts = path.split('?');
+    const pathname = urlParts[0];
+    const query = urlParts[1] ? `?${urlParts[1]}` : '';
+
+    for (const rule of rules) {
+      const src = (rule.source || '').trim();
+      const dest = (rule.destination || '').trim();
+      if (!src || !dest) continue;
+
+      const getLabel = (t: string) => {
+        if (t === 'redirect_302' || t === 'redirect_temporary') return '302 Found';
+        if (t === 'redirect_307') return '307 Temporary';
+        if (t === 'redirect_308') return '308 Permanent';
+        if (t.startsWith('redirect')) return '301 Moved Permanently';
+        return '200 Rewrite';
+      };
+
+      if (src === '/*' || src === '*' || src === '/') {
+        let finalDest = dest;
+        if (dest.endsWith('/*')) {
+          finalDest = dest.replace('/*', pathname);
+        } else if (dest.includes('$1')) {
+          finalDest = dest.replace('$1', pathname.slice(1));
+        }
+        return {
+          matched: true,
+          action: rule.type,
+          actionLabel: getLabel(rule.type),
+          destination: finalDest + query
+        };
+      }
+
+      if (src.endsWith('/*')) {
+        const prefix = src.slice(0, -2);
+        if (pathname.startsWith(prefix)) {
+          const rest = pathname.slice(prefix.length);
+          let finalDest = dest;
+          if (dest.endsWith('/*')) {
+            finalDest = dest.slice(0, -2) + rest;
+          } else if (dest.includes('$1')) {
+            finalDest = dest.replace('$1', rest.startsWith('/') ? rest.slice(1) : rest);
+          } else if (dest.startsWith('http://') || dest.startsWith('https://')) {
+            finalDest = dest + (rest.startsWith('/') ? rest : `/${rest}`);
+          }
+          return {
+            matched: true,
+            action: rule.type,
+            actionLabel: getLabel(rule.type),
+            destination: finalDest + query
+          };
+        }
+      }
+
+      if (pathname === src) {
+        return {
+          matched: true,
+          action: rule.type,
+          actionLabel: getLabel(rule.type),
+          destination: dest + query
+        };
+      }
+    }
+
+    return { matched: false, action: '', actionLabel: '', destination: '' };
+  }
+
   async function loadDomains() {
     try {
       const targetId = service?.id || id;
@@ -974,9 +1043,11 @@
                       onchange={() => { routesDirty = true; }}
                       style="width: 100%; height: 34px;"
                     >
-                      <option value="rewrite">Rewrite</option>
-                      <option value="redirect">Redirect (301 Permanent)</option>
-                      <option value="redirect_temporary">Redirect (302 Temporary)</option>
+                      <option value="rewrite">Rewrite (200 OK)</option>
+                      <option value="redirect_301">Redirect (301 Permanent)</option>
+                      <option value="redirect_302">Redirect (302 Temporary)</option>
+                      <option value="redirect_307">Redirect (307 Temporary - Preserves Method)</option>
+                      <option value="redirect_308">Redirect (308 Permanent - Preserves Method)</option>
                     </select>
                   </div>
                 </div>
@@ -1008,6 +1079,49 @@
               <Save size={14} /> Save Changes
             {/if}
           </button>
+        </div>
+
+        <!-- Interactive Test Path Simulator -->
+        <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--color-border);">
+          <h4 style="font-size: 0.875rem; font-weight: 700; color: var(--color-ink); margin-bottom: 0.35rem;">
+            Test Path Simulator
+          </h4>
+          <p class="text-xs text-muted" style="margin-bottom: 0.75rem; line-height: 1.5;">
+            Type a test request path or URL to preview how your redirect and rewrite rules will execute in real-time.
+          </p>
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <input
+              type="text"
+              class="form-input font-mono text-xs"
+              placeholder="/api/login?ref=test"
+              bind:value={testSimPath}
+              style="width: 100%; height: 36px;"
+            />
+          </div>
+
+          {#if testSimPath.trim()}
+            {@const simResult = simulateRuleMatch(testSimPath.trim(), serviceRoutes)}
+            <div style="margin-top: 0.75rem; padding: 0.75rem 1rem; border-radius: var(--radius-sm); font-size: 0.8125rem; background: var(--color-canvas); border: 1px solid var(--color-border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
+              <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                <span style="font-weight: 600; color: var(--color-ink);">Simulator Result:</span>
+                {#if simResult.matched}
+                  <span class="badge" style="background: {simResult.action.startsWith('redirect') ? 'rgba(245,158,11,0.18)' : 'rgba(16,185,129,0.18)'}; color: {simResult.action.startsWith('redirect') ? '#b45309' : '#047857'}; font-size: 0.75rem; font-weight: 600;">
+                    {simResult.actionLabel}
+                  </span>
+                  <span class="font-mono text-xs" style="color: var(--color-accent); font-weight: 600; word-break: break-all;">
+                    {simResult.destination}
+                  </span>
+                {:else}
+                  <span class="badge" style="background: rgba(148,163,184,0.18); color: #64748b; font-size: 0.75rem;">
+                    No Rule Match
+                  </span>
+                  <span class="text-xs text-muted">
+                    Serves physical static file or SPA fallback
+                  </span>
+                {/if}
+              </div>
+            </div>
+          {/if}
         </div>
       </div>
     </div>
