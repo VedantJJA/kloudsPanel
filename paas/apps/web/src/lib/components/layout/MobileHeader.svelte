@@ -1,7 +1,8 @@
 <script lang="ts">
   import { page } from '$app/stores';
-  import { Menu, X, Plus, Rocket, Layers, Database, Shield } from 'lucide-svelte';
+  import { Menu, X, Plus, Rocket, Layers, Database, Shield, Sun, Moon, Monitor } from 'lucide-svelte';
   import { isMobileNavOpen, toggleMobileNav } from '$lib/stores/ui';
+  import { theme } from '$lib/stores/theme';
 
   const pathname = $derived($page.url.pathname);
   
@@ -36,6 +37,24 @@
   </div>
 
   <div style="display: flex; align-items: center; gap: 0.5rem;">
+    <!-- Mobile Theme Toggle Button -->
+    <button
+      type="button"
+      class="mobile-menu-btn"
+      onclick={() => theme.toggle()}
+      aria-label="Toggle dark and light mode"
+      title={`Theme: ${$theme}`}
+      style="min-width: 32px; min-height: 32px; padding: 4px;"
+    >
+      {#if $theme === 'dark'}
+        <Moon size={18} style="color: var(--color-accent);" />
+      {:else if $theme === 'light'}
+        <Sun size={18} style="color: #f59e0b;" />
+      {:else}
+        <Monitor size={18} />
+      {/if}
+    </button>
+
     {#if pageCategory !== 'kloudsPanel'}
       <span class="badge" style="background: rgba(0, 166, 166, 0.12); color: var(--color-accent); font-size: 0.7rem; font-weight: 600; text-transform: uppercase;">
         {pageCategory}

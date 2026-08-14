@@ -27,9 +27,13 @@
     FolderGit2,
     FolderOpen,
     Box,
-    X
+    X,
+    Sun,
+    Moon,
+    Monitor
   } from 'lucide-svelte';
   import { isMobileNavOpen, closeMobileNav } from '$lib/stores/ui';
+  import { theme } from '$lib/stores/theme';
 
   let isCollapsed = $state(false);
 
@@ -391,8 +395,30 @@
     </div>
   {/if}
 
-  <!-- Footer: User account only -->
+  <!-- Footer: User account & Theme Toggle -->
   <div class="sidebar-footer" style="display:flex; flex-direction:column; gap:0.25rem;">
+    <button
+      type="button"
+      class="nav-item"
+      style="width:100%; color:rgba(234,241,250,0.75); font-size:0.8rem; cursor:pointer;"
+      onclick={() => theme.toggle()}
+      title={`Theme: ${$theme} (Click to toggle)`}
+      aria-label="Toggle dark and light mode"
+    >
+      <span class="nav-item-icon" aria-hidden="true" style="display:flex; align-items:center;">
+        {#if $theme === 'dark'}
+          <Moon size={18} style="color: var(--color-accent);" />
+        {:else if $theme === 'light'}
+          <Sun size={18} style="color: #fbbf24;" />
+        {:else}
+          <Monitor size={18} />
+        {/if}
+      </span>
+      <span class="nav-item-text">
+        {$theme === 'dark' ? 'Dark Mode' : $theme === 'light' ? 'Light Mode' : 'System Theme'}
+      </span>
+    </button>
+
     <button
       class="nav-item nav-item-logout"
       style="width:100%; color:rgba(234,241,250,0.6); font-size:0.8rem;"
