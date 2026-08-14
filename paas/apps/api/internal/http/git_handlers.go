@@ -284,8 +284,11 @@ func (h *Handler) handleGitOAuthAuthorize(c fiber.Ctx) error {
 	var authURL string
 	switch provider {
 	case "github":
-		authURL = fmt.Sprintf("https://github.com/login/oauth/authorize?client_id=%s&redirect_uri=%s&scope=repo,read:user,user:email&state=%s",
-			url.QueryEscape(clientID), url.QueryEscape(redirectURI), url.QueryEscape(state))
+		authURL = fmt.Sprintf("https://github.com/login/oauth/authorize?client_id=%s&scope=repo,read:user,user:email&state=%s",
+			url.QueryEscape(clientID), url.QueryEscape(state))
+		if rURI := c.Query("redirect_uri"); rURI != "" {
+			authURL += fmt.Sprintf("&redirect_uri=%s", url.QueryEscape(rURI))
+		}
 	case "gitlab":
 		authURL = fmt.Sprintf("https://gitlab.com/oauth/authorize?client_id=%s&redirect_uri=%s&response_type=code&state=%s&scope=read_user+read_api+read_repository",
 			url.QueryEscape(clientID), url.QueryEscape(redirectURI), url.QueryEscape(state))
