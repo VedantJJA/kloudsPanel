@@ -6,15 +6,25 @@
   let pollInterval: any = null;
 
   async function fetchLogs(isInitial = false) {
-    if (isInitial) loading = true;
+    if (isInitial && logs.length === 0) loading = true;
     try {
-      const url = deploymentId 
-        ? `/api/v1/deployments/${deploymentId}/logs` 
-        : `/api/v1/services/${serviceId}/logs`;
-      const r = await fetch(url, { credentials: 'include' });
-      if (r.ok) {
-        const data = await r.json();
-        logs = data.entries ?? [];
+      let fetched = false;
+      if (deploymentId) {
+        const depRes = await fetch(`/api/v1/deployments/${deploymentId}/logs`, { credentials: 'include' });
+        if (depRes.ok) {
+          const data = await depRes.json();
+          if (data.entries && data.entries.length > 0) {
+            logs = data.entries;
+            fetched = true;
+          }
+        }
+      }
+      if (!fetched && serviceId) {
+        const svcRes = await fetch(`/api/v1/services/${serviceId}/logs`, { credentials: 'include' });
+        if (svcRes.ok) {
+          const data = await svcRes.json();
+          logs = data.entries ?? [];
+        }
       }
     } catch (e) {
       console.error(e);
@@ -35,7 +45,7 @@
     fetchLogs(true);
     pollInterval = setInterval(() => {
       fetchLogs(false);
-    }, 2500);
+    }, 2000);
 
     return () => {
       if (pollInterval) clearInterval(pollInterval);

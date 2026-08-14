@@ -1,7 +1,7 @@
 <script lang="ts">
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import LogViewer from '$lib/components/logs/LogViewer.svelte';
   import {
     Loader2,
@@ -32,6 +32,7 @@
   let actionLoading = $state(false);
   let copiedUrl = $state(false);
   let bannerNotice = $state<{ type: 'success' | 'error'; message: string } | null>(null);
+  let pollTimer: any = null;
 
   // Variables state
   let envVars = $state<Array<{ key: string; value: string }>>([]);
@@ -68,6 +69,13 @@
 
   onMount(() => {
     loadService();
+    pollTimer = setInterval(() => {
+      loadService();
+    }, 2500);
+  });
+
+  onDestroy(() => {
+    if (pollTimer) clearInterval(pollTimer);
   });
 
   async function triggerDeploy() {
@@ -421,7 +429,7 @@
     <div style="margin-bottom:1rem; display:flex; justify-content:space-between; align-items:center;">
       <h3 style="margin:0; font-size:1rem;">Real-Time Build & Runtime Logs</h3>
     </div>
-    <LogViewer serviceId={id as string} deploymentId={deployments[0]?.id || deployments[0]?.ID} />
+    <LogViewer serviceId={service?.id || (id as string)} deploymentId={deployments[0]?.id || deployments[0]?.ID} />
 
   {:else if tab === 'deployments'}
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem;">

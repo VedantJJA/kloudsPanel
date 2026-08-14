@@ -44,6 +44,7 @@ func appendLog(serviceID, depID, stream, message string) {
 			logs = logs[1:]
 		}
 		serviceLatestLogs[serviceID] = append(logs, entry)
+		saveLogToDisk(serviceID, entry)
 	}
 
 	if depID != "" {
@@ -52,6 +53,7 @@ func appendLog(serviceID, depID, stream, message string) {
 			logs = logs[1:]
 		}
 		serviceLatestLogs[depID] = append(logs, entry)
+		saveLogToDisk(depID, entry)
 	}
 }
 
@@ -60,10 +62,48 @@ func clearLogs(serviceID, depID string) {
 	defer logMu.Unlock()
 	if serviceID != "" {
 		serviceLatestLogs[serviceID] = []LogEntry{}
+		clearLogDisk(serviceID)
 	}
 	if depID != "" {
 		serviceLatestLogs[depID] = []LogEntry{}
+		clearLogDisk(depID)
 	}
+}
+
+func saveLogToDisk(id string, entry LogEntry) {
+	logDir := "/tmp/paas_logs"
+	_ = os.MkdirAll(logDir, 0755)
+	f, err := os.OpenFile(filepath.Join(logDir, id+".jsonl"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err == nil {
+		defer f.Close()
+		b, _ := json.Marshal(entry)
+		_, _ = f.WriteString(string(b) + "\n")
+	}
+}
+
+func clearLogDisk(id string) {
+	logDir := "/tmp/paas_logs"
+	_ = os.Remove(filepath.Join(logDir, id+".jsonl"))
+}
+
+func loadLogsFromDisk(id string) []LogEntry {
+	logDir := "/tmp/paas_logs"
+	filePath := filepath.Join(logDir, id+".jsonl")
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil
+	}
+	var entries []LogEntry
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			var e LogEntry
+			if err := json.Unmarshal([]byte(line), &e); err == nil {
+				entries = append(entries, e)
+			}
+		}
+	}
+	return entries
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -226,9 +266,11 @@ CMD ["sh", "-c", "./$(ls -p | grep -v / | head -n 1)"]
 WORKDIR /app
 COPY . ./
 RUN %s
+RUN mkdir -p /dist && if [ -d dist ]; then cp -r dist/* /dist/ 2>/dev/null || cp -r dist/. /dist/ 2>/dev/null; elif [ -d build ]; then cp -r build/* /dist/ 2>/dev/null || cp -r build/. /dist/ 2>/dev/null; elif [ -d public ]; then cp -r public/* /dist/ 2>/dev/null || cp -r public/. /dist/ 2>/dev/null; else cp -r * /dist/ 2>/dev/null || true; fi
+
 FROM nginx:alpine
 RUN printf 'server {\n    listen 80;\n    server_name _;\n    root /usr/share/nginx/html;\n    index index.html;\n    location / {\n        try_files $uri $uri/ /index.html;\n    }\n}\n' > /etc/nginx/conf.d/default.conf
-COPY --from=builder /app/dist /usr/share/nginx/html/ || COPY --from=builder /app/build /usr/share/nginx/html/ || COPY --from=builder /app/public /usr/share/nginx/html/ || COPY --from=builder /app /usr/share/nginx/html/
+COPY --from=builder /dist /usr/share/nginx/html
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
 `, bCmd)
@@ -658,6 +700,11 @@ func (h *Handler) handleGetLogs(c fiber.Ctx) error {
 		return c.JSON(fiber.Map{"entries": entries})
 	}
 
+	// Try reading from disk for this ID directly
+	if diskEntries := loadLogsFromDisk(id); len(diskEntries) > 0 {
+		return c.JSON(fiber.Map{"entries": diskEntries})
+	}
+
 	// 1. Try resolving as a Deployment ID
 	dep, err := h.store.Deployments().GetByID(c.Context(), id)
 	if err == nil && dep != nil {
@@ -671,6 +718,13 @@ func (h *Handler) handleGetLogs(c fiber.Ctx) error {
 			return c.JSON(fiber.Map{"entries": entries})
 		}
 
+		if diskEntries := loadLogsFromDisk(dep.ID); len(diskEntries) > 0 {
+			return c.JSON(fiber.Map{"entries": diskEntries})
+		}
+		if diskEntries := loadLogsFromDisk(dep.ServiceID); len(diskEntries) > 0 {
+			return c.JSON(fiber.Map{"entries": diskEntries})
+		}
+
 		s, sErr := h.store.Services().GetByID(c.Context(), dep.ServiceID)
 		if sErr == nil && s != nil {
 			logMu.RLock()
@@ -678,6 +732,9 @@ func (h *Handler) handleGetLogs(c fiber.Ctx) error {
 			logMu.RUnlock()
 			if exists && len(entries) > 0 {
 				return c.JSON(fiber.Map{"entries": entries})
+			}
+			if diskEntries := loadLogsFromDisk(s.Slug); len(diskEntries) > 0 {
+				return c.JSON(fiber.Map{"entries": diskEntries})
 			}
 
 			// Query live docker logs
@@ -714,6 +771,12 @@ func (h *Handler) handleGetLogs(c fiber.Ctx) error {
 		logMu.RUnlock()
 		if exists && len(entries) > 0 {
 			return c.JSON(fiber.Map{"entries": entries})
+		}
+		if diskEntries := loadLogsFromDisk(s.ID); len(diskEntries) > 0 {
+			return c.JSON(fiber.Map{"entries": diskEntries})
+		}
+		if diskEntries := loadLogsFromDisk(s.Slug); len(diskEntries) > 0 {
+			return c.JSON(fiber.Map{"entries": diskEntries})
 		}
 
 		// Fallback to query live docker logs from container
