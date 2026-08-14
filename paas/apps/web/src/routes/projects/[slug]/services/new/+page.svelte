@@ -29,7 +29,8 @@
     Database,
     KeyRound,
     AlertTriangle,
-    Wand2
+    Wand2,
+    Info
   } from 'lucide-svelte';
   import FrameworkIcon from '$lib/components/icons/FrameworkIcon.svelte';
 
@@ -440,17 +441,22 @@
 
   onMount(async () => {
     try {
-      const res = await fetch(`/api/v1/projects/${slug}`, { credentials: 'include' });
+      const projSlug = slug || '';
+      const res = await fetch(`/api/v1/projects/${encodeURIComponent(projSlug)}`, { credentials: 'include' });
       if (res.ok) {
         project = await res.json();
       } else {
-        goto('/workspaces');
+        project = { id: projSlug, slug: projSlug, name: projSlug };
       }
-      await loadIntegrations();
-      await loadProviderRepos('github');
+      try {
+        await loadIntegrations();
+      } catch {}
+      try {
+        await loadProviderRepos('github');
+      } catch {}
       choosePreset(presets[0]);
     } catch (e) {
-      goto('/workspaces');
+      project = { id: slug, slug: slug, name: slug };
     } finally {
       loading = false;
     }
@@ -1323,7 +1329,11 @@
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
               <div style="display: flex; align-items: center; gap: 0.6rem;">
                 <div style="width: 34px; height: 34px; border-radius: var(--radius-sm); background: rgba(0,0,0,0.03); border: 1px solid var(--color-border); display: flex; align-items: center; justify-content: center; padding: 4px;">
-                  <FrameworkIcon name={preset.id} size={20} />
+                  {#if preset.iconSvg}
+                    <img src={preset.iconSvg} alt={preset.title} width="22" height="22" style="width: 22px; height: 22px; object-fit: contain; display: block;" />
+                  {:else}
+                    <FrameworkIcon name={preset.id} size={20} />
+                  {/if}
                 </div>
                 <span class="badge" style="background: rgba(0,0,0,0.04); font-size: 0.7rem; font-weight: 600;">{preset.badge}</span>
               </div>
@@ -1331,8 +1341,15 @@
                 <span class="badge badge-running" style="padding: 2px 8px; font-size: 0.7rem;"><Check size={11} /> Selected</span>
               {/if}
             </div>
-            <div style="font-weight: 700; font-size: 0.9375rem; color: var(--color-ink); margin-bottom: 0.35rem;">{preset.title}</div>
-            <p class="text-xs text-muted" style="margin: 0; line-height: 1.45;">{preset.description}</p>
+            <div style="display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 0.9375rem; color: var(--color-ink); margin-top: 0.25rem;">
+              <span 
+                title={preset.description} 
+                style="display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: var(--color-canvas); border: 1px solid var(--color-border); color: var(--color-ink-muted); cursor: help; flex-shrink: 0;"
+              >
+                <Info size={12} />
+              </span>
+              <span>{preset.title}</span>
+            </div>
           </div>
         </button>
       {/each}

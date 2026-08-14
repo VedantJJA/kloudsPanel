@@ -456,22 +456,6 @@ code, pre {
 .badge-pending    { background: #e0f2fe; color: #0c4a6e; }
 .badge-deploying  { background: #ede9fe; color: #4c1d95; }
 
-.badge::before {
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.badge-running::before    { animation: pulse 2s infinite; }
-.badge-building::before   { animation: pulse 1s infinite; }
-.badge-deploying::before  { animation: pulse 0.8s infinite; }
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.3; }
-}
 
 /* ── Tables ──────────────────────────────────────────────────────────────────── */
 .table-wrapper {

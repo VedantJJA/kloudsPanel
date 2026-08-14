@@ -48,7 +48,7 @@ func (r *projectRepo) GetByID(ctx context.Context, id string) (*domain.Project, 
 		SELECT id,workspace_id,name,slug,description,source_kind,
 		       repository_url,repository_credential_id,default_branch,root_directory,
 		       status,created_by,created_at,updated_at
-		FROM projects WHERE id=?`, id)
+		FROM projects WHERE id=? OR slug=?`, id, id)
 	return scanProject(row)
 }
 

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { Settings, FolderGit2, Check, Loader2, Globe, ArrowRight, ShieldCheck } from 'lucide-svelte';
+  import { Settings, FolderGit2, Check, Loader2, Globe, ArrowRight, ShieldCheck, Database } from 'lucide-svelte';
 
   let rootDomain = $state('');
   let acmeEmail = $state('');
@@ -10,6 +10,9 @@
   let error = $state('');
 
   let gitIntegrations = $state<any[]>([]);
+
+  let dbAidEnabled = $state(true);
+  let dbAidSaving = $state(false);
 
   async function loadData() {
     try {
@@ -22,11 +25,30 @@
         rootDomain = data.settings?.root_domain ?? '';
         acmeEmail = data.settings?.acme_email ?? '';
         dnsMode = data.settings?.dns_mode ?? 'http-01';
+        dbAidEnabled = data.settings?.db_aid_enabled ?? true;
       }
       if (gitRes.ok) {
         gitIntegrations = (await gitRes.json()).integrations ?? [];
       }
     } catch {}
+  }
+
+  async function toggleDbAid() {
+    dbAidSaving = true;
+    try {
+      const nextVal = !dbAidEnabled;
+      const res = await fetch('/api/v1/admin/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ db_aid_enabled: nextVal })
+      });
+      if (res.ok) {
+        dbAidEnabled = nextVal;
+      }
+    } catch {} finally {
+      dbAidSaving = false;
+    }
   }
 
   onMount(() => {
@@ -169,6 +191,46 @@
           {/if}
         </div>
       {/each}
+    </div>
+  </div>
+
+  <!-- Database Aid & Command Abstractions Toggle -->
+  <div class="card" style="grid-column: 1 / -1; background: var(--color-surface); border: 1px solid var(--color-border); padding: 1.5rem;">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+      <div style="display:flex; align-items:flex-start; gap:1rem; max-width:640px;">
+        <div style="width:42px; height:42px; border-radius:var(--radius-md); background:rgba(0,166,166,0.12); color:var(--color-accent); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+          <Database size={22} />
+        </div>
+        <div>
+          <div style="font-weight:700; font-size:1.05rem; color:var(--color-ink); display:flex; align-items:center; gap:8px;">
+            Database Aid & Command Abstractions
+            {#if dbAidEnabled}
+              <span class="badge badge-running" style="font-size:0.7rem;">Active</span>
+            {:else}
+              <span class="badge badge-stopped" style="font-size:0.7rem;">Disabled</span>
+            {/if}
+          </div>
+          <p class="text-xs text-muted" style="margin:4px 0 0 0; line-height:1.5;">
+            When enabled, provisioned databases (PostgreSQL, MySQL, Redis, MongoDB, ClickHouse) expose 1-click command abstraction toolbars for automated schema migrations, storage vacuuming, connection monitoring, and cache flushes.
+          </p>
+        </div>
+      </div>
+
+      <button 
+        type="button" 
+        class="btn {dbAidEnabled ? 'btn-primary' : 'btn-secondary'}" 
+        onclick={toggleDbAid}
+        disabled={dbAidSaving}
+        style="padding:8px 18px; font-weight:600;"
+      >
+        {#if dbAidSaving}
+          <Loader2 size={15} class="animate-spin" /> Updating…
+        {:else if dbAidEnabled}
+          Enabled (Click to Disable)
+        {:else}
+          Disabled (Click to Enable)
+        {/if}
+      </button>
     </div>
   </div>
 </div>

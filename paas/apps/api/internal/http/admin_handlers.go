@@ -110,10 +110,19 @@ func (h *Handler) handleListAuditEvents(c fiber.Ctx) error {
 	return c.JSON(fiber.Map{"events": events})
 }
 
+var (
+	dbAidMu      sync.RWMutex
+	dbAidEnabled = true
+)
+
 func (h *Handler) handleGetPlatformSettings(c fiber.Ctx) error {
 	autoApproveMu.RLock()
 	autoApprove := autoApproveUsers
 	autoApproveMu.RUnlock()
+
+	dbAidMu.RLock()
+	dbAid := dbAidEnabled
+	dbAidMu.RUnlock()
 
 	ghClient, ghSecret := getProviderOAuthCredentials("github")
 	glClient, glSecret := getProviderOAuthCredentials("gitlab")
@@ -125,6 +134,7 @@ func (h *Handler) handleGetPlatformSettings(c fiber.Ctx) error {
 			"acme_email":              "",
 			"dns_mode":                "http-01",
 			"auto_approve_users":      autoApprove,
+			"db_aid_enabled":          dbAid,
 			"github_client_id":        ghClient,
 			"github_client_secret":    ghSecret,
 			"gitlab_client_id":        glClient,
@@ -138,6 +148,7 @@ func (h *Handler) handleGetPlatformSettings(c fiber.Ctx) error {
 func (h *Handler) handleUpdatePlatformSettings(c fiber.Ctx) error {
 	var req struct {
 		AutoApproveUsers      *bool  `json:"auto_approve_users"`
+		DbAidEnabled          *bool  `json:"db_aid_enabled"`
 		GitHubClientID        string `json:"github_client_id"`
 		GitHubClientSecret    string `json:"github_client_secret"`
 		GitLabClientID        string `json:"gitlab_client_id"`
@@ -150,6 +161,11 @@ func (h *Handler) handleUpdatePlatformSettings(c fiber.Ctx) error {
 			autoApproveMu.Lock()
 			autoApproveUsers = *req.AutoApproveUsers
 			autoApproveMu.Unlock()
+		}
+		if req.DbAidEnabled != nil {
+			dbAidMu.Lock()
+			dbAidEnabled = *req.DbAidEnabled
+			dbAidMu.Unlock()
 		}
 		if req.GitHubClientID != "" {
 			setProviderOAuthCredentials("github", req.GitHubClientID, req.GitHubClientSecret)

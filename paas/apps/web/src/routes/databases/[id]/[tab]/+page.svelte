@@ -21,13 +21,17 @@
     Code,
     Clock,
     AlertCircle,
-    Download
+    Download,
+    Zap,
+    Sparkles,
+    Wrench
   } from 'lucide-svelte';
 
   const { id, tab } = $derived($page.params);
   const tabs = ['overview', 'query', 'logs', 'settings'];
 
   let database = $state<any>(null);
+  let dbAidEnabled = $state(true);
   let loading = $state(true);
   let actionLoading = $state(false);
   let copied = $state(false);
@@ -86,8 +90,31 @@
     } catch {}
   }
 
+  async function checkDbAidStatus() {
+    try {
+      const res = await fetch('/api/v1/admin/settings', { credentials: 'include' });
+      if (res.ok) {
+        const d = await res.json();
+        if (d.settings?.db_aid_enabled !== undefined) {
+          dbAidEnabled = d.settings.db_aid_enabled;
+        }
+      }
+    } catch {}
+  }
+
+  function executeAidCommand(cmd: string) {
+    queryText = cmd;
+    if (tab !== 'query') {
+      goto(`/databases/${id}/query`);
+    }
+    setTimeout(() => {
+      runQuery();
+    }, 150);
+  }
+
   onMount(() => {
     loadDatabase();
+    checkDbAidStatus();
     pollInterval = setInterval(() => {
       if (tab === 'logs') {
         fetchLogs();
@@ -407,6 +434,84 @@
         </div>
       </div>
     </div>
+
+    <!-- Database Aid: 1-Click Command Abstractions -->
+    {#if dbAidEnabled}
+      <div class="card" style="margin-bottom:1.5rem; background: linear-gradient(135deg, rgba(0,166,166,0.05) 0%, rgba(15,23,42,0.02) 100%); border: 1px solid rgba(0,166,166,0.3); border-radius: var(--radius-lg); padding: 1.25rem;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.85rem; flex-wrap:wrap; gap:0.5rem;">
+          <div style="display:flex; align-items:center; gap:0.6rem;">
+            <div style="width:28px; height:28px; border-radius:var(--radius-sm); background:var(--color-accent); color:#fff; display:flex; align-items:center; justify-content:center;">
+              <Zap size={15} />
+            </div>
+            <div>
+              <div style="font-weight:700; font-size:0.9375rem; color:var(--color-ink);">Database Aid • 1-Click Command Abstractions</div>
+              <p class="text-xs text-muted" style="margin:0;">Pre-built database operations and diagnostic tools for {database?.engine?.toUpperCase()}.</p>
+            </div>
+          </div>
+          <span class="badge badge-running" style="font-size:0.7rem;">Active</span>
+        </div>
+
+        <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+          {#if database?.engine === 'postgres'}
+            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px; background:var(--color-surface);" onclick={() => executeAidCommand("SELECT pid, usename, state, age(clock_timestamp(), query_start) AS duration, query FROM pg_stat_activity WHERE state != 'idle' LIMIT 20;")}>
+              <Activity size={13} style="color:var(--color-accent);" /> Active Connections
+            </button>
+            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px; background:var(--color-surface);" onclick={() => executeAidCommand("SELECT relname AS table_name, pg_size_pretty(pg_total_relation_size(relid)) AS total_size, n_live_tup AS estimated_rows FROM pg_catalog.pg_statio_user_tables ORDER BY pg_total_relation_size(relid) DESC;")}>
+              <HardDrive size={13} style="color:#0284c7;" /> Table Sizes & Disk
+            </button>
+            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px; background:var(--color-surface);" onclick={() => executeAidCommand("VACUUM ANALYZE;")}>
+              <Sparkles size={13} style="color:#059669;" /> Optimize & Vacuum
+            </button>
+            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px; background:var(--color-surface);" onclick={() => executeAidCommand("SELECT now() - pg_postmaster_start_time() AS server_uptime, version();")}>
+              <Clock size={13} style="color:#d97706;" /> Server Uptime
+            </button>
+            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px; background:var(--color-surface);" onclick={() => executeAidCommand("SELECT locktype, relation::regclass, mode, granted FROM pg_locks WHERE NOT granted;")}>
+              <ShieldAlert size={13} style="color:#ef4444;" /> Check Locks
+            </button>
+          {:else if database?.engine === 'mysql'}
+            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px; background:var(--color-surface);" onclick={() => executeAidCommand("SHOW FULL PROCESSLIST;")}>
+              <Activity size={13} style="color:var(--color-accent);" /> Active Processlist
+            </button>
+            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px; background:var(--color-surface);" onclick={() => executeAidCommand("SHOW TABLE STATUS;")}>
+              <HardDrive size={13} style="color:#0284c7;" /> Table Status & Engine
+            </button>
+            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px; background:var(--color-surface);" onclick={() => executeAidCommand("SHOW STATUS LIKE 'Threads%';")}>
+              <Zap size={13} style="color:#059669;" /> Thread Metrics
+            </button>
+            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px; background:var(--color-surface);" onclick={() => executeAidCommand("SHOW STATUS LIKE 'Uptime%';")}>
+              <Clock size={13} style="color:#d97706;" /> Server Uptime
+            </button>
+          {:else if database?.engine === 'redis'}
+            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px; background:var(--color-surface);" onclick={() => executeAidCommand("INFO memory")}>
+              <HardDrive size={13} style="color:#0284c7;" /> Memory Statistics
+            </button>
+            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px; background:var(--color-surface);" onclick={() => executeAidCommand("CLIENT LIST")}>
+              <Activity size={13} style="color:var(--color-accent);" /> Connected Clients
+            </button>
+            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px; background:var(--color-surface);" onclick={() => executeAidCommand("DBSIZE")}>
+              <Database size={13} style="color:#059669;" /> Total Keys (DBSIZE)
+            </button>
+            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px; background:var(--color-surface);" onclick={() => executeAidCommand("SLOWLOG GET 10")}>
+              <Clock size={13} style="color:#d97706;" /> Slow Log (Top 10)
+            </button>
+          {:else if database?.engine === 'mongodb'}
+            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px; background:var(--color-surface);" onclick={() => executeAidCommand("db.serverStatus()")}>
+              <Activity size={13} style="color:var(--color-accent);" /> Server Status
+            </button>
+            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px; background:var(--color-surface);" onclick={() => executeAidCommand("db.stats()")}>
+              <HardDrive size={13} style="color:#0284c7;" /> DB Stats
+            </button>
+            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px; background:var(--color-surface);" onclick={() => executeAidCommand("db.currentOp()")}>
+              <Zap size={13} style="color:#059669;" /> Current Operations
+            </button>
+          {:else}
+            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px; background:var(--color-surface);" onclick={() => executeAidCommand("SELECT 1;")}>
+              <Activity size={13} style="color:var(--color-accent);" /> Ping Database
+            </button>
+          {/if}
+        </div>
+      </div>
+    {/if}
 
   {:else if tab === 'query'}
     <!-- SQL / Query Console -->
