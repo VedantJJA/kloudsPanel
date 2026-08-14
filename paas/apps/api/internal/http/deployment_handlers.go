@@ -194,7 +194,9 @@ CMD ["sh", "-c", "%s"]
 		}
 		bCmd := buildCmd
 		if bCmd == "" {
-			bCmd = "if [ -f package.json ]; then npm install; fi && if grep -q '\"build\":' package.json 2>/dev/null; then npm run build; fi"
+			bCmd = "if [ -f package.json ]; then (npm ci || npm install); fi && if grep -q '\"build\":' package.json 2>/dev/null; then npm run build; fi"
+		} else if strings.Contains(bCmd, "npm ci") {
+			bCmd = strings.ReplaceAll(bCmd, "npm ci", "(npm ci || npm install)")
 		}
 		return fmt.Sprintf(`FROM node:20-alpine
 WORKDIR /app
@@ -275,6 +277,9 @@ CMD ["sh", "-c", "./$(ls -p | grep -v / | head -n 1)"]
 	case "static", "static-spa", "nginx":
 		bCmd := buildCmd
 		if bCmd != "" {
+			if strings.Contains(bCmd, "npm ci") {
+				bCmd = strings.ReplaceAll(bCmd, "npm ci", "(npm ci || npm install)")
+			}
 			return fmt.Sprintf(`FROM node:20-alpine AS builder
 WORKDIR /app
 ARG VITE_API_URL
