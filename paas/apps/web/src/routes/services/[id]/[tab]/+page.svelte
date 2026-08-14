@@ -23,7 +23,11 @@
     ShieldCheck,
     ArrowUp,
     ArrowDown,
-    Sliders
+    Sliders,
+    Sparkles,
+    FileText,
+    Code,
+    Download
   } from 'lucide-svelte';
 
   const { id, tab } = $derived($page.params);
@@ -39,10 +43,14 @@
 
   // Variables state
   let envVars = $state<Array<{ key: string; value: string }>>([]);
+  let envMode = $state<'form' | 'raw'>('form');
+  let rawEnvText = $state('');
   let envDirty = $state(false);
   let envInitialLoaded = $state(false);
   let envSaving = $state(false);
   let envSuccess = $state(false);
+  let blueprintImportLoading = $state(false);
+  let blueprintNotice = $state<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Custom Domains state
   let customDomainsList = $state<any[]>([]);
@@ -399,17 +407,178 @@
     }
   }
 
+  function syncEnvToRaw() {
+    rawEnvText = envVars.map(e => `${e.key}=${e.value}`).join('\n');
+  }
+
+  function syncRawToEnv() {
+    const lines = rawEnvText.split('\n');
+    const parsed: Array<{ key: string; value: string }> = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eqIdx = trimmed.indexOf('=');
+      if (eqIdx > 0) {
+        const key = trimmed.slice(0, eqIdx).trim();
+        let val = trimmed.slice(eqIdx + 1).trim();
+        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+          val = val.slice(1, -1);
+        }
+        parsed.push({ key, value: val });
+      }
+    }
+    envVars = parsed;
+    envDirty = true;
+  }
+
+  function switchEnvMode(mode: 'form' | 'raw') {
+    if (mode === 'raw') {
+      syncEnvToRaw();
+    } else {
+      syncRawToEnv();
+    }
+    envMode = mode;
+  }
+
   function addEnv() {
     envDirty = true;
     envVars = [...envVars, { key: '', value: '' }];
+    syncEnvToRaw();
   }
 
   function removeEnv(index: number) {
     envDirty = true;
     envVars = envVars.filter((_, i) => i !== index);
+    syncEnvToRaw();
   }
 
-  async function saveEnvVars() {
+  async function importBlueprintEnv() {
+    blueprintImportLoading = true;
+    blueprintNotice = null;
+    try {
+      const targetId = service?.id || id;
+      const res = await fetch(`/api/v1/services/${targetId}/blueprint`, { credentials: 'include' });
+      if (res.ok) {
+        const d = await res.json();
+        if (d.envVars && Object.keys(d.envVars).length > 0) {
+          const newEntries = Object.entries(d.envVars).map(([k, v]) => ({ key: k, value: String(v) }));
+          for (const item of newEntries) {
+            const existingIdx = envVars.findIndex(e => e.key === item.key);
+            if (existingIdx >= 0) {
+              envVars[existingIdx].value = item.value;
+            } else {
+              envVars.push(item);
+            }
+          }
+          envDirty = true;
+          syncEnvToRaw();
+          blueprintNotice = {
+            type: 'success',
+            message: `Imported ${Object.keys(d.envVars).length} environment variables from ${d.blueprintSource || 'blueprint'}. Click "Save & Redeploy" to apply.`
+          };
+        } else {
+          blueprintNotice = {
+            type: 'error',
+            message: `No environment variables found in ${d.blueprintSource || 'blueprint'}.`
+          };
+        }
+      } else {
+        const d = await res.json().catch(() => ({}));
+        blueprintNotice = { type: 'error', message: d.error || 'Failed to fetch blueprint from repository' };
+      }
+    } catch (e: any) {
+      blueprintNotice = { type: 'error', message: 'Error: ' + e.message };
+    } finally {
+      blueprintImportLoading = false;
+    }
+  }
+
+  async function importBlueprintSettings() {
+    blueprintImportLoading = true;
+    bannerNotice = null;
+    try {
+      const targetId = service?.id || id;
+      const res = await fetch(`/api/v1/services/${targetId}/blueprint`, { credentials: 'include' });
+      if (res.ok) {
+        const d = await res.json();
+        if (d.service) {
+          if (d.service.build_command) settingsBuildCmd = d.service.build_command;
+          if (d.service.start_command) settingsStartCmd = d.service.start_command;
+          if (d.service.root_dir) settingsRootDir = d.service.root_dir;
+          if (d.service.internal_port) settingsPort = d.service.internal_port;
+          if (d.service.preset) settingsPreset = d.service.preset;
+          settingsDirty = true;
+          bannerNotice = {
+            type: 'success',
+            message: `Synced build, start, and root directory settings from ${d.blueprintSource || 'blueprint'}. Click "Save Settings" to apply.`
+          };
+        }
+      } else {
+        const d = await res.json().catch(() => ({}));
+        bannerNotice = { type: 'error', message: d.error || 'Failed to fetch blueprint from repository' };
+      }
+    } catch (e: any) {
+      bannerNotice = { type: 'error', message: 'Error: ' + e.message };
+    } finally {
+      blueprintImportLoading = false;
+    }
+  }
+
+  async function importBlueprintRoutes() {
+    blueprintImportLoading = true;
+    routesNotice = null;
+    try {
+      const targetId = service?.id || id;
+      const res = await fetch(`/api/v1/services/${targetId}/blueprint`, { credentials: 'include' });
+      if (res.ok) {
+        const d = await res.json();
+        if (d.routes && d.routes.length > 0) {
+          serviceRoutes = d.routes.map((r: any) => ({
+            type: r.type || 'rewrite',
+            source: r.source || '',
+            destination: r.destination || ''
+          }));
+          routesDirty = true;
+          routesNotice = {
+            type: 'success',
+            message: `Imported ${d.routes.length} redirect/rewrite rules from ${d.blueprintSource || 'blueprint'}. Click "Save Changes" to apply.`
+          };
+        } else {
+          routesNotice = { type: 'error', message: `No routes found in ${d.blueprintSource || 'blueprint'}.` };
+        }
+      } else {
+        const d = await res.json().catch(() => ({}));
+        routesNotice = { type: 'error', message: d.error || 'Failed to fetch blueprint routes' };
+      }
+    } catch (e: any) {
+      routesNotice = { type: 'error', message: 'Error: ' + e.message };
+    } finally {
+      blueprintImportLoading = false;
+    }
+  }
+
+  function syncRewriteTargetToEnv(targetUrl: string) {
+    let cleanTarget = targetUrl.replace(/\/\*$/, '').replace(/\/api$/, '').replace(/\/$/, '');
+    if (!cleanTarget) cleanTarget = targetUrl;
+
+    const existingIdx = envVars.findIndex(e => e.key === 'VITE_API_URL' || e.key === 'REACT_APP_API_URL');
+    if (existingIdx >= 0) {
+      envVars[existingIdx].value = cleanTarget;
+    } else {
+      envVars.push({ key: 'VITE_API_URL', value: cleanTarget });
+    }
+    envDirty = true;
+    syncEnvToRaw();
+    bannerNotice = {
+      type: 'success',
+      message: `Updated VITE_API_URL = "${cleanTarget}". Go to Environment Variables tab to review or save and redeploy.`
+    };
+  }
+
+  async function saveEnvVars(redeploy: boolean = true) {
+    if (envMode === 'raw') {
+      syncRawToEnv();
+    }
     envSaving = true;
     envSuccess = false;
     bannerNotice = null;
@@ -437,8 +606,13 @@
         envDirty = false;
         envInitialLoaded = true;
         envSuccess = true;
-        bannerNotice = { type: 'success', message: 'Environment variables saved successfully' };
-        setTimeout(() => envSuccess = false, 3000);
+        if (redeploy) {
+          bannerNotice = { type: 'success', message: 'Environment variables saved! Initiating redeployment with latest variables...' };
+          await triggerDeploy();
+        } else {
+          bannerNotice = { type: 'success', message: 'Environment variables saved successfully' };
+          setTimeout(() => envSuccess = false, 3000);
+        }
       } else {
         const d = await res.json().catch(() => ({}));
         bannerNotice = { type: 'error', message: d.error || 'Failed to save environment variables' };
@@ -790,43 +964,168 @@
 
   {:else if tab === 'variables'}
     <div class="card">
-      <div class="card-header" style="display:flex; align-items:center; justify-content:space-between;">
+      <div class="card-header" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.75rem;">
         <div>
-          <h3 style="margin:0;">Environment Variables</h3>
-          <p class="text-xs text-muted" style="margin-top:0.25rem;">Runtime environment variables injected into the container.</p>
+          <h3 style="margin:0; font-size:1.05rem;">Environment Variables</h3>
+          <p class="text-xs text-muted" style="margin-top:0.25rem;">Runtime environment variables injected into the container. Directly editable anytime.</p>
         </div>
-        <button class="btn btn-secondary" style="font-size:0.8125rem; padding:4px 12px; min-height:32px;" onclick={addEnv}>
-          <Plus size={14} /> Add Variable
-        </button>
+        <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+          <!-- View Switcher -->
+          <div style="display:inline-flex; background:var(--color-canvas); border:1px solid var(--color-border); border-radius:var(--radius-sm); padding:2px;">
+            <button
+              type="button"
+              class="btn"
+              style="padding:3px 10px; font-size:0.75rem; font-weight:{envMode === 'form' ? '700' : '500'}; background:{envMode === 'form' ? 'var(--color-surface)' : 'transparent'}; box-shadow:{envMode === 'form' ? 'var(--shadow-sm)' : 'none'}; border:none;"
+              onclick={() => switchEnvMode('form')}
+            >
+              <FileText size={12} style="margin-right:4px;" /> Key-Value Editor
+            </button>
+            <button
+              type="button"
+              class="btn"
+              style="padding:3px 10px; font-size:0.75rem; font-weight:{envMode === 'raw' ? '700' : '500'}; background:{envMode === 'raw' ? 'var(--color-surface)' : 'transparent'}; box-shadow:{envMode === 'raw' ? 'var(--shadow-sm)' : 'none'}; border:none;"
+              onclick={() => switchEnvMode('raw')}
+            >
+              <Code size={12} style="margin-right:4px;" /> Raw .ENV
+            </button>
+          </div>
+
+          <!-- Import from Blueprint button -->
+          <button 
+            type="button"
+            class="btn btn-secondary" 
+            style="font-size:0.8125rem; padding:4px 12px; min-height:32px; display:inline-flex; align-items:center; gap:6px;" 
+            onclick={importBlueprintEnv}
+            disabled={blueprintImportLoading}
+            title="Import environment variables declared in repository klouds.yaml / render.yaml"
+          >
+            {#if blueprintImportLoading}
+              <Loader2 size={13} class="animate-spin" /> Fetching...
+            {:else}
+              <Sparkles size={13} style="color:var(--color-accent);" /> Import from Blueprint
+            {/if}
+          </button>
+
+          {#if envMode === 'form'}
+            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:4px 12px; min-height:32px;" onclick={addEnv}>
+              <Plus size={14} /> Add Variable
+            </button>
+          {/if}
+        </div>
       </div>
 
-      {#if envVars.length === 0}
-        <p class="text-sm text-muted" style="padding:1rem 0;">No environment variables configured. Click "+ Add Variable" to add one.</p>
-      {:else}
-        <div style="display:flex; flex-direction:column; gap:0.75rem; margin-bottom:1.5rem;">
-          {#each envVars as env, i}
-            <div style="display:flex; gap:0.75rem; align-items:center;">
-              <input type="text" class="form-input font-mono text-sm" placeholder="VARIABLE_NAME" bind:value={env.key} style="flex:1;" />
-              <span class="text-muted">=</span>
-              <input type="text" class="form-input font-mono text-sm" placeholder="value" bind:value={env.value} style="flex:2;" />
-              <button class="btn btn-secondary" style="padding:6px; color:var(--color-error);" onclick={() => removeEnv(i)} aria-label="Remove variable">
-                <X size={16} />
+      {#if blueprintNotice}
+        <div style="background:{blueprintNotice.type === 'success' ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)'}; border:1px solid {blueprintNotice.type === 'success' ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}; color:{blueprintNotice.type === 'success' ? '#10b981' : '#ef4444'}; border-radius:var(--radius-md); padding:0.6rem 1rem; font-size:0.875rem; margin-bottom:1.25rem; display:flex; justify-content:space-between; align-items:center;">
+          <span>{blueprintNotice.message}</span>
+          <button type="button" class="btn btn-secondary" style="padding:2px 8px; font-size:0.75rem; height:auto; min-height:0;" onclick={() => blueprintNotice = null}>✕</button>
+        </div>
+      {/if}
+
+      <!-- Direct Editing Canvas -->
+      {#if envMode === 'form'}
+        {#if envVars.length === 0}
+          <div style="text-align:center; padding:2rem 1rem; background:rgba(0,0,0,0.02); border:1px dashed var(--color-border); border-radius:var(--radius-md); margin-bottom:1.5rem;">
+            <p class="text-sm text-muted" style="margin-bottom:0.75rem;">No environment variables configured yet.</p>
+            <div style="display:flex; justify-content:center; gap:0.5rem;">
+              <button type="button" class="btn btn-primary" style="font-size:0.8125rem;" onclick={addEnv}>
+                <Plus size={14} /> Add Variable
+              </button>
+              <button type="button" class="btn btn-secondary" style="font-size:0.8125rem;" onclick={importBlueprintEnv} disabled={blueprintImportLoading}>
+                <Sparkles size={14} /> Import from Blueprint
               </button>
             </div>
-          {/each}
+          </div>
+        {:else}
+          <div style="display:flex; flex-direction:column; gap:0.75rem; margin-bottom:1.5rem;">
+            {#each envVars as env, i}
+              <div style="display:flex; gap:0.75rem; align-items:center;">
+                <input 
+                  type="text" 
+                  class="form-input font-mono text-sm" 
+                  placeholder="VARIABLE_NAME" 
+                  bind:value={env.key} 
+                  oninput={() => { envDirty = true; syncEnvToRaw(); }}
+                  style="flex:1;" 
+                />
+                <span class="text-muted" style="font-weight:700;">=</span>
+                <input 
+                  type="text" 
+                  class="form-input font-mono text-sm" 
+                  placeholder="value" 
+                  bind:value={env.value} 
+                  oninput={() => { envDirty = true; syncEnvToRaw(); }}
+                  style="flex:2;" 
+                />
+                <button 
+                  type="button"
+                  class="btn btn-secondary" 
+                  style="padding:6px; color:var(--color-error); border:none;" 
+                  onclick={() => removeEnv(i)} 
+                  aria-label="Remove variable"
+                  title="Remove variable"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      {:else}
+        <!-- Raw .ENV Mode -->
+        <div style="margin-bottom:1.5rem;">
+          <textarea
+            class="form-input font-mono text-xs"
+            rows="10"
+            placeholder="KEY=value&#10;PORT=5000&#10;NODE_ENV=production&#10;VITE_API_URL=https://vtopcc-backend.klouds.online"
+            bind:value={rawEnvText}
+            oninput={() => { envDirty = true; }}
+            style="width:100%; resize:vertical; line-height:1.6; padding:0.85rem;"
+          ></textarea>
+          <p class="text-xs text-muted" style="margin-top:0.4rem;">
+            Each line must follow the standard <code>KEY=VALUE</code> syntax. Lines starting with <code>#</code> are ignored.
+          </p>
         </div>
       {/if}
 
       {#if envSuccess}
         <div style="background:#d1fae5; border:1px solid #6ee7b7; color:#065f46; border-radius:var(--radius-md); padding:0.6rem 1rem; font-size:0.875rem; margin-bottom:1rem;">
-          Environment variables saved successfully. Redeploy to apply changes.
+          Environment variables saved successfully.
         </div>
       {/if}
 
-      <div style="display:flex; justify-content:flex-end; gap:0.75rem; padding-top:1rem; border-top:1px solid var(--color-border);">
-        <button class="btn btn-primary" onclick={saveEnvVars} disabled={envSaving}>
-          {#if envSaving}<Loader2 size={14} class="animate-spin" /> Saving...{:else}<Save size={14} /> Save Variables{/if}
-        </button>
+      <!-- Action Bar with Save & Redeploy -->
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; padding-top:1.25rem; border-top:1px solid var(--color-border);">
+        <span class="text-xs text-muted">
+          {#if envDirty}
+            <span style="color:#f59e0b; font-weight:600;">● Unsaved changes</span>
+          {:else}
+            <span>All environment variables synced</span>
+          {/if}
+        </span>
+        <div style="display:flex; gap:0.6rem; align-items:center;">
+          <button 
+            type="button" 
+            class="btn btn-secondary" 
+            style="font-size:0.8125rem; display:inline-flex; align-items:center; gap:6px; padding:7px 14px;"
+            onclick={() => saveEnvVars(false)} 
+            disabled={envSaving}
+          >
+            {#if envSaving}<Loader2 size={14} class="animate-spin" /> Saving...{:else}<Save size={14} /> Save Only{/if}
+          </button>
+          <button 
+            type="button" 
+            class="btn btn-primary" 
+            style="font-size:0.8125rem; display:inline-flex; align-items:center; gap:6px; padding:7px 18px;"
+            onclick={() => saveEnvVars(true)} 
+            disabled={envSaving}
+          >
+            {#if envSaving}
+              <Loader2 size={14} class="animate-spin" /> Deploying...
+            {:else}
+              <Rocket size={14} /> Save & Redeploy
+            {/if}
+          </button>
+        </div>
       </div>
     </div>
 
@@ -1027,11 +1326,25 @@
                       id={`rule-dest-${idx}`}
                       type="text"
                       class="form-input font-mono text-xs"
-                      placeholder="https://vtopcc-backend.onrender.com/api/*"
+                      placeholder="https://vtopcc-backend.klouds.online/api/*"
                       bind:value={rule.destination}
                       oninput={() => { routesDirty = true; }}
                       style="width: 100%; height: 34px;"
                     />
+                    {#if rule.destination && (rule.destination.startsWith('http://') || rule.destination.startsWith('https://'))}
+                      <div style="margin-top: 5px; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap;">
+                        <span class="text-xs text-muted" style="font-size: 0.7rem;">External backend target</span>
+                        <button
+                          type="button"
+                          class="btn btn-secondary"
+                          style="font-size: 0.72rem; padding: 2px 8px; height: auto; min-height: 0; display: inline-flex; align-items: center; gap: 4px; color: var(--color-accent);"
+                          onclick={() => syncRewriteTargetToEnv(rule.destination)}
+                          title="Auto-populate VITE_API_URL environment variable with this destination"
+                        >
+                          <Sparkles size={11} /> Sync to VITE_API_URL env var
+                        </button>
+                      </div>
+                    {/if}
                   </div>
 
                   <div>
@@ -1057,28 +1370,45 @@
         {/if}
 
         <!-- Bottom action bar -->
-        <div style="display: flex; justify-content: flex-end; align-items: center; gap: 0.75rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
           <button
             type="button"
             class="btn btn-secondary"
             style="font-size: 0.8125rem; display: flex; align-items: center; gap: 6px; padding: 7px 14px;"
-            onclick={addRule}
+            onclick={importBlueprintRoutes}
+            disabled={blueprintImportLoading}
+            title="Import redirect and rewrite rules from repository klouds.yaml"
           >
-            <Plus size={14} /> Add Rule
-          </button>
-          <button
-            type="button"
-            class="btn btn-primary"
-            style="font-size: 0.8125rem; display: flex; align-items: center; gap: 6px; padding: 7px 18px;"
-            onclick={saveRules}
-            disabled={routesSaving}
-          >
-            {#if routesSaving}
-              <Loader2 size={14} class="animate-spin" /> Saving...
+            {#if blueprintImportLoading}
+              <Loader2 size={14} class="animate-spin" />
             {:else}
-              <Save size={14} /> Save Changes
+              <Sparkles size={14} style="color:var(--color-accent);" />
             {/if}
+            Import Routes from Blueprint
           </button>
+          <div style="display: flex; gap: 0.6rem; align-items: center;">
+            <button
+              type="button"
+              class="btn btn-secondary"
+              style="font-size: 0.8125rem; display: flex; align-items: center; gap: 6px; padding: 7px 14px;"
+              onclick={addRule}
+            >
+              <Plus size={14} /> Add Rule
+            </button>
+            <button
+              type="button"
+              class="btn btn-primary"
+              style="font-size: 0.8125rem; display: flex; align-items: center; gap: 6px; padding: 7px 18px;"
+              onclick={saveRules}
+              disabled={routesSaving}
+            >
+              {#if routesSaving}
+                <Loader2 size={14} class="animate-spin" /> Saving...
+              {:else}
+                <Save size={14} /> Save Changes
+              {/if}
+            </button>
+          </div>
         </div>
 
         <!-- Interactive Test Path Simulator -->
@@ -1156,9 +1486,26 @@
             <h3 style="margin: 0; font-size: 1.05rem;">Build & Deployment Settings</h3>
             <p class="text-xs text-muted" style="margin: 2px 0 0 0;">Configure build pipeline, start commands, branches, and auto-deploy behavior.</p>
           </div>
-          <button type="submit" class="btn btn-primary" style="display: flex; align-items: center; gap: 6px; font-size: 0.8125rem;" disabled={settingsSaving}>
-            {#if settingsSaving}<Loader2 size={14} class="animate-spin" /> Saving...{:else}<Save size={14} /> Save Settings{/if}
-          </button>
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <button 
+              type="button" 
+              class="btn btn-secondary" 
+              style="display: flex; align-items: center; gap: 6px; font-size: 0.8125rem;" 
+              onclick={importBlueprintSettings}
+              disabled={blueprintImportLoading}
+              title="Sync build and start commands from repository klouds.yaml / render.yaml"
+            >
+              {#if blueprintImportLoading}
+                <Loader2 size={13} class="animate-spin" />
+              {:else}
+                <Sparkles size={13} style="color:var(--color-accent);" />
+              {/if}
+              Sync from Blueprint
+            </button>
+            <button type="submit" class="btn btn-primary" style="display: flex; align-items: center; gap: 6px; font-size: 0.8125rem;" disabled={settingsSaving}>
+              {#if settingsSaving}<Loader2 size={14} class="animate-spin" /> Saving...{:else}<Save size={14} /> Save Settings{/if}
+            </button>
+          </div>
         </div>
 
         {#if settingsSaved}

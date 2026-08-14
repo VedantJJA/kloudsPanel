@@ -939,3 +939,91 @@ func (h *Handler) handleDeployBlueprint(c fiber.Ctx) error {
 		"databases": createdDatabases,
 	})
 }
+
+func (h *Handler) handleGetServiceBlueprint(c fiber.Ctx) error {
+	s, err := h.store.Services().GetByID(c.Context(), c.Params("id"))
+	if err != nil || s == nil {
+		return c.Status(404).JSON(fiber.Map{"error": "service not found"})
+	}
+
+	var resMap map[string]any
+	if s.ResourceJSON != "" {
+		_ = json.Unmarshal([]byte(s.ResourceJSON), &resMap)
+	}
+	if resMap == nil {
+		resMap = make(map[string]any)
+	}
+
+	gitRepoUrl, _ := resMap["gitRepoUrl"].(string)
+	gitBranch, _ := resMap["gitBranch"].(string)
+	if gitBranch == "" {
+		gitBranch = "main"
+	}
+	if gitRepoUrl == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "service does not have a git repository linked"})
+	}
+
+	cleanRepo := strings.TrimSuffix(gitRepoUrl, ".git")
+	cleanRepo = strings.TrimPrefix(cleanRepo, "https://github.com/")
+	cleanRepo = strings.TrimPrefix(cleanRepo, "http://github.com/")
+	cleanRepo = strings.TrimPrefix(cleanRepo, "github.com/")
+
+	candidates := []string{"klouds.yaml", "klouds.yml", ".klouds.yaml", "render.yaml", "render.yml"}
+	var yamlContent string
+	var detectedSource string
+
+	for _, filename := range candidates {
+		rawUrl := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s", cleanRepo, gitBranch, filename)
+		req, err := nethttp.NewRequestWithContext(c.Context(), "GET", rawUrl, nil)
+		if err != nil {
+			continue
+		}
+		client := &nethttp.Client{Timeout: 6 * time.Second}
+		resp, err := client.Do(req)
+		if err == nil && resp.StatusCode == 200 {
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if len(body) > 0 {
+				yamlContent = string(body)
+				detectedSource = filename
+				break
+			}
+		}
+		if resp != nil && resp.Body != nil {
+			resp.Body.Close()
+		}
+	}
+
+	if yamlContent == "" {
+		return c.Status(404).JSON(fiber.Map{"error": "No klouds.yaml or render.yaml detected in repository"})
+	}
+
+	parsed := parseRenderYAMLString(yamlContent)
+	var matchingSvc *ParsedRenderService
+	for _, ps := range parsed.Services {
+		if strings.EqualFold(ps.Name, s.Name) || strings.EqualFold(ps.Slug, s.Slug) {
+			matchingSvc = &ps
+			break
+		}
+	}
+	if matchingSvc == nil && len(parsed.Services) > 0 {
+		matchingSvc = &parsed.Services[0]
+	}
+
+	if matchingSvc == nil {
+		return c.JSON(fiber.Map{
+			"blueprintSource": detectedSource,
+			"rawYaml":         yamlContent,
+			"envVars":         map[string]string{},
+			"routes":          []ParsedRoute{},
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"blueprintSource": detectedSource,
+		"service":         matchingSvc,
+		"envVars":         matchingSvc.EnvVars,
+		"routes":          matchingSvc.Routes,
+		"rawYaml":         yamlContent,
+	})
+}

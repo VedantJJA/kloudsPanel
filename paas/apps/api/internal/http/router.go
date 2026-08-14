@@ -103,6 +103,7 @@ func NewServer(log *slog.Logger, store repository.Store, addr string) *fiber.App
 	svc.Delete("/:id/domains/:domain", h.handleDeleteServiceDomain)
 	svc.Get("/:id/routes", h.handleGetServiceRoutes)
 	svc.Post("/:id/routes", h.handleUpdateServiceRoutes)
+	svc.Get("/:id/blueprint", h.handleGetServiceBlueprint)
 
 	// Deployment routes
 	dep := v1.Group("/services/:id/deployments", h.requireSession)
