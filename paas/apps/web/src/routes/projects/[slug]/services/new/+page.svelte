@@ -801,7 +801,7 @@
             onclick={() => autoDetectRenderYaml()}
             disabled={parsingYaml || !gitRepoUrl}
           >
-            {#if parsingYaml}<Loader2 size={12} class="animate-spin" /> Checking Repo...{:else}<Sparkles size={12} /> Auto-Detect render.yaml in Repo{/if}
+            {#if parsingYaml}<Loader2 size={12} class="animate-spin" /> Checking Repo...{:else}<Sparkles size={12} /> Auto-Detect klouds.yaml / Blueprint in Repo{/if}
           </button>
         </div>
 
@@ -813,7 +813,7 @@
                 <Sparkles size={22} style="color: #059669; flex-shrink: 0;" />
                 <div>
                   <div style="font-weight: 700; color: #065f46; font-size: 0.9375rem;">
-                    render.yaml / Blueprint detected ({detectedServices.length} Service{detectedServices.length > 1 ? 's' : ''}{detectedDatabases.length > 0 ? `, ${detectedDatabases.length} Database` : ''})
+                    klouds.yaml / Blueprint detected ({detectedServices.length} Service{detectedServices.length > 1 ? 's' : ''}{detectedDatabases.length > 0 ? `, ${detectedDatabases.length} Database` : ''})
                   </div>
                   <div class="text-xs" style="color: #047857; margin-top: 2px;">
                     This repository defines a multi-service stack. Review required environment variables below, or deploy all services together.

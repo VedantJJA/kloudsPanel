@@ -534,13 +534,22 @@ func (h *Handler) handleParseRenderYaml(c fiber.Ctx) error {
 					repoBase = subparts[1]
 				}
 				client := &nethttp.Client{Timeout: 6 * time.Second}
-				// Try render.yaml, render.yml, devpanel.yaml on main and master branches
+				// Try klouds.yaml (primary), devpanel.yaml, render.yaml on main and master branches
 				paths := []string{
+					"main/klouds.yaml",
+					"main/klouds.yml",
+					"main/.klouds.yaml",
+					"master/klouds.yaml",
+					"master/klouds.yml",
+					"master/.klouds.yaml",
+					"main/devpanel.yaml",
+					"main/devpanel.yml",
+					"master/devpanel.yaml",
+					"master/devpanel.yml",
 					"main/render.yaml",
 					"main/render.yml",
-					"main/devpanel.yaml",
 					"master/render.yaml",
-					"master/devpanel.yaml",
+					"master/render.yml",
 				}
 				for _, p := range paths {
 					testURL := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s", parts[1], p)
@@ -557,7 +566,7 @@ func (h *Handler) handleParseRenderYaml(c fiber.Ctx) error {
 					}
 				}
 
-				// If no render.yaml found, check for .env.example
+				// If no blueprint found, check for .env.example
 				if strings.TrimSpace(content) == "" {
 					envPaths := []string{
 						"main/.env.example",
@@ -589,7 +598,7 @@ func (h *Handler) handleParseRenderYaml(c fiber.Ctx) error {
 	}
 
 	if strings.TrimSpace(content) == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "No render.yaml, devpanel.yaml, or .env.example found in repository"})
+		return c.Status(400).JSON(fiber.Map{"error": "No klouds.yaml, devpanel.yaml, render.yaml, or .env.example found in repository"})
 	}
 
 	var result ParsedRenderResult
