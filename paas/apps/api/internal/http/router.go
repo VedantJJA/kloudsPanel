@@ -101,6 +101,8 @@ func NewServer(log *slog.Logger, store repository.Store, addr string) *fiber.App
 	svc.Get("/:id/domains", h.handleListServiceDomains)
 	svc.Post("/:id/domains", h.handleAddServiceDomain)
 	svc.Delete("/:id/domains/:domain", h.handleDeleteServiceDomain)
+	svc.Get("/:id/routes", h.handleGetServiceRoutes)
+	svc.Post("/:id/routes", h.handleUpdateServiceRoutes)
 
 	// Deployment routes
 	dep := v1.Group("/services/:id/deployments", h.requireSession)

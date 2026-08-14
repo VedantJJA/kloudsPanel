@@ -20,11 +20,14 @@
     Server,
     Clock,
     Layers,
-    ShieldCheck
+    ShieldCheck,
+    ArrowUp,
+    ArrowDown,
+    Sliders
   } from 'lucide-svelte';
 
   const { id, tab } = $derived($page.params);
-  const tabs = ['overview', 'deployments', 'logs', 'variables', 'domains', 'scale', 'settings'];
+  const tabs = ['overview', 'deployments', 'logs', 'variables', 'domains', 'routes', 'scale', 'settings'];
 
   let service = $state<any>(null);
   let deployments = $state<any[]>([]);
@@ -44,6 +47,69 @@
   let newDomainInput = $state('');
   let domainSaving = $state(false);
   let domainNotice = $state<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Redirect and Rewrite Rules state
+  let serviceRoutes = $state<Array<{ type: string; source: string; destination: string }>>([]);
+  let routesSaving = $state(false);
+  let routesNotice = $state<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  async function loadRoutes() {
+    try {
+      const targetId = service?.id || id;
+      const res = await fetch(`/api/v1/services/${targetId}/routes`, { credentials: 'include' });
+      if (res.ok) {
+        const d = await res.json();
+        serviceRoutes = d.routes ?? [];
+      }
+    } catch {}
+  }
+
+  function addRule() {
+    serviceRoutes = [
+      ...serviceRoutes,
+      { type: 'rewrite', source: '', destination: '' }
+    ];
+  }
+
+  function removeRule(idx: number) {
+    serviceRoutes = serviceRoutes.filter((_, i) => i !== idx);
+  }
+
+  function moveRule(idx: number, dir: number) {
+    const targetIdx = idx + dir;
+    if (targetIdx < 0 || targetIdx >= serviceRoutes.length) return;
+    const item = serviceRoutes[idx];
+    const newArr = [...serviceRoutes];
+    newArr.splice(idx, 1);
+    newArr.splice(targetIdx, 0, item);
+    serviceRoutes = newArr;
+  }
+
+  async function saveRules() {
+    routesSaving = true;
+    routesNotice = null;
+    try {
+      const targetId = service?.id || id;
+      const res = await fetch(`/api/v1/services/${targetId}/routes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ routes: serviceRoutes })
+      });
+      if (res.ok) {
+        const d = await res.json();
+        serviceRoutes = d.routes ?? serviceRoutes;
+        routesNotice = { type: 'success', message: 'Redirect and Rewrite rules saved successfully and applied live.' };
+      } else {
+        const d = await res.json().catch(() => ({}));
+        routesNotice = { type: 'error', message: d.error || 'Failed to save rules' };
+      }
+    } catch (e: any) {
+      routesNotice = { type: 'error', message: e.message || 'Network error' };
+    } finally {
+      routesSaving = false;
+    }
+  }
 
   async function loadDomains() {
     try {
@@ -107,6 +173,7 @@
       service = await res.json();
 
       loadDomains();
+      loadRoutes();
       
       // Parse existing env vars and service settings if present in resource_json
       try {
@@ -785,6 +852,141 @@
             {/each}
           </tbody>
         </table>
+      </div>
+    </div>
+
+  {:else if tab === 'routes'}
+    <div style="max-width: 860px;">
+      <div class="card" style="padding: 1.5rem; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md);">
+        <div style="margin-bottom: 1.5rem;">
+          <h2 style="font-size: 1.125rem; font-weight: 700; color: var(--color-ink); margin: 0 0 0.4rem 0;">
+            Redirect and Rewrite Rules
+          </h2>
+          <p class="text-xs text-muted" style="line-height: 1.5; margin: 0;">
+            Add <span style="color: var(--color-accent); font-weight: 600;">Redirect or Rewrite Rules</span> to modify requests to your site. Use URL parameters to capture path segments and wildcards to redirect everything under a given path.
+          </p>
+        </div>
+
+        {#if routesNotice}
+          <div style="padding: 0.75rem 1rem; border-radius: var(--radius-sm); margin-bottom: 1.25rem; font-size: 0.8125rem; background: {routesNotice.type === 'success' ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)'}; color: {routesNotice.type === 'success' ? '#065f46' : '#991b1b'}; border: 1px solid {routesNotice.type === 'success' ? '#10b981' : '#ef4444'};">
+            {routesNotice.message}
+          </div>
+        {/if}
+
+        {#if serviceRoutes.length === 0}
+          <div style="text-align: center; padding: 2.5rem 1rem; background: var(--color-canvas); border-radius: var(--radius-sm); border: 1px dashed var(--color-border); margin-bottom: 1.25rem;">
+            <Sliders size={28} class="text-muted" style="margin-bottom: 0.5rem;" />
+            <div style="font-size: 0.875rem; font-weight: 600; color: var(--color-ink);">No Redirect or Rewrite Rules defined</div>
+            <div class="text-xs text-muted" style="margin-top: 0.25rem;">Add rules to proxy API paths or redirect legacy URLs seamlessly.</div>
+          </div>
+        {:else}
+          <div style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1.5rem;">
+            {#each serviceRoutes as rule, idx}
+              <div style="position: relative; padding: 1.25rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-canvas);">
+                <!-- Reorder & Delete controls -->
+                <div style="position: absolute; left: 12px; top: 20px; display: flex; flex-direction: column; gap: 6px;">
+                  <button
+                    type="button"
+                    class="btn-icon"
+                    disabled={idx === 0}
+                    onclick={() => moveRule(idx, -1)}
+                    style="opacity: {idx === 0 ? 0.25 : 0.7}; padding: 2px; cursor: {idx === 0 ? 'not-allowed' : 'pointer'}; background: transparent; border: none; color: var(--color-ink);"
+                    title="Move up"
+                  >
+                    <ArrowUp size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    class="btn-icon"
+                    disabled={idx === serviceRoutes.length - 1}
+                    onclick={() => moveRule(idx, 1)}
+                    style="opacity: {idx === serviceRoutes.length - 1 ? 0.25 : 0.7}; padding: 2px; cursor: {idx === serviceRoutes.length - 1 ? 'not-allowed' : 'pointer'}; background: transparent; border: none; color: var(--color-ink);"
+                    title="Move down"
+                  >
+                    <ArrowDown size={15} />
+                  </button>
+                </div>
+
+                <div style="position: absolute; right: 14px; top: 14px;">
+                  <button
+                    type="button"
+                    onclick={() => removeRule(idx)}
+                    style="background: transparent; border: none; color: #ef4444; cursor: pointer; padding: 4px; border-radius: 4px; display: flex; align-items: center;"
+                    title="Delete rule"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+
+                <!-- Rule inputs container matching Render UI -->
+                <div style="margin-left: 32px; margin-right: 32px; display: flex; flex-direction: column; gap: 0.85rem;">
+                  <div>
+                    <label for={`rule-source-${idx}`} class="form-label" style="font-size: 0.75rem; font-weight: 600; text-transform: none; color: var(--color-ink); margin-bottom: 4px; display: block;">Source</label>
+                    <input
+                      id={`rule-source-${idx}`}
+                      type="text"
+                      class="form-input font-mono text-xs"
+                      placeholder="/api/*"
+                      bind:value={rule.source}
+                      style="width: 100%; height: 34px;"
+                    />
+                  </div>
+
+                  <div>
+                    <label for={`rule-dest-${idx}`} class="form-label" style="font-size: 0.75rem; font-weight: 600; text-transform: none; color: var(--color-ink); margin-bottom: 4px; display: block;">Destination</label>
+                    <input
+                      id={`rule-dest-${idx}`}
+                      type="text"
+                      class="form-input font-mono text-xs"
+                      placeholder="https://vtopcc-backend.onrender.com/api/*"
+                      bind:value={rule.destination}
+                      style="width: 100%; height: 34px;"
+                    />
+                  </div>
+
+                  <div>
+                    <label for={`rule-action-${idx}`} class="form-label" style="font-size: 0.75rem; font-weight: 600; text-transform: none; color: var(--color-ink); margin-bottom: 4px; display: block;">Action</label>
+                    <select
+                      id={`rule-action-${idx}`}
+                      class="form-select text-xs"
+                      bind:value={rule.type}
+                      style="width: 100%; height: 34px;"
+                    >
+                      <option value="rewrite">Rewrite</option>
+                      <option value="redirect">Redirect (301 Permanent)</option>
+                      <option value="redirect_temporary">Redirect (302 Temporary)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            {/each}
+          </div>
+        {/if}
+
+        <!-- Bottom action bar -->
+        <div style="display: flex; justify-content: flex-end; align-items: center; gap: 0.75rem;">
+          <button
+            type="button"
+            class="btn btn-secondary"
+            style="font-size: 0.8125rem; display: flex; align-items: center; gap: 6px; padding: 7px 14px;"
+            onclick={addRule}
+          >
+            <Plus size={14} /> Add Rule
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary"
+            style="font-size: 0.8125rem; display: flex; align-items: center; gap: 6px; padding: 7px 18px;"
+            onclick={saveRules}
+            disabled={routesSaving}
+          >
+            {#if routesSaving}
+              <Loader2 size={14} class="animate-spin" /> Saving...
+            {:else}
+              <Save size={14} /> Save Changes
+            {/if}
+          </button>
+        </div>
       </div>
     </div>
 

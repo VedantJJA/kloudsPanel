@@ -443,3 +443,87 @@ func (h *Handler) handleDeleteServiceDomain(c fiber.Ctx) error {
 
 	return h.handleListServiceDomains(c)
 }
+
+// ─── Service Redirect and Rewrite Rules ──────────────────────────────────────
+
+type ServiceRouteItem struct {
+	Type        string `json:"type"`
+	Source      string `json:"source"`
+	Destination string `json:"destination"`
+}
+
+func (h *Handler) handleGetServiceRoutes(c fiber.Ctx) error {
+	s, err := h.store.Services().GetByID(c.Context(), c.Params("id"))
+	if err != nil || s == nil {
+		return c.Status(404).JSON(fiber.Map{"error": "service not found"})
+	}
+	var resMap map[string]any
+	if s.ResourceJSON != "" {
+		_ = json.Unmarshal([]byte(s.ResourceJSON), &resMap)
+	}
+	if resMap == nil {
+		resMap = make(map[string]any)
+	}
+	routes, _ := resMap["routes"].([]any)
+	if routes == nil {
+		routes = []any{}
+	}
+	return c.JSON(fiber.Map{"routes": routes})
+}
+
+func (h *Handler) handleUpdateServiceRoutes(c fiber.Ctx) error {
+	s, err := h.store.Services().GetByID(c.Context(), c.Params("id"))
+	if err != nil || s == nil {
+		return c.Status(404).JSON(fiber.Map{"error": "service not found"})
+	}
+	var req struct {
+		Routes []ServiceRouteItem `json:"routes"`
+	}
+	if err := c.Bind().JSON(&req); err != nil {
+		return err
+	}
+	var resMap map[string]any
+	if s.ResourceJSON != "" {
+		_ = json.Unmarshal([]byte(s.ResourceJSON), &resMap)
+	}
+	if resMap == nil {
+		resMap = make(map[string]any)
+	}
+	resMap["routes"] = req.Routes
+	updatedJSON, _ := json.Marshal(resMap)
+	s.ResourceJSON = string(updatedJSON)
+	if err := h.store.Services().Update(c.Context(), s); err != nil {
+		return err
+	}
+
+	// Update Traefik dynamic routing configuration in real-time
+	port := 80
+	if s.InternalPort != nil && *s.InternalPort > 0 {
+		port = *s.InternalPort
+	}
+	rootDomain := getRootDomain()
+	var customDomains []string
+	if cds, ok := resMap["customDomains"].([]any); ok {
+		for _, cd := range cds {
+			if str, ok := cd.(string); ok && str != "" {
+				customDomains = append(customDomains, str)
+			}
+		}
+	}
+	var siblingStaticSlugs []string
+	if s.ProjectID != "" {
+		if siblings, err := h.store.Services().ListForProject(c.Context(), s.ProjectID); err == nil {
+			for _, sib := range siblings {
+				if sib.ID != s.ID && (sib.Kind == domain.ServiceKindStatic || strings.Contains(strings.ToLower(sib.Name), "front") || strings.Contains(strings.ToLower(sib.Name), "web") || strings.Contains(strings.ToLower(sib.Name), "ui") || strings.Contains(strings.ToLower(sib.Name), "client")) {
+					siblingStaticSlugs = append(siblingStaticSlugs, sib.Slug)
+				}
+			}
+		}
+	}
+	writeTraefikDynamicConfigWithDomainsAndSiblings(s.Slug, port, rootDomain, customDomains, siblingStaticSlugs)
+
+	return c.JSON(fiber.Map{
+		"message": "Redirect and rewrite rules saved successfully",
+		"routes":  req.Routes,
+	})
+}
