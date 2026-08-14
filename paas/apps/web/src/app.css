@@ -122,7 +122,43 @@ code, pre {
   padding: var(--sp-5);
   z-index: 100;
   overflow: hidden;
-  transition: transform var(--transition-normal);
+  transition: width var(--transition-normal), padding var(--transition-normal), transform var(--transition-normal);
+}
+
+/* Collapsible / Contractable Sidebar Support */
+.app-shell.sidebar-collapsed {
+  --sidebar-width: 72px;
+}
+
+.app-shell.sidebar-collapsed .sidebar {
+  width: 72px;
+  padding: var(--sp-4) var(--sp-2);
+}
+
+.app-shell.sidebar-collapsed .sidebar-logo-text,
+.app-shell.sidebar-collapsed .nav-section,
+.app-shell.sidebar-collapsed .nav-item-text,
+.app-shell.sidebar-collapsed .context-header-details {
+  display: none !important;
+}
+
+.app-shell.sidebar-collapsed .nav-item {
+  justify-content: center;
+  padding: 10px 0;
+  gap: 0;
+}
+
+.app-shell.sidebar-collapsed .sidebar-logo {
+  justify-content: center;
+  padding-bottom: var(--sp-3);
+  margin-bottom: var(--sp-4);
+  gap: 0;
+}
+
+.app-shell.sidebar-collapsed .sidebar-footer .nav-item {
+  justify-content: center;
+  padding: 10px 0;
+  gap: 0;
 }
 
 /* Main content region */
@@ -137,6 +173,7 @@ code, pre {
   box-shadow: 0 2px 12px var(--color-shadow);
   padding: var(--sp-6);
   min-height: calc(100vh - 2 * var(--sidebar-margin));
+  transition: margin-left var(--transition-normal), margin var(--transition-normal);
 }
 
 /* ── Sidebar — Navigation ─────────────────────────────────────────────────── */

@@ -267,7 +267,25 @@ if [ ! -f "$ENV_FILE" ]; then
     fi
 fi
 
-# 10. Launch kloudsPanel Stack
+# 10. Configure Host Firewall (UFW & iptables for Database & Ingress Ports)
+echo -e "${CYAN}==> Ensuring platform & database port ranges (80, 443, 13000-20000) are open in host firewall...${NC}"
+if command -v ufw >/dev/null 2>&1 && $SUDO ufw status 2>/dev/null | grep -q "active"; then
+    $SUDO ufw allow 80/tcp >/dev/null 2>&1 || true
+    $SUDO ufw allow 443/tcp >/dev/null 2>&1 || true
+    $SUDO ufw allow 13000:20000/tcp >/dev/null 2>&1 || true
+    echo -e "${GREEN}✓ UFW rules configured for HTTP (80/443) and Databases (13000-20000)${NC}"
+fi
+
+if command -v iptables >/dev/null 2>&1; then
+    $SUDO iptables -C INPUT -p tcp --dport 13000:20000 -j ACCEPT 2>/dev/null || $SUDO iptables -I INPUT 1 -p tcp --dport 13000:20000 -j ACCEPT 2>/dev/null || true
+    $SUDO iptables -C INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null || $SUDO iptables -I INPUT 1 -p tcp --dport 80 -j ACCEPT 2>/dev/null || true
+    $SUDO iptables -C INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null || $SUDO iptables -I INPUT 1 -p tcp --dport 443 -j ACCEPT 2>/dev/null || true
+    if command -v netfilter-persistent >/dev/null 2>&1; then
+        $SUDO netfilter-persistent save >/dev/null 2>&1 || true
+    fi
+fi
+
+# 11. Launch kloudsPanel Stack
 echo ""
 echo -e "${GREEN}${BOLD}=============================================================================="
 echo " ✓ System environment is fully initialized and all dependencies are ready!"

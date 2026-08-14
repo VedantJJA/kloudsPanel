@@ -1,6 +1,7 @@
 <script lang="ts">
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
+  import { onMount } from 'svelte';
   import {
     Home,
     Database,
@@ -18,10 +19,15 @@
     LayoutDashboard,
     Layers,
     Server,
-    ShieldAlert
+    ShieldAlert,
+    ChevronLeft,
+    ChevronRight,
+    PanelLeftClose,
+    PanelLeftOpen
   } from 'lucide-svelte';
 
   let sidebarOpen = $state(false);
+  let isCollapsed = $state(false);
 
   // Detect context
   const pathname = $derived($page.url.pathname);
@@ -34,6 +40,28 @@
 
   let currentService = $state<any>(null);
   let currentDatabase = $state<any>(null);
+
+  onMount(() => {
+    try {
+      const saved = localStorage.getItem('klouds_sidebar_collapsed');
+      if (saved === 'true') {
+        isCollapsed = true;
+        document.querySelector('.app-shell')?.classList.add('sidebar-collapsed');
+      }
+    } catch {}
+  });
+
+  function toggleCollapse() {
+    isCollapsed = !isCollapsed;
+    try {
+      localStorage.setItem('klouds_sidebar_collapsed', String(isCollapsed));
+      if (isCollapsed) {
+        document.querySelector('.app-shell')?.classList.add('sidebar-collapsed');
+      } else {
+        document.querySelector('.app-shell')?.classList.remove('sidebar-collapsed');
+      }
+    } catch {}
+  }
 
   $effect(() => {
     if (currentServiceId) {
@@ -112,10 +140,29 @@
 </script>
 
 <nav class="sidebar" class:open={sidebarOpen} aria-label="Main navigation">
-  <!-- Logo & Header -->
-  <div class="sidebar-logo">
-    <div class="sidebar-logo-mark" aria-hidden="true">K</div>
-    <span class="sidebar-logo-text">kloudsPanel</span>
+  <!-- Logo & Header with Collapse Toggle -->
+  <div class="sidebar-logo" style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+    <div style="display:flex; align-items:center; gap:var(--sp-3);">
+      <div class="sidebar-logo-mark" aria-hidden="true">K</div>
+      {#if !isCollapsed}
+        <span class="sidebar-logo-text">kloudsPanel</span>
+      {/if}
+    </div>
+
+    <button
+      type="button"
+      class="btn btn-secondary"
+      style="padding:4px; min-height:28px; width:28px; height:28px; border-radius:var(--radius-sm); border:none; color:rgba(234,241,250,0.6); display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.06);"
+      onclick={toggleCollapse}
+      title={isCollapsed ? 'Expand Side Panel' : 'Contract Side Panel'}
+      aria-label={isCollapsed ? 'Expand Side Panel' : 'Contract Side Panel'}
+    >
+      {#if isCollapsed}
+        <ChevronRight size={16} />
+      {:else}
+        <ChevronLeft size={16} />
+      {/if}
+    </button>
   </div>
 
   <!-- Context-Aware Sidebar Content -->
@@ -126,10 +173,12 @@
         href={currentService?.project_id ? `/projects/${currentService.project_id}` : '/workspaces'} 
         class="nav-item" 
         style="padding: 6px var(--sp-2); min-height: 32px; font-size: 0.8125rem; color: rgba(234,241,250,0.6);"
+        title="Back to Project"
       >
-        <ArrowLeft size={14} style="margin-right: 4px;" /> Back to Project
+        <ArrowLeft size={14} style="margin-right: 4px; flex-shrink:0;" /> 
+        <span class="nav-item-text">Back to Project</span>
       </a>
-      <div style="margin-top: 0.75rem; padding: 0.75rem; background: rgba(234,241,250,0.06); border-radius: var(--radius-md); border: 1px solid rgba(234,241,250,0.1);">
+      <div class="context-header-details" style="margin-top: 0.75rem; padding: 0.75rem; background: rgba(234,241,250,0.06); border-radius: var(--radius-md); border: 1px solid rgba(234,241,250,0.1);">
         <div style="font-size: 0.875rem; font-weight: 600; color: #fff; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
           {currentService?.name || 'Service'}
         </div>
@@ -156,9 +205,10 @@
           class="nav-item"
           class:active={isTabActive(item.href)}
           aria-current={isTabActive(item.href) ? 'page' : undefined}
+          title={item.label}
         >
           <span class="nav-item-icon" aria-hidden="true"><Icon size={18} /></span>
-          {item.label}
+          <span class="nav-item-text">{item.label}</span>
         </a>
       {/each}
     </div>
@@ -170,10 +220,12 @@
         href="/databases" 
         class="nav-item" 
         style="padding: 6px var(--sp-2); min-height: 32px; font-size: 0.8125rem; color: rgba(234,241,250,0.6);"
+        title="Back to Databases"
       >
-        <ArrowLeft size={14} style="margin-right: 4px;" /> Back to Databases
+        <ArrowLeft size={14} style="margin-right: 4px; flex-shrink:0;" /> 
+        <span class="nav-item-text">Back to Databases</span>
       </a>
-      <div style="margin-top: 0.75rem; padding: 0.75rem; background: rgba(234,241,250,0.06); border-radius: var(--radius-md); border: 1px solid rgba(234,241,250,0.1);">
+      <div class="context-header-details" style="margin-top: 0.75rem; padding: 0.75rem; background: rgba(234,241,250,0.06); border-radius: var(--radius-md); border: 1px solid rgba(234,241,250,0.1);">
         <div style="font-size: 0.875rem; font-weight: 600; color: #fff; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
           {currentDatabase?.name || 'Database'}
         </div>
@@ -200,9 +252,10 @@
           class="nav-item"
           class:active={isTabActive(item.href)}
           aria-current={isTabActive(item.href) ? 'page' : undefined}
+          title={item.label}
         >
           <span class="nav-item-icon" aria-hidden="true"><Icon size={18} /></span>
-          {item.label}
+          <span class="nav-item-text">{item.label}</span>
         </a>
       {/each}
     </div>
@@ -222,9 +275,10 @@
             class="nav-item"
             class:active={isDefaultActive(item.href)}
             aria-current={isDefaultActive(item.href) ? 'page' : undefined}
+            title={item.label}
           >
             <span class="nav-item-icon" aria-hidden="true"><Icon size={20} /></span>
-            {item.label}
+            <span class="nav-item-text">{item.label}</span>
           </a>
         {/if}
       {/each}
@@ -238,20 +292,22 @@
       class="nav-item"
       class:active={pathname === '/admin/telemetry'}
       style="width:100%; color:rgba(234,241,250,0.85); font-size:0.8125rem; margin-bottom:2px;"
+      title="Host Telemetry"
       aria-label="Platform Telemetry"
     >
       <span aria-hidden="true"><Activity size={18} style="color:var(--color-accent);" /></span>
-      Host Telemetry
+      <span class="nav-item-text">Host Telemetry</span>
     </a>
 
     <button
       class="nav-item nav-item-logout"
       style="width:100%; color:rgba(234,241,250,0.6); font-size:0.8rem;"
       onclick={handleLogout}
+      title="Sign Out"
       aria-label="Sign out"
     >
       <span aria-hidden="true"><LogOut size={18} /></span>
-      Sign Out
+      <span class="nav-item-text">Sign Out</span>
     </button>
   </div>
 </nav>

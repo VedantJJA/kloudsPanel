@@ -225,8 +225,10 @@
     const db = parsedMeta.databaseName;
 
     switch (eng) {
-      case 'postgres':
-        return `psql "${extUri}?sslmode=disable"`;
+      case 'postgres': {
+        const uri = extUri?.includes('sslmode=') ? extUri : (extUri?.includes('?') ? `${extUri}&sslmode=disable` : `${extUri}?sslmode=disable`);
+        return `psql "${uri}"`;
+      }
       case 'mysql':
         return `mysql -h ${extHost} -P ${extPort} -u ${user} -p ${db}`;
       case 'redis':
@@ -242,7 +244,7 @@
 </script>
 
 <svelte:head>
-  <title>{database?.name || 'Database'} — kloudsPanel</title>
+  <title>{database?.name || 'Database'} - kloudsPanel</title>
 </svelte:head>
 
 {#if loading}
@@ -486,7 +488,7 @@
 
     <!-- Query Results Section -->
     {#if queryResult}
-      <div class="card" style="padding: 1.25rem; background: var(--color-surface); border: 1px solid var(--color-border); margin-bottom: 2rem;">
+      <div class="card" style="padding: 1.25rem; background: var(--color-surface); border: 1px solid var(--color-border); margin-bottom: 2rem; max-width: 100%; overflow: hidden; box-sizing: border-box;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.85rem; flex-wrap: wrap; gap: 0.5rem;">
           <div style="display: flex; align-items: center; gap: 0.75rem;">
             <div style="font-weight: 700; font-size: 0.9375rem;">Execution Results</div>
@@ -504,19 +506,19 @@
         </div>
 
         {#if queryResult.error}
-          <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: var(--radius-md); padding: 0.85rem 1rem; color: #991b1b; font-size: 0.875rem;">
+          <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: var(--radius-md); padding: 0.85rem 1rem; color: #991b1b; font-size: 0.875rem; max-width: 100%; overflow: hidden;">
             <div style="display: flex; align-items: center; gap: 6px; font-weight: 700; margin-bottom: 4px;">
               <AlertCircle size={16} /> Query Error
             </div>
-            <pre style="margin: 0; font-family: var(--font-mono); font-size: 0.8125rem; white-space: pre-wrap;">{queryResult.error}</pre>
+            <pre style="margin: 0; font-family: var(--font-mono); font-size: 0.8125rem; white-space: pre-wrap; word-break: break-word; overflow-x: auto; max-height: 300px;">{queryResult.error}</pre>
           </div>
         {:else if queryResult.columns && queryResult.columns.length > 0}
-          <div style="overflow-x: auto; border: 1px solid var(--color-border); border-radius: var(--radius-md); max-height: 400px;">
-            <table class="table" style="margin: 0; font-size: 0.8125rem;">
+          <div style="overflow-x: auto; overflow-y: auto; border: 1px solid var(--color-border); border-radius: var(--radius-md); max-height: 420px; max-width: 100%; width: 100%; box-sizing: border-box;">
+            <table class="table" style="margin: 0; font-size: 0.8125rem; width: 100%; border-collapse: collapse;">
               <thead style="position: sticky; top: 0; background: var(--color-surface-sunken); z-index: 2;">
                 <tr>
                   {#each queryResult.columns as col}
-                    <th style="padding: 8px 12px; font-weight: 700; font-family: var(--font-mono);">{col}</th>
+                    <th style="padding: 8px 12px; font-weight: 700; font-family: var(--font-mono); white-space: nowrap; border-bottom: 1px solid var(--color-border);">{col}</th>
                   {/each}
                 </tr>
               </thead>
@@ -525,7 +527,7 @@
                   {#each queryResult.rows as row}
                     <tr>
                       {#each row as cell}
-                        <td style="padding: 7px 12px; font-family: var(--font-mono); white-space: nowrap;">
+                        <td style="padding: 7px 12px; font-family: var(--font-mono); max-width: 600px; overflow-wrap: break-word; word-break: break-word; white-space: pre-wrap; font-size: 0.8125rem; border-bottom: 1px solid rgba(0,0,0,0.05);">
                           {cell === '' ? '<NULL>' : cell}
                         </td>
                       {/each}
@@ -542,7 +544,9 @@
             </table>
           </div>
         {:else if queryResult.rawOutput}
-          <pre style="background: #0d1117; color: #c9d1d9; font-family: var(--font-mono); padding: 1rem; border-radius: var(--radius-md); font-size: 0.8125rem; overflow-x: auto; margin: 0;">{queryResult.rawOutput}</pre>
+          <div style="max-height: 420px; overflow-x: auto; overflow-y: auto; max-width: 100%; width: 100%; border-radius: var(--radius-md); border: 1px solid #30363d; background: #0d1117; box-sizing: border-box;">
+            <pre style="background: transparent; color: #c9d1d9; font-family: var(--font-mono); padding: 1rem; font-size: 0.8125rem; white-space: pre-wrap; word-break: break-word; margin: 0;">{queryResult.rawOutput}</pre>
+          </div>
         {/if}
       </div>
     {/if}
