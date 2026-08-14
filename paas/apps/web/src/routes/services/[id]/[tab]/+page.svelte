@@ -39,6 +39,8 @@
 
   // Variables state
   let envVars = $state<Array<{ key: string; value: string }>>([]);
+  let envDirty = $state(false);
+  let envInitialLoaded = $state(false);
   let envSaving = $state(false);
   let envSuccess = $state(false);
 
@@ -50,21 +52,27 @@
 
   // Redirect and Rewrite Rules state
   let serviceRoutes = $state<Array<{ type: string; source: string; destination: string }>>([]);
+  let routesDirty = $state(false);
+  let routesInitialLoaded = $state(false);
   let routesSaving = $state(false);
   let routesNotice = $state<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  async function loadRoutes() {
+  async function loadRoutes(force = false) {
+    if (!force && (routesDirty || routesInitialLoaded)) return;
     try {
       const targetId = service?.id || id;
       const res = await fetch(`/api/v1/services/${targetId}/routes`, { credentials: 'include' });
       if (res.ok) {
         const d = await res.json();
         serviceRoutes = d.routes ?? [];
+        routesInitialLoaded = true;
+        routesDirty = false;
       }
     } catch {}
   }
 
   function addRule() {
+    routesDirty = true;
     serviceRoutes = [
       ...serviceRoutes,
       { type: 'rewrite', source: '', destination: '' }
@@ -72,12 +80,14 @@
   }
 
   function removeRule(idx: number) {
+    routesDirty = true;
     serviceRoutes = serviceRoutes.filter((_, i) => i !== idx);
   }
 
   function moveRule(idx: number, dir: number) {
     const targetIdx = idx + dir;
     if (targetIdx < 0 || targetIdx >= serviceRoutes.length) return;
+    routesDirty = true;
     const item = serviceRoutes[idx];
     const newArr = [...serviceRoutes];
     newArr.splice(idx, 1);
@@ -99,6 +109,8 @@
       if (res.ok) {
         const d = await res.json();
         serviceRoutes = d.routes ?? serviceRoutes;
+        routesDirty = false;
+        routesInitialLoaded = true;
         routesNotice = { type: 'success', message: 'Redirect and Rewrite rules saved successfully and applied live.' };
       } else {
         const d = await res.json().catch(() => ({}));
@@ -179,8 +191,11 @@
       try {
         if (service.resource_json || service.ResourceJSON) {
           const r = JSON.parse(service.resource_json || service.ResourceJSON);
-          if (r.env && typeof r.env === 'object') {
-            envVars = Object.entries(r.env).map(([k, v]) => ({ key: k, value: String(v) }));
+          if (!envDirty && (!envInitialLoaded || tab !== 'variables')) {
+            if (r.env && typeof r.env === 'object') {
+              envVars = Object.entries(r.env).map(([k, v]) => ({ key: k, value: String(v) }));
+              envInitialLoaded = true;
+            }
           }
           if (!settingsDirty) {
             settingsName = service.name || service.Name || '';
@@ -316,10 +331,12 @@
   }
 
   function addEnv() {
+    envDirty = true;
     envVars = [...envVars, { key: '', value: '' }];
   }
 
   function removeEnv(index: number) {
+    envDirty = true;
     envVars = envVars.filter((_, i) => i !== index);
   }
 
@@ -348,6 +365,8 @@
         body: JSON.stringify({ resourceJson: JSON.stringify(currentR) })
       });
       if (res.ok) {
+        envDirty = false;
+        envInitialLoaded = true;
         envSuccess = true;
         bannerNotice = { type: 'success', message: 'Environment variables saved successfully' };
         setTimeout(() => envSuccess = false, 3000);
@@ -928,6 +947,7 @@
                       class="form-input font-mono text-xs"
                       placeholder="/api/*"
                       bind:value={rule.source}
+                      oninput={() => { routesDirty = true; }}
                       style="width: 100%; height: 34px;"
                     />
                   </div>
@@ -940,6 +960,7 @@
                       class="form-input font-mono text-xs"
                       placeholder="https://vtopcc-backend.onrender.com/api/*"
                       bind:value={rule.destination}
+                      oninput={() => { routesDirty = true; }}
                       style="width: 100%; height: 34px;"
                     />
                   </div>
@@ -950,6 +971,7 @@
                       id={`rule-action-${idx}`}
                       class="form-select text-xs"
                       bind:value={rule.type}
+                      onchange={() => { routesDirty = true; }}
                       style="width: 100%; height: 34px;"
                     >
                       <option value="rewrite">Rewrite</option>
