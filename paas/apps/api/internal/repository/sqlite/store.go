@@ -49,6 +49,10 @@ func (s *store) AuditEvents() repository.AuditRepository {
 	return &auditRepo{db: s.db}
 }
 
+func (s *store) GitIntegrations() repository.GitIntegrationRepository {
+	return &gitIntegrationRepo{db: s.db}
+}
+
 // WithTx runs fn inside a database transaction.
 // On error, the transaction is rolled back.
 func (s *store) WithTx(ctx context.Context, fn func(repository.Store) error) error {
@@ -77,6 +81,7 @@ func (t *txStore) Deployments() repository.DeploymentRepository { return &deploy
 func (t *txStore) Databases() repository.DatabaseRepository   { return &databaseRepo{db: t.tx} }
 func (t *txStore) Jobs() repository.JobRepository             { return &jobRepo{db: t.tx} }
 func (t *txStore) AuditEvents() repository.AuditRepository   { return &auditRepo{db: t.tx} }
+func (t *txStore) GitIntegrations() repository.GitIntegrationRepository { return &gitIntegrationRepo{db: t.tx} }
 func (t *txStore) WithTx(ctx context.Context, fn func(repository.Store) error) error {
 	return fn(t) // already in tx
 }

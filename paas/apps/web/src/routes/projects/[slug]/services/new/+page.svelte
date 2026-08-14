@@ -252,11 +252,16 @@
       : presets.filter(p => p.category === activeCategory)
   );
 
+  let oauthEnabledMap = $state<Record<string, boolean>>({});
+  let currentProviderInfo = $state<any>(null);
+
   async function loadIntegrations() {
     try {
       const res = await fetch('/api/v1/integrations/git', { credentials: 'include' });
       if (res.ok) {
-        gitIntegrations = (await res.json()).integrations ?? [];
+        const data = await res.json();
+        gitIntegrations = data.integrations ?? [];
+        oauthEnabledMap = data.oauthEnabled ?? {};
       }
     } catch {}
   }
@@ -265,9 +270,68 @@
     try {
       const res = await fetch(`/api/v1/integrations/git/${provider}/repos`, { credentials: 'include' });
       if (res.ok) {
-        providerRepos = (await res.json()).repos ?? [];
+        const data = await res.json();
+        providerRepos = data.repos ?? [];
+        currentProviderInfo = {
+          connected: data.connected,
+          username: data.username,
+          avatar_url: data.avatar_url
+        };
       }
     } catch {}
+  }
+
+  async function handleLinkGitProvider(e: Event) {
+    e.preventDefault();
+    if (!providerToken) return;
+    connecting = true;
+    try {
+      const res = await fetch('/api/v1/integrations/git', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          provider: selectedProvider,
+          username: providerUsername,
+          token: providerToken
+        })
+      });
+      if (res.ok) {
+        showConnectModal = false;
+        providerToken = '';
+        providerUsername = '';
+        await loadIntegrations();
+        await loadProviderRepos(selectedProvider);
+      } else {
+        const d = await res.json().catch(() => ({}));
+        alert(d.error || 'Failed to connect Git provider');
+      }
+    } catch (e: any) {
+      alert('Error connecting: ' + e.message);
+    } finally {
+      connecting = false;
+    }
+  }
+
+  async function disconnectProvider(provider: string) {
+    if (!confirm(`Are you sure you want to disconnect ${provider}?`)) return;
+    try {
+      const res = await fetch(`/api/v1/integrations/git/${provider}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+      if (res.ok) {
+        providerRepos = [];
+        currentProviderInfo = null;
+        await loadIntegrations();
+        await loadProviderRepos(selectedProvider);
+      }
+    } catch {}
+  }
+
+  function authorizeGitOAuth(provider: string) {
+    const returnTo = window.location.pathname;
+    window.location.href = `/api/v1/integrations/git/${provider}/authorize?return_to=${encodeURIComponent(returnTo)}`;
   }
 
   onMount(async () => {
@@ -396,31 +460,6 @@
 
   function removeEnv(index: number) {
     envVars = envVars.filter((_, i) => i !== index);
-  }
-
-  async function handleLinkGitProvider(e: Event) {
-    e.preventDefault();
-    connecting = true;
-    try {
-      const res = await fetch('/api/v1/integrations/git', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          provider: selectedProvider,
-          username: providerUsername,
-          token: providerToken
-        })
-      });
-      if (res.ok) {
-        showConnectModal = false;
-        providerToken = '';
-        await loadIntegrations();
-        await loadProviderRepos(selectedProvider);
-      }
-    } finally {
-      connecting = false;
-    }
   }
 
   async function handleSubmit(e: Event) {
@@ -706,22 +745,64 @@
             </button>
           </div>
 
-          <button 
-            type="button" 
-            class="btn btn-primary" 
-            style="font-size: 0.8125rem; padding: 4px 12px;"
-            onclick={() => showConnectModal = true}
-          >
-            <Plus size={14} /> Link Account
-          </button>
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            {#if currentProviderInfo?.connected}
+              <div style="display: flex; align-items: center; gap: 0.5rem; background: var(--color-surface); padding: 3px 10px; border-radius: var(--radius-md); border: 1px solid var(--color-border);">
+                {#if currentProviderInfo.avatar_url}
+                  <img src={currentProviderInfo.avatar_url} alt="" style="width: 20px; height: 20px; border-radius: 50%;" />
+                {/if}
+                <span style="font-size: 0.8125rem; font-weight: 600;">
+                  @{currentProviderInfo.username || 'connected'}
+                </span>
+                <button 
+                  type="button" 
+                  class="btn btn-secondary" 
+                  style="font-size: 0.75rem; padding: 2px 6px; min-height: 24px; color: var(--color-danger); border: none;"
+                  onclick={() => disconnectProvider(selectedProvider)}
+                  title="Disconnect account"
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            {:else if oauthEnabledMap[selectedProvider]}
+              <button 
+                type="button" 
+                class="btn btn-primary" 
+                style="font-size: 0.8125rem; padding: 4px 14px; background: {selectedProvider === 'github' ? '#24292f' : selectedProvider === 'gitlab' ? '#fc6d26' : '#0052cc'}; border-color: transparent; display: flex; align-items: center; gap: 6px;"
+                onclick={() => authorizeGitOAuth(selectedProvider)}
+              >
+                <FolderGit2 size={14} /> Authorize with {selectedProvider.charAt(0).toUpperCase() + selectedProvider.slice(1)}
+              </button>
+            {:else}
+              <button 
+                type="button" 
+                class="btn btn-primary" 
+                style="font-size: 0.8125rem; padding: 4px 12px;"
+                onclick={() => showConnectModal = true}
+              >
+                <Plus size={14} /> Link Account
+              </button>
+            {/if}
+          </div>
         </div>
 
         {#if providerRepos.length === 0}
           <div style="text-align: center; padding: 1.5rem 0;">
             <p class="text-sm text-muted" style="margin-bottom: 0.75rem;">No linked {selectedProvider} repositories found.</p>
-            <button type="button" class="btn btn-secondary" style="font-size: 0.8125rem;" onclick={() => showConnectModal = true}>
-              Connect {selectedProvider} Account
-            </button>
+            {#if oauthEnabledMap[selectedProvider]}
+              <button 
+                type="button" 
+                class="btn btn-primary" 
+                style="font-size: 0.8125rem; background: {selectedProvider === 'github' ? '#24292f' : selectedProvider === 'gitlab' ? '#fc6d26' : '#0052cc'}; border-color: transparent; display: inline-flex; align-items: center; gap: 6px;" 
+                onclick={() => authorizeGitOAuth(selectedProvider)}
+              >
+                <FolderGit2 size={14} /> Connect {selectedProvider.charAt(0).toUpperCase() + selectedProvider.slice(1)} (1-Click OAuth)
+              </button>
+            {:else}
+              <button type="button" class="btn btn-secondary" style="font-size: 0.8125rem;" onclick={() => showConnectModal = true}>
+                Connect {selectedProvider} Account
+              </button>
+            {/if}
           </div>
         {:else}
           <div class="form-group" style="margin-bottom: 0.75rem;">
@@ -1076,40 +1157,60 @@
         </button>
       </div>
 
-      <form onsubmit={handleLinkGitProvider}>
-        <div class="form-group">
-          <label for="modal-git-user" class="form-label">Username / Organization</label>
-          <input 
-            id="modal-git-user" 
-            type="text" 
-            class="form-input" 
-            placeholder="e.g. vedantjja" 
-            bind:value={providerUsername} 
-            required 
-          />
-        </div>
+      <div style="padding: 1rem 0 0 0;">
+        {#if oauthEnabledMap[selectedProvider]}
+          <div style="margin-bottom: 1.25rem;">
+            <button 
+              type="button" 
+              class="btn btn-primary" 
+              style="width: 100%; padding: 0.65rem; background: {selectedProvider === 'github' ? '#24292f' : selectedProvider === 'gitlab' ? '#fc6d26' : '#0052cc'}; border-color: transparent; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 600;" 
+              onclick={() => authorizeGitOAuth(selectedProvider)}
+            >
+              <FolderGit2 size={16} /> Authorize Directly with {selectedProvider.charAt(0).toUpperCase() + selectedProvider.slice(1)} (1-Click)
+            </button>
+            <div style="text-align: center; margin: 1.15rem 0 0.85rem 0; position: relative;">
+              <span style="background: var(--color-surface); padding: 0 8px; color: var(--color-ink-muted); font-size: 0.75rem; position: relative; z-index: 1;">OR USE PERSONAL ACCESS TOKEN / PASSWORD</span>
+              <div style="position: absolute; left: 0; top: 50%; width: 100%; border-top: 1px solid var(--color-border); z-index: 0;"></div>
+            </div>
+          </div>
+        {/if}
 
-        <div class="form-group">
-          <label for="modal-git-token" class="form-label">Personal Access Token / App Password</label>
-          <input 
-            id="modal-git-token" 
-            type="password" 
-            class="form-input font-mono" 
-            placeholder="ghp_... or Bitbucket app password" 
-            bind:value={providerToken} 
-            required 
-          />
-        </div>
+        <form onsubmit={handleLinkGitProvider}>
+          <div class="form-group">
+            <label for="modal-git-user" class="form-label">Username / Organization (optional for GitHub/GitLab)</label>
+            <input 
+              id="modal-git-user" 
+              type="text" 
+              class="form-input" 
+              placeholder="e.g. your-username" 
+              bind:value={providerUsername} 
+            />
+          </div>
 
-        <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.5rem;">
-          <button type="button" class="btn btn-secondary" onclick={() => showConnectModal = false}>
-            Cancel
-          </button>
-          <button type="submit" class="btn btn-primary" disabled={connecting || !providerUsername || !providerToken}>
-            {#if connecting}<Loader2 size={14} class="animate-spin" /> Connecting...{:else}Connect {selectedProvider}{/if}
-          </button>
-        </div>
-      </form>
+          <div class="form-group">
+            <label for="modal-git-token" class="form-label">
+              {selectedProvider === 'bitbucket' ? 'Bitbucket App Password' : 'Personal Access Token (PAT)'}
+            </label>
+            <input 
+              id="modal-git-token" 
+              type="password" 
+              class="form-input font-mono" 
+              placeholder={selectedProvider === 'github' ? 'ghp_...' : selectedProvider === 'gitlab' ? 'glpat-...' : 'App password'} 
+              bind:value={providerToken} 
+              required 
+            />
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.5rem;">
+            <button type="button" class="btn btn-secondary" onclick={() => showConnectModal = false}>
+              Cancel
+            </button>
+            <button type="submit" class="btn btn-primary" disabled={connecting || !providerToken}>
+              {#if connecting}<Loader2 size={14} class="animate-spin" /> Connecting...{:else}Save & Connect {selectedProvider}{/if}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   </div>
 {/if}

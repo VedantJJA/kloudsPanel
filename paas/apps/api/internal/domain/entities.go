@@ -301,6 +301,17 @@ type AuditEvent struct {
 	OccurredAt  time.Time      `json:"occurred_at"`
 }
 
+type UserGitIntegration struct {
+	UserID      string    `json:"user_id"`
+	Provider    string    `json:"provider"`
+	Username    string    `json:"username"`
+	Token       string    `json:"-"`
+	AvatarURL   *string   `json:"avatar_url,omitempty"`
+	Scopes      string    `json:"scopes"`
+	ConnectedAt time.Time `json:"connected_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
 // ─── Errors ───────────────────────────────────────────────────────────────────
 
 type ErrNotFound struct{ Resource string }

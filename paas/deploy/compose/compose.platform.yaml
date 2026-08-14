@@ -125,6 +125,12 @@ services:
       - AGENT_SOCKET=/run/klouds/agent.sock
       - ROOT_DOMAIN=${ROOT_DOMAIN}
       - ADMIN_EMAIL=${ADMIN_EMAIL:-}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
+      - GITLAB_CLIENT_ID=${GITLAB_CLIENT_ID:-}
+      - GITLAB_CLIENT_SECRET=${GITLAB_CLIENT_SECRET:-}
+      - BITBUCKET_CLIENT_ID=${BITBUCKET_CLIENT_ID:-}
+      - BITBUCKET_CLIENT_SECRET=${BITBUCKET_CLIENT_SECRET:-}
     labels:
       - "io.paas.managed=true"
       - "io.paas.component=api"

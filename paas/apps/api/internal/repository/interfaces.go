@@ -18,8 +18,17 @@ type Store interface {
 	Databases() DatabaseRepository
 	Jobs() JobRepository
 	AuditEvents() AuditRepository
+	GitIntegrations() GitIntegrationRepository
 	// Transactional operation
 	WithTx(ctx context.Context, fn func(Store) error) error
+}
+
+// GitIntegrationRepository manages per-user git credentials.
+type GitIntegrationRepository interface {
+	Get(ctx context.Context, userID, provider string) (*domain.UserGitIntegration, error)
+	ListForUser(ctx context.Context, userID string) ([]*domain.UserGitIntegration, error)
+	Upsert(ctx context.Context, item *domain.UserGitIntegration) error
+	Delete(ctx context.Context, userID, provider string) error
 }
 
 // UserRepository manages user persistence.

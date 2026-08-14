@@ -614,3 +614,70 @@ func (r *auditRepo) List(ctx context.Context, workspaceID *string, limit int, cu
 	}
 	return out, rows.Err()
 }
+
+// ─── Git Integrations ─────────────────────────────────────────────────────────
+
+type gitIntegrationRepo struct{ db querier }
+
+func (r *gitIntegrationRepo) Get(ctx context.Context, userID, provider string) (*domain.UserGitIntegration, error) {
+	row := r.db.QueryRowContext(ctx, `
+		SELECT user_id, provider, username, token, avatar_url, scopes, connected_at, updated_at
+		FROM user_git_integrations
+		WHERE user_id=? AND provider=?`, userID, provider)
+	item := &domain.UserGitIntegration{}
+	var connectedAt, updatedAt string
+	err := row.Scan(&item.UserID, &item.Provider, &item.Username, &item.Token, &item.AvatarURL, &item.Scopes, &connectedAt, &updatedAt)
+	if err == sql.ErrNoRows {
+		return nil, domain.ErrNotFound{Resource: "git_integration"}
+	}
+	if err != nil {
+		return nil, err
+	}
+	item.ConnectedAt, _ = time.Parse(time.RFC3339Nano, connectedAt)
+	item.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedAt)
+	return item, nil
+}
+
+func (r *gitIntegrationRepo) ListForUser(ctx context.Context, userID string) ([]*domain.UserGitIntegration, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT user_id, provider, username, token, avatar_url, scopes, connected_at, updated_at
+		FROM user_git_integrations
+		WHERE user_id=?`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*domain.UserGitIntegration
+	for rows.Next() {
+		item := &domain.UserGitIntegration{}
+		var connectedAt, updatedAt string
+		if err := rows.Scan(&item.UserID, &item.Provider, &item.Username, &item.Token, &item.AvatarURL, &item.Scopes, &connectedAt, &updatedAt); err != nil {
+			return nil, err
+		}
+		item.ConnectedAt, _ = time.Parse(time.RFC3339Nano, connectedAt)
+		item.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedAt)
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+
+func (r *gitIntegrationRepo) Upsert(ctx context.Context, item *domain.UserGitIntegration) error {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO user_git_integrations (user_id, provider, username, token, avatar_url, scopes, connected_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(user_id, provider) DO UPDATE SET
+			username=excluded.username,
+			token=excluded.token,
+			avatar_url=excluded.avatar_url,
+			scopes=excluded.scopes,
+			updated_at=excluded.updated_at`,
+		item.UserID, item.Provider, item.Username, item.Token, item.AvatarURL, item.Scopes, now, now,
+	)
+	return err
+}
+
+func (r *gitIntegrationRepo) Delete(ctx context.Context, userID, provider string) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM user_git_integrations WHERE user_id=? AND provider=?`, userID, provider)
+	return err
+}

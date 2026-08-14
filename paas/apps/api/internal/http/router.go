@@ -121,9 +121,11 @@ func NewServer(log *slog.Logger, store repository.Store, addr string) *fiber.App
 	db.Get("/:id/logs", h.handleGetDatabaseLogs)
 	db.Delete("/:id", h.handleDeleteDatabase)
 
-	// Git Integrations routes
+	// Git Integrations routes (GitHub, GitLab, Bitbucket)
+	v1.Get("/integrations/git/:provider/callback", h.handleGitOAuthCallback)
 	git := v1.Group("/integrations/git", h.requireSession)
 	git.Get("/", h.handleListGitIntegrations)
+	git.Get("/:provider/authorize", h.handleGitOAuthAuthorize)
 	git.Post("/", h.handleSaveGitIntegration)
 	git.Delete("/:provider", h.handleDeleteGitIntegration)
 	git.Get("/:provider/repos", h.handleListGitRepos)

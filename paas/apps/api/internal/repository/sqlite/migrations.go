@@ -459,4 +459,17 @@ var sqliteMigrations = []string{
 		('dns_mode', '"http-01"', strftime('%Y-%m-%dT%H:%M:%fZ','now')),
 		('disk_warn_pct', '80', strftime('%Y-%m-%dT%H:%M:%fZ','now')),
 		('disk_critical_pct', '90', strftime('%Y-%m-%dT%H:%M:%fZ','now'))`,
+
+	// ── Migration 28: User Git Integrations ───────────────────────────────────
+	`CREATE TABLE IF NOT EXISTS user_git_integrations (
+		user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		provider     TEXT NOT NULL,
+		username     TEXT NOT NULL,
+		token        TEXT NOT NULL,
+		avatar_url   TEXT NULL,
+		scopes       TEXT NOT NULL DEFAULT '',
+		connected_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+		updated_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+		PRIMARY KEY (user_id, provider)
+	)`,
 }
