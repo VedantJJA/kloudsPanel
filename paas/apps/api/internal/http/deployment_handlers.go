@@ -153,7 +153,7 @@ func removeTraefikDynamicConfig(slug string) {
 	_ = os.Remove(filePath)
 }
 
-func generateDockerfileForPreset(preset, buildCmd, startCmd string, port int) string {
+func generateDockerfileForPreset(preset, buildCmd, startCmd string, port int, proxyDirective string) string {
 	switch strings.ToLower(preset) {
 	case "python":
 		sCmd := startCmd
@@ -264,23 +264,31 @@ CMD ["sh", "-c", "./$(ls -p | grep -v / | head -n 1)"]
 		if bCmd != "" {
 			return fmt.Sprintf(`FROM node:20-alpine AS builder
 WORKDIR /app
+ARG VITE_API_URL
+ENV VITE_API_URL=$VITE_API_URL
+ARG API_URL
+ENV API_URL=$API_URL
+ARG REACT_APP_API_URL
+ENV REACT_APP_API_URL=$REACT_APP_API_URL
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 COPY . ./
 RUN %s
 RUN mkdir -p /dist && if [ -d dist ]; then cp -a dist/. /dist/; elif [ -d build ]; then cp -a build/. /dist/; elif [ -d public ]; then cp -a public/. /dist/; else cp -a . /dist/; fi
 
 FROM nginx:alpine
-RUN printf 'server {\n    listen 80;\n    server_name _;\n    root /usr/share/nginx/html;\n    index index.html;\n    location / {\n        try_files $uri $uri/ /index.html;\n    }\n}\n' > /etc/nginx/conf.d/default.conf
+RUN printf 'server {\n    listen 80;\n    server_name _;\n    root /usr/share/nginx/html;\n    index index.html;\n%s    location / {\n        try_files $uri $uri/ /index.html;\n    }\n}\n' > /etc/nginx/conf.d/default.conf
 COPY --from=builder /dist /usr/share/nginx/html
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
-`, bCmd)
+`, bCmd, proxyDirective)
 		}
 		return fmt.Sprintf(`FROM nginx:alpine
-RUN printf 'server {\n    listen 80;\n    server_name _;\n    root /usr/share/nginx/html;\n    index index.html;\n    location / {\n        try_files $uri $uri/ /index.html;\n    }\n}\n' > /etc/nginx/conf.d/default.conf
+RUN printf 'server {\n    listen 80;\n    server_name _;\n    root /usr/share/nginx/html;\n    index index.html;\n%s    location / {\n        try_files $uri $uri/ /index.html;\n    }\n}\n' > /etc/nginx/conf.d/default.conf
 COPY . /usr/share/nginx/html
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
-`)
+`, proxyDirective)
 
 	default:
 		sCmd := startCmd
@@ -525,17 +533,40 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 			}
 		}
 
+		// Check if proxy directive is needed for static frontend apps
+		var backendProxyDirective string
+		if service.Kind == domain.ServiceKindStatic || presetId == "static" || presetId == "static-spa" {
+			if projectServices, err := h.store.Services().ListForProject(context.Background(), service.ProjectID); err == nil {
+				for _, otherSvc := range projectServices {
+					if otherSvc.ID != service.ID && (otherSvc.Kind == domain.ServiceKindWeb || otherSvc.Kind == "api") {
+						otherPort := 8080
+						if otherSvc.InternalPort != nil && *otherSvc.InternalPort > 0 {
+							otherPort = *otherSvc.InternalPort
+						}
+						backendProxyDirective = fmt.Sprintf("    location /api/ {\n        resolver 127.0.0.11 valid=30s;\n        proxy_pass http://paas-svc-%s:%d/api/;\n        proxy_http_version 1.1;\n        proxy_set_header Upgrade $http_upgrade;\n        proxy_set_header Connection 'upgrade';\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n    }\n", otherSvc.Slug, otherPort)
+						appendLog(serviceID, depID, "build", fmt.Sprintf("[router] Auto-wired /api/ reverse proxy -> http://paas-svc-%s:%d/api/", otherSvc.Slug, otherPort))
+						break
+					}
+				}
+			}
+		}
+
 		// Step 4: Check if Dockerfile exists or generate one
 		dockerfilePath := filepath.Join(contextDir, "Dockerfile")
 		if _, err := os.Stat(dockerfilePath); os.IsNotExist(err) {
 			appendLog(serviceID, depID, "build", fmt.Sprintf("[builder] Generating runtime Dockerfile (preset: %s, port: %d)", presetId, port))
-			dfContent := generateDockerfileForPreset(presetId, buildCommand, startCommand, port)
+			dfContent := generateDockerfileForPreset(presetId, buildCommand, startCommand, port, backendProxyDirective)
 			_ = os.WriteFile(dockerfilePath, []byte(dfContent), 0644)
 		}
 
 		// Step 5: Build Container Image with Docker
 		appendLog(serviceID, depID, "build", fmt.Sprintf("[builder] Running 'docker build -t %s %s'...", imageTag, contextDir))
-		buildCmd := exec.Command("docker", "build", "-t", imageTag, contextDir)
+		buildArgs := []string{"build", "-t", imageTag}
+		for k, v := range envMap {
+			buildArgs = append(buildArgs, "--build-arg", fmt.Sprintf("%s=%s", k, v))
+		}
+		buildArgs = append(buildArgs, contextDir)
+		buildCmd := exec.Command("docker", buildArgs...)
 		buildOut, err := buildCmd.CombinedOutput()
 		for _, line := range strings.Split(string(buildOut), "\n") {
 			if strings.TrimSpace(line) != "" {
