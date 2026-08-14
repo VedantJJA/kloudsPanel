@@ -412,49 +412,6 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 
 	flushCurrent()
 
-	// Find any backend service for auto-connecting frontend
-	var primaryBackendSlug string
-	var primaryBackendPort = 8080
-	for _, s := range res.Services {
-		if s.Kind == "web" || s.Kind == "api" {
-			primaryBackendSlug = s.Slug
-			if s.InternalPort > 0 {
-				primaryBackendPort = s.InternalPort
-			}
-			break
-		}
-	}
-
-	// Auto-wire backend URLs into frontend services if not already specified
-	if primaryBackendSlug != "" {
-		for i := range res.Services {
-			s := &res.Services[i]
-			if s.Kind == "static" || s.Preset == "static-spa" || s.StaticPublishPath != "" {
-				if s.EnvVars == nil {
-					s.EnvVars = make(map[string]string)
-				}
-				if _, ok := s.EnvVars["VITE_API_URL"]; !ok {
-					s.EnvVars["VITE_API_URL"] = fmt.Sprintf("${services.%s.url}", primaryBackendSlug)
-				}
-				if _, ok := s.EnvVars["NEXT_PUBLIC_API_URL"]; !ok {
-					s.EnvVars["NEXT_PUBLIC_API_URL"] = fmt.Sprintf("${services.%s.url}", primaryBackendSlug)
-				}
-				if _, ok := s.EnvVars["REACT_APP_API_URL"]; !ok {
-					s.EnvVars["REACT_APP_API_URL"] = fmt.Sprintf("${services.%s.url}", primaryBackendSlug)
-				}
-				if _, ok := s.EnvVars["API_URL"]; !ok {
-					s.EnvVars["API_URL"] = fmt.Sprintf("${services.%s.url}", primaryBackendSlug)
-				}
-				if _, ok := s.EnvVars["BACKEND_URL"]; !ok {
-					s.EnvVars["BACKEND_URL"] = fmt.Sprintf("${services.%s.url}", primaryBackendSlug)
-				}
-				if _, ok := s.EnvVars["INTERNAL_API_URL"]; !ok {
-					s.EnvVars["INTERNAL_API_URL"] = fmt.Sprintf("http://paas-svc-%s:%d", primaryBackendSlug, primaryBackendPort)
-				}
-			}
-		}
-	}
-
 	// Deduplicate service names and slugs so frontend and backend never share the exact same name
 	usedSlugs := make(map[string]int)
 	for i := range res.Services {
@@ -553,6 +510,7 @@ func (h *Handler) handleParseBlueprint(c fiber.Ctx) error {
 	content := req.Content
 	isDotEnv := false
 	repoBase := "app"
+	detectedSource := "klouds.yaml"
 
 	if strings.TrimSpace(content) == "" && req.RepoURL != "" {
 		rawURL := req.RepoURL
@@ -581,6 +539,7 @@ func (h *Handler) handleParseBlueprint(c fiber.Ctx) error {
 						var b strings.Builder
 						_, _ = io.Copy(&b, resp.Body)
 						content = b.String()
+						detectedSource = "klouds.yaml"
 						resp.Body.Close()
 						break
 					}
@@ -604,6 +563,7 @@ func (h *Handler) handleParseBlueprint(c fiber.Ctx) error {
 							var b strings.Builder
 							_, _ = io.Copy(&b, resp.Body)
 							content = b.String()
+							detectedSource = "render.yaml"
 							resp.Body.Close()
 							break
 						}
@@ -627,6 +587,7 @@ func (h *Handler) handleParseBlueprint(c fiber.Ctx) error {
 							_, _ = io.Copy(&b, resp.Body)
 							content = b.String()
 							isDotEnv = true
+							detectedSource = ".env.example"
 							resp.Body.Close()
 							break
 						}
@@ -651,9 +612,10 @@ func (h *Handler) handleParseBlueprint(c fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{
-		"success":   true,
-		"services":  result.Services,
-		"databases": result.Databases,
+		"success":        true,
+		"blueprintType":  detectedSource,
+		"services":       result.Services,
+		"databases":      result.Databases,
 	})
 }
 

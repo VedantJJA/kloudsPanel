@@ -115,7 +115,7 @@ func getRootDomain() string {
 	return "yourdomain.com"
 }
 
-func writeTraefikDynamicConfigWithDomains(slug string, port int, rootDomain string, customDomains []string) {
+func writeTraefikDynamicConfigWithDomainsAndSiblings(slug string, port int, rootDomain string, customDomains []string, siblingStaticSlugs []string) {
 	dynamicDir := "/traefik/dynamic"
 	if _, err := os.Stat(dynamicDir); os.IsNotExist(err) {
 		dynamicDir = "./paas/deploy/traefik/dynamic"
@@ -133,6 +133,14 @@ func writeTraefikDynamicConfigWithDomains(slug string, port int, rootDomain stri
 	}
 	ruleStr := strings.Join(ruleParts, " || ")
 
+	var extraRouters string
+	for _, fSlug := range siblingStaticSlugs {
+		fSlug = strings.TrimSpace(fSlug)
+		if fSlug != "" {
+			extraRouters += fmt.Sprintf("\n    svc-%s-api-proxy-%s:\n      rule: \"Host(`%s.%s`) && PathPrefix(`/api`)\"\n      priority: 100\n      entryPoints:\n        - \"websecure\"\n      tls:\n        certResolver: \"letsencrypt\"\n      service: \"svc-%s\"", slug, fSlug, fSlug, rootDomain, slug)
+		}
+	}
+
 	filePath := filepath.Join(dynamicDir, fmt.Sprintf("svc-%s.yaml", slug))
 	content := fmt.Sprintf(`http:
   routers:
@@ -142,15 +150,19 @@ func writeTraefikDynamicConfigWithDomains(slug string, port int, rootDomain stri
         - "websecure"
       tls:
         certResolver: "letsencrypt"
-      service: "svc-%s"
+      service: "svc-%s"%s
   services:
     svc-%s:
       loadBalancer:
         servers:
           - url: "http://paas-svc-%s:%d"
-`, slug, ruleStr, slug, slug, slug, port)
+`, slug, ruleStr, slug, extraRouters, slug, slug, port)
 
 	_ = os.WriteFile(filePath, []byte(content), 0644)
+}
+
+func writeTraefikDynamicConfigWithDomains(slug string, port int, rootDomain string, customDomains []string) {
+	writeTraefikDynamicConfigWithDomainsAndSiblings(slug, port, rootDomain, customDomains, nil)
 }
 
 func writeTraefikDynamicConfig(slug string, port int, rootDomain string) {
@@ -644,25 +656,9 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 				}
 			}
 
-			// For static frontend apps (like VtopC / React / Vite), auto-inject backend external URL just like Render does
+			// For static frontend apps (like VtopC / React / Vite), configure Nginx reverse proxy to backend
 			if service.Kind == domain.ServiceKindStatic || presetId == "static" || presetId == "static-spa" {
 				if primaryBackend != nil {
-					backendPublicUrl := fmt.Sprintf("https://%s.%s", primaryBackend.Slug, rootDomain)
-					if cur, ok := envMap["VITE_API_URL"]; !ok || cur == "" || strings.HasPrefix(cur, "${") {
-						envMap["VITE_API_URL"] = backendPublicUrl
-					}
-					if cur, ok := envMap["NEXT_PUBLIC_API_URL"]; !ok || cur == "" || strings.HasPrefix(cur, "${") {
-						envMap["NEXT_PUBLIC_API_URL"] = backendPublicUrl
-					}
-					if cur, ok := envMap["REACT_APP_API_URL"]; !ok || cur == "" || strings.HasPrefix(cur, "${") {
-						envMap["REACT_APP_API_URL"] = backendPublicUrl
-					}
-					if cur, ok := envMap["API_URL"]; !ok || cur == "" || strings.HasPrefix(cur, "${") {
-						envMap["API_URL"] = backendPublicUrl
-					}
-					if cur, ok := envMap["BACKEND_URL"]; !ok || cur == "" || strings.HasPrefix(cur, "${") {
-						envMap["BACKEND_URL"] = backendPublicUrl
-					}
 					otherPort := 8080
 					if primaryBackend.InternalPort != nil && *primaryBackend.InternalPort > 0 {
 						otherPort = *primaryBackend.InternalPort
@@ -781,7 +777,17 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 	}
 
 	// Step 6: Write Dynamic Traefik Configuration
-	writeTraefikDynamicConfig(service.Slug, port, rootDomain)
+	var siblingStaticSlugs []string
+	if service.Kind == domain.ServiceKindWeb || service.Kind == "api" {
+		if projectServices, err := h.store.Services().ListForProject(context.Background(), service.ProjectID); err == nil {
+			for _, otherSvc := range projectServices {
+				if otherSvc.ID != service.ID && (otherSvc.Kind == domain.ServiceKindStatic || otherSvc.Kind == "static") {
+					siblingStaticSlugs = append(siblingStaticSlugs, otherSvc.Slug)
+				}
+			}
+		}
+	}
+	writeTraefikDynamicConfigWithDomainsAndSiblings(service.Slug, port, rootDomain, nil, siblingStaticSlugs)
 	appendLog(serviceID, depID, "system", fmt.Sprintf("[traefik] Ingress route active -> https://%s.%s (port :%d)", service.Slug, rootDomain, port))
 
 	// Step 7: Stream container logs

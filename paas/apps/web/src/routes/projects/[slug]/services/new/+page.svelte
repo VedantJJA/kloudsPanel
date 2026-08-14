@@ -50,6 +50,7 @@
   // render.yaml / blueprint auto-detect state
   let parsingYaml = $state(false);
   let detectedBlueprint = $state<any>(null);
+  let detectedBlueprintSource = $state<string>('klouds.yaml');
   let detectedServices = $state<any[]>([]);
   let detectedDatabases = $state<any[]>([]);
   let selectedBlueprintIndex = $state(0);
@@ -507,6 +508,7 @@
           detectedServices = data.services;
           detectedBlueprint = data.services[0];
           detectedDatabases = data.databases || [];
+          detectedBlueprintSource = data.blueprintType || 'klouds.yaml';
         }
       }
     } catch {} finally {
@@ -896,7 +898,7 @@
                 <Sparkles size={22} style="color: #059669; flex-shrink: 0;" />
                 <div>
                   <div style="font-weight: 700; color: #065f46; font-size: 0.9375rem;">
-                    klouds.yaml / Blueprint detected ({detectedServices.length} Service{detectedServices.length > 1 ? 's' : ''}{detectedDatabases.length > 0 ? `, ${detectedDatabases.length} Database` : ''})
+                    {detectedBlueprintSource === 'klouds.yaml' ? 'klouds.yaml detected' : detectedBlueprintSource === 'render.yaml' ? 'render.yaml detected (Fallback)' : 'Blueprint detected'} ({detectedServices.length} Service{detectedServices.length > 1 ? 's' : ''}{detectedDatabases.length > 0 ? `, ${detectedDatabases.length} Database` : ''})
                   </div>
                   <div class="text-xs" style="color: #047857; margin-top: 2px;">
                     This repository defines a multi-service stack. Review required environment variables below, or deploy all services together.
