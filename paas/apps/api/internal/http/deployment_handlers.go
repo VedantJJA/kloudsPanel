@@ -266,7 +266,7 @@ CMD ["sh", "-c", "./$(ls -p | grep -v / | head -n 1)"]
 WORKDIR /app
 COPY . ./
 RUN %s
-RUN mkdir -p /dist && if [ -d dist ]; then cp -r dist/* /dist/ 2>/dev/null || cp -r dist/. /dist/ 2>/dev/null; elif [ -d build ]; then cp -r build/* /dist/ 2>/dev/null || cp -r build/. /dist/ 2>/dev/null; elif [ -d public ]; then cp -r public/* /dist/ 2>/dev/null || cp -r public/. /dist/ 2>/dev/null; else cp -r * /dist/ 2>/dev/null || true; fi
+RUN mkdir -p /dist && if [ -d dist ]; then cp -a dist/. /dist/; elif [ -d build ]; then cp -a build/. /dist/; elif [ -d public ]; then cp -a public/. /dist/; else cp -a . /dist/; fi
 
 FROM nginx:alpine
 RUN printf 'server {\n    listen 80;\n    server_name _;\n    root /usr/share/nginx/html;\n    index index.html;\n    location / {\n        try_files $uri $uri/ /index.html;\n    }\n}\n' > /etc/nginx/conf.d/default.conf
