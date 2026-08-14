@@ -78,10 +78,12 @@
       const reqs = svc.required_env_vars || [];
       Object.entries(svc.env_vars || {}).forEach(([k, v]) => {
         const strVal = String(v || '').trim();
-        const isReq = reqs.includes(k) || strVal === '' || strVal.toLowerCase().startsWith('your_') || strVal.toLowerCase().startsWith('replace_') || strVal.toLowerCase() === 'changeme';
         const isSecret = k.includes('SECRET') || k.includes('KEY') || k.includes('PASS') || k.includes('TOKEN') || k.includes('AUTH');
-        if (isReq || isSecret) {
-          list.push({ svcName: svc.name, svcIdx: sIdx, key: k, value: strVal, isSecret, isRequired: isReq });
+        const isMissingOrPlaceholder = strVal === '' || strVal.toLowerCase().startsWith('your_') || strVal.toLowerCase().startsWith('replace_') || strVal.toLowerCase() === 'changeme';
+        const isExplicitlyRequired = reqs.includes(k);
+
+        if (isExplicitlyRequired || isMissingOrPlaceholder) {
+          list.push({ svcName: svc.name, svcIdx: sIdx, key: k, value: strVal, isSecret, isRequired: true });
         }
       });
     });

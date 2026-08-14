@@ -22,6 +22,12 @@ func generateSecureRandomSecret(length int) string {
 	return hex.EncodeToString(b)
 }
 
+type ParsedRoute struct {
+	Type        string `json:"type"`
+	Source      string `json:"source"`
+	Destination string `json:"destination"`
+}
+
 type ParsedRenderService struct {
 	Name              string            `json:"name"`
 	Slug              string            `json:"slug"`
@@ -38,6 +44,7 @@ type ParsedRenderService struct {
 	AutoDeploy        bool              `json:"auto_deploy"`
 	EnvVars           map[string]string `json:"env_vars"`
 	RequiredEnvVars   []string          `json:"required_env_vars,omitempty"`
+	Routes            []ParsedRoute     `json:"routes,omitempty"`
 }
 
 type ParsedRenderResult struct {
@@ -55,6 +62,7 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 	var currentSvc *ParsedRenderService
 	var currentDb *fiber.Map
 	var inEnvVars bool
+	var inRoutes bool
 	var inDatabases bool
 	var inServices bool
 	var currentEnvKey string
@@ -90,6 +98,8 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 			}
 			currentSvc = nil
 		}
+		inEnvVars = false
+		inRoutes = false
 	}
 
 	for _, rawLine := range lines {
@@ -405,6 +415,59 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 					currentSvc.EnvVars[currentEnvKey] = "5432"
 				} else if prop == "user" {
 					currentSvc.EnvVars[currentEnvKey] = "postgres"
+				}
+			}
+		} else if strings.HasPrefix(trimmed, "routes:") {
+			inRoutes = true
+			inEnvVars = false
+		} else if inRoutes && (strings.HasPrefix(trimmed, "- type:") || strings.HasPrefix(trimmed, "type:")) {
+			parts := strings.SplitN(trimmed, ":", 2)
+			if len(parts) > 1 {
+				rType := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
+				if strings.HasPrefix(trimmed, "- type:") || len(currentSvc.Routes) == 0 {
+					currentSvc.Routes = append(currentSvc.Routes, ParsedRoute{Type: rType})
+				} else {
+					currentSvc.Routes[len(currentSvc.Routes)-1].Type = rType
+				}
+			}
+		} else if inRoutes && (strings.HasPrefix(trimmed, "- source:") || strings.HasPrefix(trimmed, "source:")) {
+			parts := strings.SplitN(trimmed, ":", 2)
+			if len(parts) > 1 {
+				src := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
+				if strings.HasPrefix(trimmed, "- source:") || len(currentSvc.Routes) == 0 {
+					currentSvc.Routes = append(currentSvc.Routes, ParsedRoute{Type: "rewrite", Source: src})
+				} else {
+					currentSvc.Routes[len(currentSvc.Routes)-1].Source = src
+				}
+			}
+		} else if inRoutes && strings.HasPrefix(trimmed, "destination:") {
+			parts := strings.SplitN(trimmed, ":", 2)
+			if len(parts) > 1 && len(currentSvc.Routes) > 0 {
+				dest := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
+				currentSvc.Routes[len(currentSvc.Routes)-1].Destination = dest
+
+				// If destination points to a backend URL (like https://vtopcc-backend.onrender.com/api/* or ${services.vtopcc-backend.url}/*)
+				// automatically extract the target service name and wire VITE_API_URL
+				lowerDest := strings.ToLower(dest)
+				if strings.Contains(lowerDest, "render.com") || strings.Contains(lowerDest, "${services.") {
+					var targetName string
+					if strings.Contains(dest, "${services.") {
+						start := strings.Index(dest, "${services.") + len("${services.")
+						end := strings.Index(dest[start:], ".")
+						if end > 0 {
+							targetName = dest[start : start+end]
+						}
+					} else if strings.Contains(lowerDest, ".onrender.com") {
+						sub := strings.TrimPrefix(lowerDest, "https://")
+						sub = strings.TrimPrefix(sub, "http://")
+						targetName = strings.Split(sub, ".onrender.com")[0]
+					}
+					if targetName != "" {
+						if currentSvc.EnvVars == nil {
+							currentSvc.EnvVars = make(map[string]string)
+						}
+						currentSvc.EnvVars["VITE_API_URL"] = fmt.Sprintf("${services.%s.url}", targetName)
+					}
 				}
 			}
 		}

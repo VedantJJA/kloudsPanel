@@ -656,7 +656,7 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 				}
 			}
 
-			// For static frontend apps (like VtopC / React / Vite), auto-wire VITE_API_URL and base API variables to the backend
+			// For static frontend apps (React / Vite), auto-wire VITE_API_URL and base API variables to the backend
 			if service.Kind == domain.ServiceKindStatic || presetId == "static" || presetId == "static-spa" {
 				if primaryBackend != nil {
 					backendPublicUrl := fmt.Sprintf("https://%s.%s", primaryBackend.Slug, rootDomain)
