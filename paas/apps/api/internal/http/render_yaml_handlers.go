@@ -1,6 +1,8 @@
 package http
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,6 +15,12 @@ import (
 )
 
 // ─── Render / DevPanel YAML Parser ────────────────────────────────────────────
+
+func generateSecureRandomSecret(length int) string {
+	b := make([]byte, length)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
 
 type ParsedRenderService struct {
 	Name              string            `json:"name"`
@@ -29,6 +37,7 @@ type ParsedRenderService struct {
 	CronSchedule      string            `json:"cron_schedule,omitempty"`
 	AutoDeploy        bool              `json:"auto_deploy"`
 	EnvVars           map[string]string `json:"env_vars"`
+	RequiredEnvVars   []string          `json:"required_env_vars,omitempty"`
 }
 
 type ParsedRenderResult struct {
@@ -270,6 +279,24 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 					}
 				}
 			}
+		} else if inEnvVars && (strings.HasPrefix(trimmed, "generateValue:") || strings.HasPrefix(trimmed, "generate_value:")) {
+			parts := strings.SplitN(trimmed, ":", 2)
+			if len(parts) > 1 && currentEnvKey != "" {
+				val := strings.ToLower(strings.TrimSpace(parts[1]))
+				if val == "true" || val == "yes" {
+					if currentSvc.EnvVars[currentEnvKey] == "" {
+						currentSvc.EnvVars[currentEnvKey] = generateSecureRandomSecret(16)
+					}
+				}
+			}
+		} else if inEnvVars && (strings.HasPrefix(trimmed, "sync:") || strings.HasPrefix(trimmed, "required:")) {
+			parts := strings.SplitN(trimmed, ":", 2)
+			if len(parts) > 1 && currentEnvKey != "" {
+				val := strings.ToLower(strings.TrimSpace(parts[1]))
+				if val == "false" || val == "true" || val == "yes" {
+					currentSvc.RequiredEnvVars = append(currentSvc.RequiredEnvVars, currentEnvKey)
+				}
+			}
 		} else if inEnvVars && strings.HasPrefix(trimmed, "fromDatabase:") {
 			// Database reference block started
 		} else if inEnvVars && strings.HasPrefix(trimmed, "name:") {
@@ -295,6 +322,64 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 		res.Services = append(res.Services, *currentSvc)
 	}
 
+	// Post-process: identify required env vars across all services
+	for i := range res.Services {
+		svc := &res.Services[i]
+		reqMap := make(map[string]bool)
+		for _, rk := range svc.RequiredEnvVars {
+			reqMap[rk] = true
+		}
+		for k, v := range svc.EnvVars {
+			vLower := strings.ToLower(strings.TrimSpace(v))
+			if v == "" || strings.HasPrefix(vLower, "your_") || strings.HasPrefix(vLower, "replace_") || vLower == "changeme" || vLower == "todo" {
+				reqMap[k] = true
+			}
+		}
+		var finalReq []string
+		for k := range reqMap {
+			finalReq = append(finalReq, k)
+		}
+		svc.RequiredEnvVars = finalReq
+	}
+
+	return res
+}
+
+func parseDotEnvExample(content string, repoName string) ParsedRenderResult {
+	res := ParsedRenderResult{
+		Services:  []ParsedRenderService{},
+		Databases: []fiber.Map{},
+	}
+	envMap := make(map[string]string)
+	var reqKeys []string
+
+	for _, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		parts := strings.SplitN(trimmed, "=", 2)
+		if len(parts) == 2 {
+			k := strings.TrimSpace(parts[0])
+			v := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
+			envMap[k] = v
+			vLower := strings.ToLower(v)
+			if v == "" || strings.HasPrefix(vLower, "your_") || strings.HasPrefix(vLower, "replace_") || vLower == "changeme" || vLower == "todo" {
+				reqKeys = append(reqKeys, k)
+			}
+		}
+	}
+
+	svc := ParsedRenderService{
+		Name:            repoName,
+		Slug:            strings.ToLower(repoName),
+		Kind:            "web",
+		InternalPort:    8080,
+		AutoDeploy:      true,
+		EnvVars:         envMap,
+		RequiredEnvVars: reqKeys,
+	}
+	res.Services = append(res.Services, svc)
 	return res
 }
 
@@ -308,6 +393,8 @@ func (h *Handler) handleParseRenderYaml(c fiber.Ctx) error {
 	}
 
 	content := req.Content
+	isDotEnv := false
+	repoBase := "app"
 
 	if strings.TrimSpace(content) == "" && req.RepoURL != "" {
 		rawURL := req.RepoURL
@@ -315,6 +402,10 @@ func (h *Handler) handleParseRenderYaml(c fiber.Ctx) error {
 			clean := strings.TrimSuffix(strings.TrimSuffix(rawURL, "/"), ".git")
 			parts := strings.Split(clean, "github.com/")
 			if len(parts) == 2 {
+				subparts := strings.Split(parts[1], "/")
+				if len(subparts) > 1 {
+					repoBase = subparts[1]
+				}
 				client := &nethttp.Client{Timeout: 6 * time.Second}
 				// Try render.yaml, render.yml, devpanel.yaml on main and master branches
 				paths := []string{
@@ -338,15 +429,49 @@ func (h *Handler) handleParseRenderYaml(c fiber.Ctx) error {
 						resp.Body.Close()
 					}
 				}
+
+				// If no render.yaml found, check for .env.example
+				if strings.TrimSpace(content) == "" {
+					envPaths := []string{
+						"main/.env.example",
+						"main/backend/.env.example",
+						"main/api/.env.example",
+						"main/server/.env.example",
+						"master/.env.example",
+						"master/backend/.env.example",
+						"master/api/.env.example",
+					}
+					for _, p := range envPaths {
+						testURL := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s", parts[1], p)
+						resp, err := client.Get(testURL)
+						if err == nil && resp.StatusCode == 200 {
+							var b strings.Builder
+							_, _ = io.Copy(&b, resp.Body)
+							content = b.String()
+							isDotEnv = true
+							resp.Body.Close()
+							break
+						}
+						if resp != nil {
+							resp.Body.Close()
+						}
+					}
+				}
 			}
 		}
 	}
 
 	if strings.TrimSpace(content) == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "No render.yaml or devpanel.yaml found in repository"})
+		return c.Status(400).JSON(fiber.Map{"error": "No render.yaml, devpanel.yaml, or .env.example found in repository"})
 	}
 
-	result := parseRenderYAMLString(content)
+	var result ParsedRenderResult
+	if isDotEnv {
+		result = parseDotEnvExample(content, repoBase)
+	} else {
+		result = parseRenderYAMLString(content)
+	}
+
 	return c.JSON(fiber.Map{
 		"success":   true,
 		"services":  result.Services,

@@ -26,7 +26,10 @@
     Search,
     FileCode,
     Sparkles,
-    Database
+    Database,
+    KeyRound,
+    AlertTriangle,
+    Wand2
   } from 'lucide-svelte';
 
   const { slug } = $derived($page.params);
@@ -49,6 +52,66 @@
   let selectedBlueprintIndex = $state(0);
   let deployingBlueprint = $state(false);
   let yamlParsedInfo = $state<string | null>(null);
+
+  // Required Environment Variables Prompt Modal State
+  let showEnvPromptModal = $state(false);
+  let pendingAction = $state<'blueprint' | 'single' | null>(null);
+
+  function generateRandomSecret(length = 32) {
+    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-';
+    let res = '';
+    const arr = new Uint8Array(length);
+    window.crypto.getRandomValues(arr);
+    for (let i = 0; i < length; i++) {
+      res += chars[arr[i] % chars.length];
+    }
+    return res;
+  }
+
+  function getBlueprintUnfilledEnvVars() {
+    const list: Array<{ svcName: string; svcIdx: number; key: string; value: string; isSecret: boolean; isRequired: boolean }> = [];
+    detectedServices.forEach((svc, sIdx) => {
+      const reqs = svc.required_env_vars || [];
+      Object.entries(svc.env_vars || {}).forEach(([k, v]) => {
+        const strVal = String(v || '').trim();
+        const isReq = reqs.includes(k) || strVal === '' || strVal.toLowerCase().startsWith('your_') || strVal.toLowerCase().startsWith('replace_') || strVal.toLowerCase() === 'changeme';
+        const isSecret = k.includes('SECRET') || k.includes('KEY') || k.includes('PASS') || k.includes('TOKEN') || k.includes('AUTH');
+        if (isReq || isSecret) {
+          list.push({ svcName: svc.name, svcIdx: sIdx, key: k, value: strVal, isSecret, isRequired: isReq });
+        }
+      });
+    });
+    return list;
+  }
+
+  function updateDetectedEnv(sIdx: number, key: string, val: string) {
+    if (detectedServices[sIdx]) {
+      if (!detectedServices[sIdx].env_vars) detectedServices[sIdx].env_vars = {};
+      detectedServices[sIdx].env_vars[key] = val;
+      if (selectedBlueprintIndex === sIdx) {
+        envVars = Object.entries(detectedServices[sIdx].env_vars).map(([k, v]) => ({ key: k, value: String(v) }));
+      }
+    }
+  }
+
+  function autoFillAllSecrets() {
+    detectedServices.forEach((svc, sIdx) => {
+      Object.keys(svc.env_vars || {}).forEach(k => {
+        const strVal = String(svc.env_vars[k] || '').trim();
+        const isSecret = k.includes('SECRET') || k.includes('KEY') || k.includes('PASS') || k.includes('TOKEN') || k.includes('AUTH');
+        if (isSecret && (strVal === '' || strVal.toLowerCase().startsWith('your_') || strVal.toLowerCase().startsWith('replace_') || strVal.toLowerCase() === 'changeme')) {
+          svc.env_vars[k] = generateRandomSecret(32);
+        }
+      });
+    });
+    envVars = envVars.map(e => {
+      const isSecret = e.key.includes('SECRET') || e.key.includes('KEY') || e.key.includes('PASS') || e.key.includes('TOKEN') || e.key.includes('AUTH');
+      if (isSecret && (!e.value || e.value.toLowerCase().startsWith('your_') || e.value.toLowerCase().startsWith('replace_') || e.value.toLowerCase() === 'changeme')) {
+        return { ...e, value: generateRandomSecret(32) };
+      }
+      return e;
+    });
+  }
 
   // Git Provider integration state
   let gitIntegrations = $state<any[]>([]);
@@ -429,9 +492,20 @@
     yamlParsedInfo = `✓ Configured "${svc.name}" (${svc.kind.toUpperCase()} • ${svc.env || svc.preset} in ${rootDirectory === '.' ? 'root' : '/' + rootDirectory} on port :${internalPort})`;
   }
 
+  function requestDeployBlueprint() {
+    const unfilled = getBlueprintUnfilledEnvVars().filter(x => x.isRequired && (!x.value || x.value.toLowerCase().startsWith('your_') || x.value.toLowerCase().startsWith('replace_') || x.value.toLowerCase() === 'changeme'));
+    if (unfilled.length > 0) {
+      pendingAction = 'blueprint';
+      showEnvPromptModal = true;
+      return;
+    }
+    deployEntireBlueprint();
+  }
+
   async function deployEntireBlueprint() {
     if (detectedServices.length === 0 || !project || deployingBlueprint) return;
     deployingBlueprint = true;
+    showEnvPromptModal = false;
     try {
       const projId = project.id || project.ID || slug;
       const res = await fetch(`/api/v1/projects/${encodeURIComponent(projId)}/blueprint/deploy`, {
@@ -498,11 +572,22 @@
     envVars = envVars.filter((_, i) => i !== index);
   }
 
-  async function handleSubmit(e: Event) {
+  function handleSubmit(e: Event) {
     e.preventDefault();
+    const unfilled = envVars.filter(x => x.key.trim() && (!x.value.trim() || x.value.toLowerCase().startsWith('your_') || x.value.toLowerCase().startsWith('replace_') || x.value.toLowerCase() === 'changeme'));
+    if (unfilled.length > 0) {
+      pendingAction = 'single';
+      showEnvPromptModal = true;
+      return;
+    }
+    executeSubmitSingle();
+  }
+
+  async function executeSubmitSingle() {
     if (!project) return;
     submitting = true;
     error = null;
+    showEnvPromptModal = false;
 
     try {
       const envMap: Record<string, string> = {};
@@ -721,6 +806,7 @@
         </div>
 
         {#if detectedServices.length > 0}
+          {@const unfilledEnvList = getBlueprintUnfilledEnvVars()}
           <div style="background: rgba(16,185,129,0.06); border: 1.5px solid #10b981; border-radius: var(--radius-md); padding: 1rem 1.25rem; margin-top: 1rem;">
             <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.85rem;">
               <div style="display: flex; align-items: center; gap: 0.75rem;">
@@ -730,7 +816,7 @@
                     render.yaml / Blueprint detected ({detectedServices.length} Service{detectedServices.length > 1 ? 's' : ''}{detectedDatabases.length > 0 ? `, ${detectedDatabases.length} Database` : ''})
                   </div>
                   <div class="text-xs" style="color: #047857; margin-top: 2px;">
-                    This repository defines a multi-service stack. Deploy all services together or customize individually.
+                    This repository defines a multi-service stack. Review required environment variables below, or deploy all services together.
                   </div>
                 </div>
               </div>
@@ -740,7 +826,7 @@
                   type="button" 
                   class="btn btn-primary" 
                   style="font-size: 0.8125rem; padding: 7px 16px; background: #059669; border-color: #059669; display: flex; align-items: center; gap: 6px;"
-                  onclick={deployEntireBlueprint}
+                  onclick={requestDeployBlueprint}
                   disabled={deployingBlueprint}
                 >
                   {#if deployingBlueprint}
@@ -751,6 +837,58 @@
                 </button>
               {/if}
             </div>
+
+            <!-- Required Environment Variables Setup Prompt Card -->
+            {#if unfilledEnvList.length > 0}
+              <div style="background: rgba(245,158,11,0.09); border: 1px solid rgba(245,158,11,0.4); border-radius: var(--radius-md); padding: 0.85rem 1rem; margin-bottom: 0.85rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem; flex-wrap: wrap; gap: 0.5rem;">
+                  <div style="display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 0.8125rem; color: #92400e;">
+                    <AlertTriangle size={15} style="color: #d97706;" />
+                    Setup Required Environment Variables ({unfilledEnvList.length})
+                  </div>
+                  <button
+                    type="button"
+                    class="btn btn-secondary"
+                    style="font-size: 0.72rem; padding: 3px 8px; background: var(--color-surface); display: flex; align-items: center; gap: 4px; color: #92400e; border-color: rgba(245,158,11,0.4);"
+                    onclick={autoFillAllSecrets}
+                  >
+                    <Wand2 size={12} /> Auto-Generate Secrets
+                  </button>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 0.45rem;">
+                  {#each unfilledEnvList as item}
+                    <div style="display: grid; grid-template-columns: 140px 180px 1fr auto; gap: 0.5rem; align-items: center; background: var(--color-surface); padding: 4px 8px; border-radius: var(--radius-sm); border: 1px solid rgba(0,0,0,0.06);">
+                      <span class="badge" style="background: rgba(0,166,166,0.12); color: var(--color-accent); font-size: 0.68rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        {item.svcName}
+                      </span>
+                      <span class="font-mono text-xs" style="font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title={item.key}>
+                        {item.key}
+                      </span>
+                      <input
+                        type="text"
+                        class="form-input font-mono text-xs"
+                        placeholder={item.isSecret ? "Enter or generate secret..." : "Enter value..."}
+                        value={item.value}
+                        oninput={(e: any) => updateDetectedEnv(item.svcIdx, item.key, e.target.value)}
+                        style="padding: 3px 8px; height: 26px; border-color: {!item.value ? '#f59e0b' : 'var(--color-border)'};"
+                      />
+                      {#if item.isSecret}
+                        <button
+                          type="button"
+                          class="btn btn-secondary"
+                          style="padding: 2px 6px; min-height: 24px; font-size: 0.68rem;"
+                          title="Generate random secret"
+                          onclick={() => updateDetectedEnv(item.svcIdx, item.key, generateRandomSecret(32))}
+                        >
+                          <Wand2 size={11} />
+                        </button>
+                      {/if}
+                    </div>
+                  {/each}
+                </div>
+              </div>
+            {/if}
 
             <!-- Discovered Items Grid -->
             <div style="display: flex; flex-direction: column; gap: 0.5rem; border-top: 1px solid rgba(16,185,129,0.2); padding-top: 0.75rem;">
@@ -1248,8 +1386,17 @@
                   class="form-input font-mono text-xs" 
                   placeholder="value" 
                   bind:value={env.value} 
-                  style="flex: 2;" 
+                  style="flex: 2; border-color: {!env.value && env.key ? '#f59e0b' : 'var(--color-border)'};" 
                 />
+                <button
+                  type="button"
+                  class="btn btn-secondary"
+                  style="padding: 2px 8px; min-height: 28px; font-size: 0.72rem; display: flex; align-items: center; gap: 4px;"
+                  title="Generate a random secure 32-character secret"
+                  onclick={() => env.value = generateRandomSecret(32)}
+                >
+                  <Wand2 size={12} /> Secret
+                </button>
                 <button 
                   type="button" 
                   class="btn btn-secondary" 
@@ -1356,6 +1503,131 @@
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Modal: Required Environment Variables Setup Prompt -->
+{#if showEnvPromptModal}
+  <div style="position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(2px); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 1rem;">
+    <div class="card" style="width: 100%; max-width: 640px; max-height: 85vh; display: flex; flex-direction: column; box-shadow: var(--shadow-lg); background: var(--color-surface); border: 2px solid var(--color-accent); border-radius: var(--radius-lg);">
+      <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--color-border); padding: 1rem 1.25rem;">
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <KeyRound size={20} style="color: var(--color-accent);" />
+          <h3 style="margin:0; font-size: 1.0625rem;">Setup Environment Variables</h3>
+        </div>
+        <button class="btn btn-secondary" style="padding: 4px; min-height: 28px;" onclick={() => showEnvPromptModal = false} aria-label="Close">
+          <X size={16} />
+        </button>
+      </div>
+
+      <div style="padding: 1.25rem; overflow-y: auto; flex: 1;">
+        <div style="background: rgba(245,158,11,0.08); border: 1px solid #f59e0b; border-radius: var(--radius-md); padding: 0.75rem 1rem; margin-bottom: 1.25rem; display: flex; align-items: flex-start; gap: 0.75rem;">
+          <AlertTriangle size={18} style="color: #d97706; flex-shrink: 0; margin-top: 2px;" />
+          <div class="text-xs" style="color: #92400e; line-height: 1.5;">
+            <strong>Setup Required:</strong> Some environment variables are empty or use placeholders. Please fill in your values or click <strong>Auto-Generate Secrets</strong> before starting the deployment.
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; margin-bottom: 0.75rem;">
+          <button
+            type="button"
+            class="btn btn-secondary"
+            style="font-size: 0.75rem; padding: 4px 10px; display: flex; align-items: center; gap: 5px;"
+            onclick={autoFillAllSecrets}
+          >
+            <Wand2 size={13} /> Auto-Generate All Secrets (JWT, Keys, Tokens)
+          </button>
+        </div>
+
+        {#if pendingAction === 'blueprint'}
+          <div style="display: flex; flex-direction: column; gap: 1rem;">
+            {#each detectedServices as svc, sIdx}
+              {#if svc.env_vars && Object.keys(svc.env_vars).length > 0}
+                <div style="border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 0.85rem; background: rgba(0,0,0,0.015);">
+                  <div style="font-weight: 700; font-size: 0.8125rem; margin-bottom: 0.6rem; color: var(--color-ink); display: flex; align-items: center; gap: 6px;">
+                    <span class="badge" style="background: rgba(0,166,166,0.15); color: var(--color-accent); font-size: 0.7rem;">{svc.name}</span>
+                    <span class="text-muted text-xs">Environment Variables</span>
+                  </div>
+                  <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                    {#each Object.entries(svc.env_vars) as [key, val]}
+                      <div style="display: grid; grid-template-columns: 160px 1fr auto; gap: 0.5rem; align-items: center;">
+                        <div class="font-mono text-xs" style="font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title={key}>
+                          {key}
+                        </div>
+                        <input
+                          type="text"
+                          class="form-input font-mono text-xs"
+                          placeholder="Enter value..."
+                          value={val}
+                          oninput={(e: any) => updateDetectedEnv(sIdx, key, e.target.value)}
+                          style="border-color: {!val ? '#f59e0b' : 'var(--color-border)'};"
+                        />
+                        <button
+                          type="button"
+                          class="btn btn-secondary"
+                          style="padding: 4px 8px; min-height: 28px; font-size: 0.7rem;"
+                          title="Generate random 32-char secret"
+                          onclick={() => updateDetectedEnv(sIdx, key, generateRandomSecret(32))}
+                        >
+                          <Wand2 size={12} />
+                        </button>
+                      </div>
+                    {/each}
+                  </div>
+                </div>
+              {/if}
+            {/each}
+          </div>
+        {:else}
+          <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+            {#each envVars as env, i}
+              <div style="display: grid; grid-template-columns: 160px 1fr auto; gap: 0.5rem; align-items: center;">
+                <div class="font-mono text-xs" style="font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title={env.key}>
+                  {env.key || `Variable #${i+1}`}
+                </div>
+                <input
+                  type="text"
+                  class="form-input font-mono text-xs"
+                  placeholder="Enter value..."
+                  bind:value={env.value}
+                  style="border-color: {!env.value && env.key ? '#f59e0b' : 'var(--color-border)'};"
+                />
+                <button
+                  type="button"
+                  class="btn btn-secondary"
+                  style="padding: 4px 8px; min-height: 28px; font-size: 0.7rem;"
+                  title="Generate random 32-char secret"
+                  onclick={() => env.value = generateRandomSecret(32)}
+                >
+                  <Wand2 size={12} />
+                </button>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--color-border); padding: 1rem 1.25rem;">
+        <button type="button" class="btn btn-secondary" onclick={() => showEnvPromptModal = false}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          class="btn btn-primary"
+          style="padding: 0.6rem 1.5rem;"
+          onclick={() => {
+            if (pendingAction === 'blueprint') {
+              showEnvPromptModal = false;
+              deployEntireBlueprint();
+            } else {
+              executeSubmitSingle();
+            }
+          }}
+        >
+          <Rocket size={16} /> Confirm & Deploy Now
+        </button>
       </div>
     </div>
   </div>
