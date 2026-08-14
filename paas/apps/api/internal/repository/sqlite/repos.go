@@ -17,24 +17,28 @@ func (r *projectRepo) Create(ctx context.Context, p *domain.Project) error {
 	if p.ID == "" {
 		p.ID = ids.NewV7()
 	}
-	if p.SourceKind == "" {
+	if p.SourceKind != domain.SourceKindGit && p.SourceKind != domain.SourceKindUpload && p.SourceKind != domain.SourceKindEmpty {
 		p.SourceKind = domain.SourceKindEmpty
 	}
-	if p.Status == "" {
-		p.Status = domain.ProjectStatusReady
+	if p.Status != domain.ProjectStatusActive && p.Status != domain.ProjectStatusArchived && p.Status != domain.ProjectStatusDeleting {
+		p.Status = domain.ProjectStatusActive
 	}
 	if p.RootDirectory == "" {
 		p.RootDirectory = "."
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
+	var createdBy *string
+	if p.CreatedBy != "" {
+		createdBy = &p.CreatedBy
+	}
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO projects (id,workspace_id,name,slug,description,source_kind,
 		  repository_url,repository_credential_id,default_branch,root_directory,
 		  status,created_by,created_at,updated_at)
 		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		p.ID, p.WorkspaceID, p.Name, p.Slug, p.Description, p.SourceKind,
+		p.ID, p.WorkspaceID, p.Name, p.Slug, p.Description, string(p.SourceKind),
 		p.RepositoryURL, p.RepositoryCredential, p.DefaultBranch, p.RootDirectory,
-		p.Status, p.CreatedBy, now, now,
+		string(p.Status), createdBy, now, now,
 	)
 	return err
 }

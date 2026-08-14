@@ -38,6 +38,10 @@ func (h *Handler) handleCreateProject(c fiber.Ctx) error {
 	if sk != domain.SourceKindGit && sk != domain.SourceKindUpload && sk != domain.SourceKindEmpty {
 		sk = domain.SourceKindEmpty
 	}
+	var createdBy string
+	if u, ok := c.Locals("user").(*domain.User); ok && u != nil {
+		createdBy = u.ID
+	}
 	p := &domain.Project{
 		WorkspaceID:   req.WorkspaceID,
 		Name:          req.Name,
@@ -45,7 +49,8 @@ func (h *Handler) handleCreateProject(c fiber.Ctx) error {
 		Description:   desc,
 		SourceKind:    sk,
 		RootDirectory: ".",
-		Status:        domain.ProjectStatusReady,
+		Status:        domain.ProjectStatusActive,
+		CreatedBy:     createdBy,
 	}
 	if err := h.store.Projects().Create(c.Context(), p); err != nil {
 		return err
