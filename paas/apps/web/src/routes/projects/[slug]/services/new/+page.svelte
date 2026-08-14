@@ -648,7 +648,7 @@
 </script>
 
 <svelte:head>
-  <title>Deploy a Service — kloudsPanel</title>
+  <title>Deploy a Service - kloudsPanel</title>
 </svelte:head>
 
 {#if loading}

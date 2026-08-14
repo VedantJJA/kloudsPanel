@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-#  deploy.sh — Smart Continuous Auto-Deployer for kloudsPanel
+#  deploy.sh - Smart Continuous Auto-Deployer for kloudsPanel
 #
 #  Usage:
 #    ./deploy.sh          -> Checks for changes, deploys if needed, and starts watcher
