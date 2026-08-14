@@ -102,6 +102,26 @@
     } catch {}
   }
 
+  let dbAidSaving = $state(false);
+
+  async function toggleDbAid() {
+    dbAidSaving = true;
+    try {
+      const nextVal = !dbAidEnabled;
+      const res = await fetch('/api/v1/admin/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ db_aid_enabled: nextVal })
+      });
+      if (res.ok) {
+        dbAidEnabled = nextVal;
+      }
+    } catch {} finally {
+      dbAidSaving = false;
+    }
+  }
+
   function executeAidCommand(cmd: string) {
     queryText = cmd;
     if (tab !== 'query') {
@@ -680,6 +700,46 @@
     </div>
 
   {:else if tab === 'settings'}
+    <!-- Database Assist Mode Settings -->
+    <div class="card" style="margin-bottom:1.5rem; background: var(--color-surface); border: 1px solid var(--color-border); padding: 1.25rem;">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+        <div style="display:flex; align-items:flex-start; gap:0.85rem; max-width:600px;">
+          <div style="width:38px; height:38px; border-radius:var(--radius-md); background:rgba(0,166,166,0.12); color:var(--color-accent); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+            <Zap size={20} />
+          </div>
+          <div>
+            <div style="font-weight:700; font-size:0.9375rem; color:var(--color-ink); display:flex; align-items:center; gap:8px;">
+              Assist Mode • 1-Click Database Command Abstractions
+              {#if dbAidEnabled}
+                <span class="badge badge-running" style="font-size:0.7rem;">Active</span>
+              {:else}
+                <span class="badge badge-stopped" style="font-size:0.7rem;">Disabled</span>
+              {/if}
+            </div>
+            <p class="text-xs text-muted" style="margin:3px 0 0 0; line-height:1.45;">
+              Controls whether 1-click execution buttons for table statistics, vacuuming, active connection checks, and diagnostics are displayed.
+            </p>
+          </div>
+        </div>
+
+        <button 
+          type="button" 
+          class="btn {dbAidEnabled ? 'btn-primary' : 'btn-secondary'}" 
+          onclick={toggleDbAid}
+          disabled={dbAidSaving}
+          style="padding:6px 16px; font-weight:600; font-size:0.8125rem;"
+        >
+          {#if dbAidSaving}
+            <Loader2 size={13} class="animate-spin" /> Updating…
+          {:else if dbAidEnabled}
+            Assist Mode: ON (Click to Disable)
+          {:else}
+            Assist Mode: OFF (Click to Enable)
+          {/if}
+        </button>
+      </div>
+    </div>
+
     <div class="card" style="border-color:#fca5a5; margin-bottom:1.5rem; background: var(--color-surface);">
       <div class="card-header" style="border-bottom-color:#fee2e2;">
         <h3 style="color:var(--color-danger); margin:0;">Danger Zone</h3>

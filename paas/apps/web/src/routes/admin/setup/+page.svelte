@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { Settings, FolderGit2, Check, Loader2, Globe, ArrowRight, ShieldCheck, Database } from 'lucide-svelte';
+  import { Settings, FolderGit2, Check, Loader2, Globe, ArrowRight, ShieldCheck, Database, Zap } from 'lucide-svelte';
 
   let rootDomain = $state('');
   let acmeEmail = $state('');
@@ -74,13 +74,53 @@
 </script>
 
 <svelte:head>
-  <title>Platform Setup - kloudsPanel</title>
+  <title>Platform Settings & Setup - kloudsPanel</title>
 </svelte:head>
 
 <div class="page-header" style="margin-bottom: 1.5rem;">
   <div>
-    <h1 class="page-title">Platform Setup</h1>
-    <p class="page-subtitle">Configure root domain, TLS certificates, and core infrastructure - main admin only</p>
+    <h1 class="page-title">Platform Settings & Setup</h1>
+    <p class="page-subtitle">Configure root domain, TLS certificates, database assist mode, and core infrastructure</p>
+  </div>
+</div>
+
+<!-- Database Aid & Assist Mode Toggle Card (Prominent Top Banner) -->
+<div class="card" style="margin-bottom: 1.5rem; background: var(--color-surface); border: 1.5px solid var(--color-accent); padding: 1.5rem;">
+  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+    <div style="display:flex; align-items:flex-start; gap:1rem; max-width:680px;">
+      <div style="width:44px; height:44px; border-radius:var(--radius-md); background:rgba(0,166,166,0.12); color:var(--color-accent); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+        <Zap size={24} />
+      </div>
+      <div>
+        <div style="font-weight:700; font-size:1.05rem; color:var(--color-ink); display:flex; align-items:center; gap:8px;">
+          Database Assist Mode & Command Abstractions
+          {#if dbAidEnabled}
+            <span class="badge badge-running" style="font-size:0.75rem;">Active</span>
+          {:else}
+            <span class="badge badge-stopped" style="font-size:0.75rem;">Disabled</span>
+          {/if}
+        </div>
+        <p class="text-xs text-muted" style="margin:4px 0 0 0; line-height:1.5;">
+          Enables 1-click database command abstraction buttons (active connections, table sizes & disk stats, vacuum analyze, processlist, cache flush) across all PostgreSQL, MySQL, Redis, MongoDB, and ClickHouse databases.
+        </p>
+      </div>
+    </div>
+
+    <button 
+      type="button" 
+      class="btn {dbAidEnabled ? 'btn-primary' : 'btn-secondary'}" 
+      onclick={toggleDbAid}
+      disabled={dbAidSaving}
+      style="padding:10px 22px; font-weight:700; font-size:0.875rem;"
+    >
+      {#if dbAidSaving}
+        <Loader2 size={16} class="animate-spin" /> Updating…
+      {:else if dbAidEnabled}
+        Assist Mode: ON (Click to Disable)
+      {:else}
+        Assist Mode: OFF (Click to Enable)
+      {/if}
+    </button>
   </div>
 </div>
 
@@ -191,46 +231,6 @@
           {/if}
         </div>
       {/each}
-    </div>
-  </div>
-
-  <!-- Database Aid & Command Abstractions Toggle -->
-  <div class="card" style="grid-column: 1 / -1; background: var(--color-surface); border: 1px solid var(--color-border); padding: 1.5rem;">
-    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
-      <div style="display:flex; align-items:flex-start; gap:1rem; max-width:640px;">
-        <div style="width:42px; height:42px; border-radius:var(--radius-md); background:rgba(0,166,166,0.12); color:var(--color-accent); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-          <Database size={22} />
-        </div>
-        <div>
-          <div style="font-weight:700; font-size:1.05rem; color:var(--color-ink); display:flex; align-items:center; gap:8px;">
-            Database Aid & Command Abstractions
-            {#if dbAidEnabled}
-              <span class="badge badge-running" style="font-size:0.7rem;">Active</span>
-            {:else}
-              <span class="badge badge-stopped" style="font-size:0.7rem;">Disabled</span>
-            {/if}
-          </div>
-          <p class="text-xs text-muted" style="margin:4px 0 0 0; line-height:1.5;">
-            When enabled, provisioned databases (PostgreSQL, MySQL, Redis, MongoDB, ClickHouse) expose 1-click command abstraction toolbars for automated schema migrations, storage vacuuming, connection monitoring, and cache flushes.
-          </p>
-        </div>
-      </div>
-
-      <button 
-        type="button" 
-        class="btn {dbAidEnabled ? 'btn-primary' : 'btn-secondary'}" 
-        onclick={toggleDbAid}
-        disabled={dbAidSaving}
-        style="padding:8px 18px; font-weight:600;"
-      >
-        {#if dbAidSaving}
-          <Loader2 size={15} class="animate-spin" /> Updating…
-        {:else if dbAidEnabled}
-          Enabled (Click to Disable)
-        {:else}
-          Disabled (Click to Enable)
-        {/if}
-      </button>
     </div>
   </div>
 </div>

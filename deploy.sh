@@ -98,27 +98,21 @@ run_deployment() {
     echo -e "${CYAN}=================================================================${NC}"
 }
 
-# 1. Check if update is needed on startup
+# 1. Always execute deployment on startup to guarantee containers are up-to-date with active commit
 echo -e "${CYAN}==> Checking repository status on branch ${BOLD}$BRANCH${NC}..."
 git fetch origin "$BRANCH" --quiet 2>/dev/null || true
 
 LOCAL_HASH="$(git rev-parse HEAD 2>/dev/null || echo "")"
 REMOTE_HASH="$(git rev-parse "origin/$BRANCH" 2>/dev/null || git rev-parse FETCH_HEAD 2>/dev/null || echo "")"
 
-if [ "$FORCE_DEPLOY" = true ]; then
-    run_deployment "Forced deployment (--force)"
-elif ! are_containers_running; then
-    run_deployment "Containers are not running"
-elif [ -n "$LOCAL_HASH" ] && [ -n "$REMOTE_HASH" ] && [ "$LOCAL_HASH" != "$REMOTE_HASH" ]; then
-    run_deployment "New remote commits found on startup (${REMOTE_HASH:0:7})"
+if [ "$LOCAL_HASH" != "$REMOTE_HASH" ] && [ -n "$REMOTE_HASH" ]; then
+    run_deployment "Syncing to latest remote commit (${REMOTE_HASH:0:7})"
 else
-    COMMIT_MSG="$(git log -1 --pretty=%B 2>/dev/null | head -n 1 || echo "")"
-    echo -e "${GREEN}✓ Everything is up to date at commit [${LOCAL_HASH:0:7}] ${COMMIT_MSG}${NC}"
-    echo -e "${GREEN}✓ All kloudsPanel containers are running.${NC}"
+    run_deployment "Platform startup & container build (${LOCAL_HASH:0:7})"
 fi
 
 if [ "$ONCE_MODE" = true ]; then
-    echo "==> One-time check finished. Exiting."
+    echo "==> One-time deployment finished. Exiting."
     exit 0
 fi
 

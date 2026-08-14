@@ -2,7 +2,7 @@
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
-  import { Settings, Save, Trash2, Loader2, AlertTriangle } from 'lucide-svelte';
+  import { Settings, Save, Trash2, Loader2, AlertTriangle, Zap } from 'lucide-svelte';
 
   const { slug } = $derived($page.params);
   let workspace = $state<any>(null);
@@ -12,20 +12,49 @@
   let saved = $state(false);
   let error = $state('');
   let deleting = $state(false);
+  let dbAidEnabled = $state(true);
+  let dbAidSaving = $state(false);
 
   async function loadData() {
     try {
-      const res = await fetch(`/api/v1/workspaces/${slug}`, { credentials: 'include' });
+      const [res, settingsRes] = await Promise.all([
+        fetch(`/api/v1/workspaces/${slug}`, { credentials: 'include' }),
+        fetch('/api/v1/admin/settings', { credentials: 'include' })
+      ]);
       if (res.ok) {
         workspace = await res.json();
         name = workspace.name || workspace.Name || '';
       } else {
         goto('/workspaces');
       }
+      if (settingsRes.ok) {
+        const d = await settingsRes.json();
+        if (d.settings?.db_aid_enabled !== undefined) {
+          dbAidEnabled = d.settings.db_aid_enabled;
+        }
+      }
     } catch {
       goto('/workspaces');
     } finally {
       loading = false;
+    }
+  }
+
+  async function toggleDbAid() {
+    dbAidSaving = true;
+    try {
+      const nextVal = !dbAidEnabled;
+      const res = await fetch('/api/v1/admin/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ db_aid_enabled: nextVal })
+      });
+      if (res.ok) {
+        dbAidEnabled = nextVal;
+      }
+    } catch {} finally {
+      dbAidSaving = false;
     }
   }
 
@@ -127,6 +156,46 @@
           {#if saving}<Loader2 size={14} class="animate-spin" /> Saving...{:else}<Save size={14} /> Save Changes{/if}
         </button>
       </form>
+    </div>
+
+    <!-- Database Assist Mode Settings Card -->
+    <div class="card" style="padding: 1.5rem; background: var(--color-surface); border: 1px solid var(--color-border);">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+        <div style="display:flex; align-items:flex-start; gap:0.85rem; max-width:520px;">
+          <div style="width:38px; height:38px; border-radius:var(--radius-md); background:rgba(0,166,166,0.12); color:var(--color-accent); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+            <Zap size={20} />
+          </div>
+          <div>
+            <div style="font-weight:700; font-size:0.9375rem; color:var(--color-ink); display:flex; align-items:center; gap:8px;">
+              Database Assist Mode
+              {#if dbAidEnabled}
+                <span class="badge badge-running" style="font-size:0.7rem;">Active</span>
+              {:else}
+                <span class="badge badge-stopped" style="font-size:0.7rem;">Disabled</span>
+              {/if}
+            </div>
+            <p class="text-xs text-muted" style="margin:3px 0 0 0; line-height:1.45;">
+              Enables 1-click command abstraction action buttons (active queries, table sizes, vacuum analyze, processlist, cache flush) for databases in this workspace.
+            </p>
+          </div>
+        </div>
+
+        <button 
+          type="button" 
+          class="btn {dbAidEnabled ? 'btn-primary' : 'btn-secondary'}" 
+          onclick={toggleDbAid}
+          disabled={dbAidSaving}
+          style="padding:6px 16px; font-weight:600; font-size:0.8125rem;"
+        >
+          {#if dbAidSaving}
+            <Loader2 size={13} class="animate-spin" /> Updating…
+          {:else if dbAidEnabled}
+            Assist Mode: ON (Disable)
+          {:else}
+            Assist Mode: OFF (Enable)
+          {/if}
+        </button>
+      </div>
     </div>
 
     <!-- Danger Zone Card -->

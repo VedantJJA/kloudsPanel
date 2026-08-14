@@ -120,7 +120,7 @@
     { label: 'Workspaces', href: '/workspaces', icon: Home },
     { label: 'Databases', href: '/databases', icon: Database },
     { section: 'Administration', label: '', href: '', icon: null },
-    { label: 'Platform', href: '/admin/setup', icon: Settings },
+    { label: 'Settings & Setup', href: '/admin/setup', icon: Settings },
     { label: 'Git Providers', href: '/admin/git-providers', icon: FolderGit2 },
     { label: 'Users', href: '/admin/users', icon: Users },
     { label: 'Telemetry', href: '/admin/telemetry', icon: Activity },
