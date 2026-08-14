@@ -83,7 +83,7 @@ services:
     logging: *default-logging
 
   agent:
-    image: ghcr.io/yourorg/klouds/agent:latest
+    image: ghcr.io/klouds/agent:latest
     build:
       context: ../..
       dockerfile: apps/agent/Dockerfile
@@ -103,7 +103,7 @@ services:
     logging: *default-logging
 
   api:
-    image: ghcr.io/yourorg/klouds/api:latest
+    image: ghcr.io/klouds/api:latest
     build:
       context: ../../apps/api
       dockerfile: Dockerfile
@@ -150,7 +150,7 @@ services:
       retries: 3
 
   web:
-    image: ghcr.io/yourorg/klouds/web:latest
+    image: ghcr.io/klouds/web:latest
     build:
       context: ../..
       dockerfile: apps/web/Dockerfile

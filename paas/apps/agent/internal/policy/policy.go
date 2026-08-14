@@ -16,7 +16,7 @@ var (
 	// allowedRegistries is the list of permitted container image registries.
 	// Source images outside these prefixes are rejected.
 	allowedRegistries = []string{
-		"ghcr.io/yourorg/klouds/",     // platform images
+		"ghcr.io/klouds/",             // platform images
 		"docker.io/library/",          // official Docker Hub
 		"registry-1.docker.io/library/",
 		"index.docker.io/library/",
