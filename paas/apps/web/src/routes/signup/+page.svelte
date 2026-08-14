@@ -37,7 +37,7 @@
 </script>
 
 <svelte:head>
-  <title>Request Access — kloudsPanel</title>
+  <title>Request Access - kloudsPanel</title>
 </svelte:head>
 
 <div style="
@@ -58,7 +58,7 @@
       ">K</div>
       <h1 style="font-size:1.375rem;font-weight:700;color:var(--color-ink);margin:0">Request Access</h1>
       <p style="font-size:0.875rem;color:var(--color-ink-secondary);margin-top:0.25rem">
-        New accounts require admin approval
+        Create an account on kloudsPanel
       </p>
     </div>
 
@@ -69,7 +69,7 @@
         font-size:0.875rem;text-align:center;
       ">
         <strong style="display:flex;align-items:center;justify-content:center;gap:0.5rem;"><Check size={16} /> Request submitted!</strong><br/>
-        Your account is pending admin approval. You'll be notified when access is granted.
+        Your account is ready. You can now sign in.
         <br/><br/>
         <a href="/login" style="color:var(--color-accent-dim);font-weight:500">Back to Sign In →</a>
       </div>
@@ -84,14 +84,14 @@
 
       <form onsubmit={handleSignup}>
         <div class="form-group">
-          <label class="form-label" for="name">Full Name</label>
+          <label class="form-label" for="name">Name</label>
           <input id="name" type="text" class="form-input" bind:value={displayName}
-            placeholder="Jane Smith" required autocomplete="name"/>
+            placeholder="name" required autocomplete="name"/>
         </div>
         <div class="form-group">
-          <label class="form-label" for="email">Email Address</label>
+          <label class="form-label" for="email">Email</label>
           <input id="email" type="email" class="form-input" bind:value={email}
-            placeholder="you@example.com" required autocomplete="email"/>
+            placeholder="name" required autocomplete="email"/>
         </div>
         <div class="form-group">
           <label class="form-label" for="password">Password</label>

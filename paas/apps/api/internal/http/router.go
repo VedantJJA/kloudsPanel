@@ -96,6 +96,9 @@ func NewServer(log *slog.Logger, store repository.Store, addr string) *fiber.App
 	svc.Post("/:id/stop", h.handleStopService)
 	svc.Post("/:id/start", h.handleStartService)
 	svc.Get("/:id/logs", h.handleGetLogs)
+	svc.Get("/:id/domains", h.handleListServiceDomains)
+	svc.Post("/:id/domains", h.handleAddServiceDomain)
+	svc.Delete("/:id/domains/:domain", h.handleDeleteServiceDomain)
 
 	// Deployment routes
 	dep := v1.Group("/services/:id/deployments", h.requireSession)
@@ -138,7 +141,8 @@ func NewServer(log *slog.Logger, store repository.Store, addr string) *fiber.App
 	admin.Post("/users/:id/approve", h.handleApproveUser)
 	admin.Post("/users/:id/suspend", h.handleSuspendUser)
 	admin.Get("/audit", h.handleListAuditEvents)
-	admin.Get("/platform", h.handleGetPlatformSettings)
+	admin.Get("/settings", h.handleGetPlatformSettings)
+	admin.Patch("/settings", h.handleUpdatePlatformSettings)
 	admin.Post("/setup", h.handleAdminSetup)
 
 	return app

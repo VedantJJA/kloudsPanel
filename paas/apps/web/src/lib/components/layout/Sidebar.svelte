@@ -231,15 +231,26 @@
     </div>
   {/if}
 
-  <!-- Footer: User account -->
-  <div class="sidebar-footer">
+  <!-- Footer: User account & Quick Telemetry -->
+  <div class="sidebar-footer" style="display:flex; flex-direction:column; gap:0.25rem;">
+    <a
+      href="/admin/telemetry"
+      class="nav-item"
+      class:active={pathname === '/admin/telemetry'}
+      style="width:100%; color:rgba(234,241,250,0.85); font-size:0.8125rem; margin-bottom:2px;"
+      aria-label="Platform Telemetry"
+    >
+      <span aria-hidden="true"><Activity size={18} style="color:var(--color-accent);" /></span>
+      Host Telemetry
+    </a>
+
     <button
       class="nav-item nav-item-logout"
       style="width:100%; color:rgba(234,241,250,0.6); font-size:0.8rem;"
       onclick={handleLogout}
       aria-label="Sign out"
     >
-      <span aria-hidden="true"><LogOut size={20} /></span>
+      <span aria-hidden="true"><LogOut size={18} /></span>
       Sign Out
     </button>
   </div>

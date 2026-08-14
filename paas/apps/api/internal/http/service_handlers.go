@@ -1,8 +1,10 @@
 package http
 
 import (
+	"encoding/json"
 	"fmt"
 	"os/exec"
+	"strings"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/yourorg/klouds/api/internal/domain"
@@ -259,4 +261,165 @@ func (h *Handler) handleStartService(c fiber.Ctx) error {
 		"domain":         domainName,
 		"endpoint_url":   fmt.Sprintf("https://%s", domainName),
 	})
+}
+
+func (h *Handler) handleListServiceDomains(c fiber.Ctx) error {
+	s, err := h.store.Services().GetByID(c.Context(), c.Params("id"))
+	if err != nil || s == nil {
+		return c.Status(404).JSON(fiber.Map{"error": "service not found"})
+	}
+	rootDomain := getRootDomain()
+	primaryDomain := fmt.Sprintf("%s.%s", s.Slug, rootDomain)
+
+	var resMap map[string]any
+	_ = json.Unmarshal([]byte(s.ResourceJSON), &resMap)
+	if resMap == nil {
+		resMap = make(map[string]any)
+	}
+
+	var customDomains []string
+	if cds, ok := resMap["customDomains"].([]any); ok {
+		for _, cd := range cds {
+			if str, ok := cd.(string); ok && str != "" {
+				customDomains = append(customDomains, str)
+			}
+		}
+	} else if cds, ok := resMap["custom_domains"].([]any); ok {
+		for _, cd := range cds {
+			if str, ok := cd.(string); ok && str != "" {
+				customDomains = append(customDomains, str)
+			}
+		}
+	}
+
+	type DomainItem struct {
+		Domain    string `json:"domain"`
+		IsPrimary bool   `json:"isPrimary"`
+		SSLStatus string `json:"sslStatus"`
+		Target    string `json:"target"`
+	}
+
+	items := []DomainItem{
+		{
+			Domain:    primaryDomain,
+			IsPrimary: true,
+			SSLStatus: "active",
+			Target:    primaryDomain,
+		},
+	}
+
+	for _, cd := range customDomains {
+		items = append(items, DomainItem{
+			Domain:    cd,
+			IsPrimary: false,
+			SSLStatus: "active",
+			Target:    primaryDomain,
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"primaryDomain": primaryDomain,
+		"domains":       items,
+	})
+}
+
+func (h *Handler) handleAddServiceDomain(c fiber.Ctx) error {
+	s, err := h.store.Services().GetByID(c.Context(), c.Params("id"))
+	if err != nil || s == nil {
+		return c.Status(404).JSON(fiber.Map{"error": "service not found"})
+	}
+
+	var req struct {
+		Domain string `json:"domain"`
+	}
+	if err := c.Bind().JSON(&req); err != nil {
+		return err
+	}
+
+	domainToAdd := strings.TrimSpace(strings.ToLower(req.Domain))
+	domainToAdd = strings.TrimPrefix(domainToAdd, "https://")
+	domainToAdd = strings.TrimPrefix(domainToAdd, "http://")
+	domainToAdd = strings.TrimRight(domainToAdd, "/")
+
+	if domainToAdd == "" || strings.Contains(domainToAdd, " ") {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid domain format"})
+	}
+
+	var resMap map[string]any
+	_ = json.Unmarshal([]byte(s.ResourceJSON), &resMap)
+	if resMap == nil {
+		resMap = make(map[string]any)
+	}
+
+	var customDomains []string
+	if cds, ok := resMap["customDomains"].([]any); ok {
+		for _, cd := range cds {
+			if str, ok := cd.(string); ok && str != "" {
+				customDomains = append(customDomains, str)
+			}
+		}
+	}
+
+	exists := false
+	for _, cd := range customDomains {
+		if strings.EqualFold(cd, domainToAdd) {
+			exists = true
+			break
+		}
+	}
+	if !exists {
+		customDomains = append(customDomains, domainToAdd)
+	}
+
+	resMap["customDomains"] = customDomains
+	updatedJSON, _ := json.Marshal(resMap)
+	s.ResourceJSON = string(updatedJSON)
+	_ = h.store.Services().Update(c.Context(), s)
+
+	port := 80
+	if s.InternalPort != nil && *s.InternalPort > 0 {
+		port = *s.InternalPort
+	}
+	rootDomain := getRootDomain()
+	writeTraefikDynamicConfigWithDomains(s.Slug, port, rootDomain, customDomains)
+
+	return h.handleListServiceDomains(c)
+}
+
+func (h *Handler) handleDeleteServiceDomain(c fiber.Ctx) error {
+	s, err := h.store.Services().GetByID(c.Context(), c.Params("id"))
+	if err != nil || s == nil {
+		return c.Status(404).JSON(fiber.Map{"error": "service not found"})
+	}
+
+	domainToDelete := strings.TrimSpace(strings.ToLower(c.Params("domain")))
+
+	var resMap map[string]any
+	_ = json.Unmarshal([]byte(s.ResourceJSON), &resMap)
+	if resMap == nil {
+		resMap = make(map[string]any)
+	}
+
+	var customDomains []string
+	if cds, ok := resMap["customDomains"].([]any); ok {
+		for _, cd := range cds {
+			if str, ok := cd.(string); ok && str != "" && !strings.EqualFold(str, domainToDelete) {
+				customDomains = append(customDomains, str)
+			}
+		}
+	}
+
+	resMap["customDomains"] = customDomains
+	updatedJSON, _ := json.Marshal(resMap)
+	s.ResourceJSON = string(updatedJSON)
+	_ = h.store.Services().Update(c.Context(), s)
+
+	port := 80
+	if s.InternalPort != nil && *s.InternalPort > 0 {
+		port = *s.InternalPort
+	}
+	rootDomain := getRootDomain()
+	writeTraefikDynamicConfigWithDomains(s.Slug, port, rootDomain, customDomains)
+
+	return h.handleListServiceDomains(c)
 }

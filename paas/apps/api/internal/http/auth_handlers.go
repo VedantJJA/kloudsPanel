@@ -76,16 +76,28 @@ func (h *Handler) handleSignup(c fiber.Ctx) error {
 		return err
 	}
 
+	userStatus := domain.UserStatusPending
+	if isAutoApproveEnabled() {
+		userStatus = domain.UserStatusActive
+	}
+
 	user := &domain.User{
 		Email:        req.Email,
 		DisplayName:  req.DisplayName,
 		PasswordHash: string(hash),
-		Status:       domain.UserStatusPending,
+		Status:       userStatus,
 		PlatformRole: domain.PlatformRoleUser,
 	}
 
 	if err := h.store.Users().Create(c.Context(), user); err != nil {
 		return err
+	}
+
+	if userStatus == domain.UserStatusActive {
+		return c.Status(201).JSON(fiber.Map{
+			"message": "Account created and activated. You can now log in.",
+			"status":  "active",
+		})
 	}
 
 	return c.Status(201).JSON(fiber.Map{

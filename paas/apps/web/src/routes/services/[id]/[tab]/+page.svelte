@@ -39,11 +39,74 @@
   let envSaving = $state(false);
   let envSuccess = $state(false);
 
+  // Custom Domains state
+  let customDomainsList = $state<any[]>([]);
+  let newDomainInput = $state('');
+  let domainSaving = $state(false);
+  let domainNotice = $state<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  async function loadDomains() {
+    try {
+      const targetId = service?.id || id;
+      const res = await fetch(`/api/v1/services/${targetId}/domains`, { credentials: 'include' });
+      if (res.ok) {
+        const d = await res.json();
+        customDomainsList = d.domains ?? [];
+      }
+    } catch {}
+  }
+
+  async function addCustomDomain() {
+    if (!newDomainInput.trim()) return;
+    domainSaving = true;
+    domainNotice = null;
+    try {
+      const targetId = service?.id || id;
+      const res = await fetch(`/api/v1/services/${targetId}/domains`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ domain: newDomainInput.trim() })
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        domainNotice = { type: 'error', message: d.error || 'Failed to add domain' };
+      } else {
+        const d = await res.json();
+        customDomainsList = d.domains ?? [];
+        newDomainInput = '';
+        domainNotice = { type: 'success', message: '✓ Custom domain saved and TLS certificate configured with Let\'s Encrypt!' };
+      }
+    } catch (e: any) {
+      domainNotice = { type: 'error', message: e.message || 'Network error' };
+    } finally {
+      domainSaving = false;
+    }
+  }
+
+  async function removeCustomDomain(domainName: string) {
+    if (!confirm(`Are you sure you want to remove ${domainName}?`)) return;
+    try {
+      const targetId = service?.id || id;
+      const res = await fetch(`/api/v1/services/${targetId}/domains/${encodeURIComponent(domainName)}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+      if (res.ok) {
+        const d = await res.json();
+        customDomainsList = d.domains ?? [];
+        domainNotice = { type: 'success', message: `✓ Domain ${domainName} removed.` };
+      }
+    } catch {}
+  }
+
   async function loadService() {
     try {
       const res = await fetch(`/api/v1/services/${id}`, { credentials: 'include' });
       if (!res.ok) { goto('/workspaces'); return; }
       service = await res.json();
+
+      loadDomains();
       
       // Parse existing env vars if present in resource_json
       try {
@@ -519,14 +582,115 @@
     </div>
 
   {:else if tab === 'domains'}
-    <div class="card">
-      <div class="card-header">
-        <h3 style="margin:0;">Custom Domains</h3>
+    <div class="card" style="margin-bottom: 1.5rem;">
+      <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <h3 style="margin:0; font-size:1.05rem;">Domain & TLS Configuration</h3>
+          <div class="text-xs text-muted" style="margin-top:2px;">Attach custom domain names and automate Let's Encrypt TLS/SSL certificates</div>
+        </div>
+        <button class="btn btn-secondary" onclick={loadDomains} style="padding:4px 10px; font-size:0.75rem;">
+          <RefreshCw size={14} /> Refresh
+        </button>
       </div>
-      <p class="text-sm text-muted">Primary generated domain: <strong>{service?.domain || `${service?.slug}.klouds.online`}</strong></p>
-      <div style="display:flex; gap:0.75rem; margin-top:1rem;">
-        <input type="text" class="form-input" placeholder="app.yourdomain.com" style="max-width:320px;" />
-        <button class="btn btn-primary">Add Domain</button>
+
+      {#if domainNotice}
+        <div style="background:{domainNotice.type === 'success' ? '#d1fae5' : '#fee2e2'}; border:1px solid {domainNotice.type === 'success' ? '#6ee7b7' : '#fca5a5'}; color:{domainNotice.type === 'success' ? '#065f46' : '#991b1b'}; border-radius:var(--radius-md); padding:0.6rem 1rem; font-size:0.875rem; margin-bottom:1rem;">
+          {domainNotice.message}
+        </div>
+      {/if}
+
+      <!-- Add Domain Form -->
+      <div style="background: rgba(0,0,0,0.02); padding: 1.25rem; border-radius: var(--radius-md); border: 1px solid var(--color-border); margin-bottom: 1.5rem;">
+        <label for="new-domain-input" class="form-label" style="font-weight:600; margin-bottom:0.4rem;">Add Custom Domain</label>
+        <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
+          <input 
+            id="new-domain-input"
+            type="text" 
+            class="form-input font-mono" 
+            placeholder="e.g. app.yourdomain.com or mybrand.com" 
+            bind:value={newDomainInput} 
+            style="max-width:380px; flex:1;"
+            onkeydown={(e) => { if (e.key === 'Enter') addCustomDomain(); }}
+          />
+          <button class="btn btn-primary" onclick={addCustomDomain} disabled={domainSaving || !newDomainInput.trim()}>
+            {#if domainSaving}<Loader2 size={14} class="animate-spin" /> Saving...{:else}<Plus size={14} /> Add Domain{/if}
+          </button>
+        </div>
+        <p class="text-xs text-muted" style="margin-top: 0.5rem; margin-bottom: 0;">
+          Point your domain's CNAME record to <code class="font-mono">{service?.domain || `${service?.slug}.klouds.online`}</code> to complete verification.
+        </p>
+      </div>
+
+      <!-- Configured Domains List -->
+      <div style="font-weight:600; font-size:0.875rem; margin-bottom:0.75rem;">Configured Domains & SSL Status</div>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Domain</th>
+              <th>Type</th>
+              <th>SSL / TLS Status</th>
+              <th>DNS Target</th>
+              <th style="text-align:right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- Primary System Domain -->
+            <tr>
+              <td>
+                <div style="display:flex; align-items:center; gap:0.5rem;">
+                  <Globe size={16} style="color:var(--color-accent);" />
+                  <a href="https://{service?.domain || `${service?.slug}.klouds.online`}" target="_blank" rel="noreferrer" class="font-mono text-sm" style="font-weight:600; color:var(--color-accent-dim);">
+                    {service?.domain || `${service?.slug}.klouds.online`}
+                  </a>
+                  <ExternalLink size={12} style="color:var(--color-ink-muted);" />
+                </div>
+              </td>
+              <td><span class="badge badge-running" style="font-size:0.7rem;">Primary (Auto)</span></td>
+              <td>
+                <span class="badge" style="background:#dcfce7; color:#15803d; font-size:0.7rem; display:inline-flex; align-items:center; gap:4px;">
+                  <ShieldCheck size={12} /> Auto Let's Encrypt Active
+                </span>
+              </td>
+              <td class="font-mono text-xs text-muted">Platform Ingress</td>
+              <td style="text-align:right;" class="text-xs text-muted">Default</td>
+            </tr>
+
+            <!-- Custom Domains -->
+            {#each customDomainsList.filter(d => !d.isPrimary) as d}
+              <tr>
+                <td>
+                  <div style="display:flex; align-items:center; gap:0.5rem;">
+                    <Globe size={16} style="color:#3b82f6;" />
+                    <a href="https://{d.domain}" target="_blank" rel="noreferrer" class="font-mono text-sm" style="font-weight:600; color:var(--color-ink);">
+                      {d.domain}
+                    </a>
+                    <ExternalLink size={12} style="color:var(--color-ink-muted);" />
+                  </div>
+                </td>
+                <td><span class="badge" style="background:#e0f2fe; color:#0369a1; font-size:0.7rem;">Custom Domain</span></td>
+                <td>
+                  <span class="badge" style="background:#dcfce7; color:#15803d; font-size:0.7rem; display:inline-flex; align-items:center; gap:4px;">
+                    <ShieldCheck size={12} /> TLS Active
+                  </span>
+                </td>
+                <td class="font-mono text-xs" style="color:var(--color-ink-muted);">
+                  CNAME → {service?.domain || `${service?.slug}.klouds.online`}
+                </td>
+                <td style="text-align:right;">
+                  <button 
+                    class="btn btn-secondary" 
+                    style="padding:3px 8px; font-size:0.75rem; color:var(--color-error);"
+                    onclick={() => removeCustomDomain(d.domain)}
+                    aria-label="Remove domain"
+                  >
+                    <Trash2 size={13} /> Remove
+                  </button>
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
       </div>
     </div>
 

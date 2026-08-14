@@ -115,7 +115,7 @@ func getRootDomain() string {
 	return "klouds.online"
 }
 
-func writeTraefikDynamicConfig(slug string, port int, rootDomain string) {
+func writeTraefikDynamicConfigWithDomains(slug string, port int, rootDomain string, customDomains []string) {
 	dynamicDir := "/traefik/dynamic"
 	if _, err := os.Stat(dynamicDir); os.IsNotExist(err) {
 		dynamicDir = "./paas/deploy/traefik/dynamic"
@@ -124,11 +124,20 @@ func writeTraefikDynamicConfig(slug string, port int, rootDomain string) {
 		}
 	}
 
+	ruleParts := []string{fmt.Sprintf("Host(`%s.%s`)", slug, rootDomain)}
+	for _, cd := range customDomains {
+		cd = strings.TrimSpace(cd)
+		if cd != "" {
+			ruleParts = append(ruleParts, fmt.Sprintf("Host(`%s`)", cd))
+		}
+	}
+	ruleStr := strings.Join(ruleParts, " || ")
+
 	filePath := filepath.Join(dynamicDir, fmt.Sprintf("svc-%s.yaml", slug))
 	content := fmt.Sprintf(`http:
   routers:
     svc-%s:
-      rule: "Host(`+"`"+`%s.%s`+"`"+`)"
+      rule: "%s"
       entryPoints:
         - "websecure"
       tls:
@@ -139,9 +148,13 @@ func writeTraefikDynamicConfig(slug string, port int, rootDomain string) {
       loadBalancer:
         servers:
           - url: "http://paas-svc-%s:%d"
-`, slug, slug, rootDomain, slug, slug, slug, port)
+`, slug, ruleStr, slug, slug, slug, port)
 
 	_ = os.WriteFile(filePath, []byte(content), 0644)
+}
+
+func writeTraefikDynamicConfig(slug string, port int, rootDomain string) {
+	writeTraefikDynamicConfigWithDomains(slug, port, rootDomain, nil)
 }
 
 func removeTraefikDynamicConfig(slug string) {

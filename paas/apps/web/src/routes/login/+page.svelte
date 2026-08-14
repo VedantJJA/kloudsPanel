@@ -31,7 +31,7 @@
 </script>
 
 <svelte:head>
-  <title>Sign In — kloudsPanel</title>
+  <title>Sign In - kloudsPanel</title>
 </svelte:head>
 
 <div style="
@@ -72,13 +72,13 @@
 
     <form onsubmit={handleLogin}>
       <div class="form-group">
-        <label class="form-label" for="email">Email address</label>
+        <label class="form-label" for="email">Email</label>
         <input
           id="email"
           type="email"
           class="form-input"
           bind:value={email}
-          placeholder="you@example.com"
+          placeholder="name"
           required
           autocomplete="email"
         />
