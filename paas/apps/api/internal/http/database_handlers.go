@@ -6,6 +6,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os/exec"
 	"strings"
 	"time"
@@ -16,18 +17,58 @@ import (
 
 // ─── Database Handlers ─────────────────────────────────────────────────────────
 
+func inspectDatabaseRuntimeStatus(containerName string) domain.DatabaseStatus {
+	if containerName == "" {
+		return domain.DBStatusProvisioning
+	}
+	inspectCmd := exec.Command("docker", "inspect", "-f", "{{.State.Status}}", containerName)
+	out, err := inspectCmd.CombinedOutput()
+	if err != nil {
+		return domain.DBStatusProvisioning
+	}
+	status := strings.ToLower(strings.TrimSpace(string(out)))
+	switch status {
+	case "running":
+		return domain.DBStatusReady
+	case "restarting":
+		return "restarting"
+	case "created":
+		return domain.DBStatusProvisioning
+	case "paused":
+		return "paused"
+	case "exited", "dead":
+		return "stopped"
+	default:
+		if status != "" {
+			return domain.DatabaseStatus(status)
+		}
+		return domain.DBStatusProvisioning
+	}
+}
+
+func isPortAvailable(port int) bool {
+	ln, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", port))
+	if err != nil {
+		return false
+	}
+	_ = ln.Close()
+	return true
+}
+
 func (h *Handler) handleListDatabases(c fiber.Ctx) error {
 	projID := c.Query("projectId")
+	var dbs []*domain.Database
+	var err error
 	if projID != "" {
-		dbs, err := h.store.Databases().ListForProject(c.Context(), projID)
-		if err != nil {
-			return err
-		}
-		return c.JSON(fiber.Map{"databases": dbs})
+		dbs, err = h.store.Databases().ListForProject(c.Context(), projID)
+	} else {
+		dbs, err = h.store.Databases().ListAll(c.Context())
 	}
-	dbs, err := h.store.Databases().ListAll(c.Context())
 	if err != nil {
 		return err
+	}
+	for _, db := range dbs {
+		db.RuntimeStatus = inspectDatabaseRuntimeStatus(db.InternalHostname)
 	}
 	return c.JSON(fiber.Map{"databases": dbs})
 }
@@ -78,7 +119,7 @@ func (h *Handler) allocateExternalPort(ctx context.Context, engine string) int {
 	}
 
 	for p := basePort; p < basePort+1000; p++ {
-		if !usedPorts[p] {
+		if !usedPorts[p] && isPortAvailable(p) {
 			return p
 		}
 	}
@@ -166,7 +207,7 @@ func (h *Handler) provisionDatabaseInternal(ctx context.Context, projectID, name
 		Name:             name,
 		Engine:           domain.DatabaseEngine(engine),
 		EngineVersion:    version,
-		RuntimeStatus:    domain.DBStatusReady,
+		RuntimeStatus:    domain.DBStatusProvisioning,
 		InternalHostname: hostname,
 		InternalPort:     port,
 		DatabaseName:     &dbName,
@@ -345,6 +386,8 @@ func (h *Handler) handleGetDatabase(c fiber.Ctx) error {
 		return c.Status(404).JSON(fiber.Map{"error": "database not found"})
 	}
 
+	db.RuntimeStatus = inspectDatabaseRuntimeStatus(db.InternalHostname)
+
 	// Self-heal: ensure externalPort exists in meta and container is exposed
 	var meta map[string]any
 	if db.ResourceJSON != "" {
@@ -440,8 +483,8 @@ func (h *Handler) handleExecuteDatabaseQuery(c fiber.Ctx) error {
 	var out []byte
 	var execErr error
 
-	// Retry loop for databases that are starting up (e.g. MySQL initializing InnoDB buffer)
-	maxRetries := 4
+	// Retry loop for databases that are starting up (e.g. MySQL initializing InnoDB buffer, Postgres recovery)
+	maxRetries := 5
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		var cmd *exec.Cmd
 		switch db.Engine {
@@ -466,10 +509,9 @@ func (h *Handler) handleExecuteDatabaseQuery(c fiber.Ctx) error {
 		}
 
 		outStr := string(out)
-		// If MySQL is initializing or container not ready yet, wait and retry
-		if strings.Contains(outStr, "Can't connect to local MySQL server") || strings.Contains(outStr, "is not running") || strings.Contains(outStr, "No such container") {
-			_ = h.ensureDatabaseContainerRunning(c.Context(), db)
-			time.Sleep(1 * time.Second)
+		// If MySQL is initializing, or Postgres starting up, or container restarting/not ready yet, wait and retry
+		if strings.Contains(outStr, "is restarting") || strings.Contains(outStr, "is not running") || strings.Contains(outStr, "No such container") || strings.Contains(outStr, "Can't connect to local MySQL server") || strings.Contains(outStr, "the database system is starting up") || strings.Contains(outStr, "the database system is in recovery mode") {
+			time.Sleep(1200 * time.Millisecond)
 			continue
 		}
 		// If MongoDB mongosh failed, attempt mongo fallback
@@ -486,6 +528,22 @@ func (h *Handler) handleExecuteDatabaseQuery(c fiber.Ctx) error {
 	durationMs := time.Since(startTime).Milliseconds()
 
 	if execErr != nil {
+		outStr := string(out)
+		if strings.Contains(outStr, "is restarting") {
+			logCmd := exec.Command("docker", "logs", "--tail", "10", containerName)
+			logOut, _ := logCmd.CombinedOutput()
+			reason := strings.TrimSpace(string(logOut))
+			if reason != "" {
+				return c.Status(400).JSON(fiber.Map{
+					"error": fmt.Sprintf("Database container is restarting/initializing. Recent container logs:\n%s", reason),
+					"durationMs": durationMs,
+				})
+			}
+			return c.Status(400).JSON(fiber.Map{
+				"error": "Database container is currently restarting / initializing. Please wait a few seconds for the engine to become ready.",
+				"durationMs": durationMs,
+			})
+		}
 		return c.Status(400).JSON(fiber.Map{
 			"error":      string(out),
 			"durationMs": durationMs,

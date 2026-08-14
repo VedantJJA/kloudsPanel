@@ -288,8 +288,8 @@
           <span style="font-size: 0.6875rem; text-transform: uppercase; background: rgba(3,105,161,0.4); color: #7dd3fc; padding: 2px 6px; border-radius: 4px; font-weight: 600;">
             {currentDatabase?.engine || 'postgres'}
           </span>
-          <span style="font-size: 0.6875rem; color: rgba(234,241,250,0.5);">
-            {currentDatabase?.runtime_status || 'ready'}
+          <span style="font-size: 0.6875rem; color: {(currentDatabase?.runtime_status === 'ready' || currentDatabase?.runtime_status === 'running') ? '#4ade80' : currentDatabase?.runtime_status === 'restarting' ? '#f59e0b' : 'rgba(234,241,250,0.5)'}; text-transform: lowercase;">
+            {currentDatabase?.runtime_status || 'provisioning'}
           </span>
         </div>
       </div>

@@ -122,6 +122,30 @@
     }
   }
 
+  function statusClass(status: string) {
+    switch (status?.toLowerCase()) {
+      case 'ready':
+      case 'running':
+        return 'badge badge-running';
+      case 'deploying':
+      case 'building':
+      case 'starting':
+      case 'restarting':
+      case 'provisioning':
+        return 'badge badge-building';
+      case 'failed':
+      case 'error':
+      case 'dead':
+        return 'badge badge-failed';
+      case 'stopped':
+      case 'paused':
+      case 'exited':
+        return 'badge badge-stopped';
+      default:
+        return 'badge badge-pending';
+    }
+  }
+
   function executeAidCommand(cmd: string) {
     queryText = cmd;
     if (tab !== 'query') {
@@ -138,6 +162,10 @@
     pollInterval = setInterval(() => {
       if (tab === 'logs') {
         fetchLogs();
+      }
+      const st = (database?.runtime_status || '').toLowerCase();
+      if (st === 'restarting' || st === 'provisioning' || st === 'starting') {
+        loadDatabase();
       }
     }, 2500);
   });
@@ -311,7 +339,12 @@
         <span class="badge" style="background:#e0f2fe; color:#0369a1; text-transform:uppercase; font-weight:700;">
           {database?.engine} {database?.engine_version}
         </span>
-        <span class="badge badge-running">{database?.runtime_status || 'ready'}</span>
+        <span class={statusClass(database?.runtime_status || 'provisioning')}>
+          {#if (database?.runtime_status || '').toLowerCase() === 'restarting' || (database?.runtime_status || '').toLowerCase() === 'starting' || (database?.runtime_status || '').toLowerCase() === 'provisioning'}
+            <Loader2 size={12} class="animate-spin" style="margin-right: 3px;" />
+          {/if}
+          {database?.runtime_status || 'provisioning'}
+        </span>
       </div>
       <div class="text-xs text-muted" style="margin-top:0.25rem;">
         Public: <span class="font-mono">{parsedMeta.externalHost}:{parsedMeta.externalPort}</span> • Internal: <span class="font-mono">{database?.internal_hostname}:{database?.internal_port}</span>

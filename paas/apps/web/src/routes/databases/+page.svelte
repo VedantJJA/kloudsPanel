@@ -40,7 +40,29 @@
     }
   }
 
-  const statusClass = (s: string) => `badge badge-${s || 'ready'}`;
+  function statusClass(status: string) {
+    switch (status?.toLowerCase()) {
+      case 'ready':
+      case 'running':
+        return 'badge badge-running';
+      case 'deploying':
+      case 'building':
+      case 'starting':
+      case 'restarting':
+      case 'provisioning':
+        return 'badge badge-building';
+      case 'failed':
+      case 'error':
+      case 'dead':
+        return 'badge badge-failed';
+      case 'stopped':
+      case 'paused':
+      case 'exited':
+        return 'badge badge-stopped';
+      default:
+        return 'badge badge-pending';
+    }
+  }
 </script>
 
 <svelte:head>
@@ -95,7 +117,7 @@
             <td><span class="badge" style="background:#e0f2fe; color:#0369a1; text-transform:uppercase; font-weight:700;">{db.engine || db.Engine}</span></td>
             <td><span class="font-mono text-xs">{db.internal_hostname || db.InternalHostname || '-'}</span></td>
             <td><span class="font-mono text-xs">:{db.internal_port || db.InternalPort || '-'}</span></td>
-            <td><span class={statusClass(db.runtime_status || db.RuntimeStatus)}>{db.runtime_status || db.RuntimeStatus || 'ready'}</span></td>
+            <td><span class={statusClass(db.runtime_status || db.RuntimeStatus)}>{db.runtime_status || db.RuntimeStatus || 'provisioning'}</span></td>
             <td style="text-align:right;" onclick={(e) => e.stopPropagation()}>
               <button 
                 class="btn btn-secondary" 
