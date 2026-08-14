@@ -21,6 +21,10 @@ func (s *store) Users() repository.UserRepository {
 	return &userRepo{db: s.db}
 }
 
+func (s *store) AuthSessions() repository.AuthSessionRepository {
+	return &authSessionRepo{db: s.db}
+}
+
 func (s *store) Workspaces() repository.WorkspaceRepository {
 	return &workspaceRepo{db: s.db}
 }
@@ -73,8 +77,9 @@ type txStore struct {
 	tx *sql.Tx
 }
 
-func (t *txStore) Users() repository.UserRepository       { return &userRepo{db: t.tx} }
-func (t *txStore) Workspaces() repository.WorkspaceRepository { return &workspaceRepo{db: t.tx} }
+func (t *txStore) Users() repository.UserRepository               { return &userRepo{db: t.tx} }
+func (t *txStore) AuthSessions() repository.AuthSessionRepository   { return &authSessionRepo{db: t.tx} }
+func (t *txStore) Workspaces() repository.WorkspaceRepository       { return &workspaceRepo{db: t.tx} }
 func (t *txStore) Projects() repository.ProjectRepository     { return &projectRepo{db: t.tx} }
 func (t *txStore) Services() repository.ServiceRepository     { return &serviceRepo{db: t.tx} }
 func (t *txStore) Deployments() repository.DeploymentRepository { return &deploymentRepo{db: t.tx} }

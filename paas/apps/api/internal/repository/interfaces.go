@@ -4,6 +4,7 @@ package repository
 
 import (
 	"context"
+	"time"
 
 	"github.com/yourorg/klouds/api/internal/domain"
 )
@@ -11,6 +12,7 @@ import (
 // Store aggregates all repository interfaces.
 type Store interface {
 	Users() UserRepository
+	AuthSessions() AuthSessionRepository
 	Workspaces() WorkspaceRepository
 	Projects() ProjectRepository
 	Services() ServiceRepository
@@ -21,6 +23,13 @@ type Store interface {
 	GitIntegrations() GitIntegrationRepository
 	// Transactional operation
 	WithTx(ctx context.Context, fn func(Store) error) error
+}
+
+// AuthSessionRepository manages persistent user authentication sessions.
+type AuthSessionRepository interface {
+	Create(ctx context.Context, sessionID, userID, token string, expiresAt time.Time) error
+	GetByToken(ctx context.Context, token string) (userID string, expiresAt time.Time, err error)
+	DeleteByToken(ctx context.Context, token string) error
 }
 
 // GitIntegrationRepository manages per-user git credentials.

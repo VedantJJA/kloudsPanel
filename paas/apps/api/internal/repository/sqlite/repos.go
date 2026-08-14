@@ -694,3 +694,48 @@ func (r *gitIntegrationRepo) Delete(ctx context.Context, userID, provider string
 	_, err := r.db.ExecContext(ctx, `DELETE FROM user_git_integrations WHERE user_id=? AND provider=?`, userID, provider)
 	return err
 }
+
+// ─── Auth Sessions ───────────────────────────────────────────────────────────
+
+type authSessionRepo struct{ db querier }
+
+func (r *authSessionRepo) Create(ctx context.Context, sessionID, userID, token string, expiresAt time.Time) error {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	exp := expiresAt.UTC().Format(time.RFC3339Nano)
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO auth_sessions (id, user_id, token_hash, csrf_secret_hash, expires_at, last_seen_at, created_at, updated_at)
+		VALUES (?, ?, ?, '', ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET token_hash=excluded.token_hash, expires_at=excluded.expires_at, updated_at=excluded.updated_at`,
+		sessionID, userID, token, exp, now, now, now,
+	)
+	return err
+}
+
+func (r *authSessionRepo) GetByToken(ctx context.Context, token string) (string, time.Time, error) {
+	var userID, expStr string
+	err := r.db.QueryRowContext(ctx, `
+		SELECT user_id, expires_at FROM auth_sessions 
+		WHERE (token_hash=? OR id=?) AND revoked_at IS NULL`,
+		token, token,
+	).Scan(&userID, &expStr)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	exp, err := time.Parse(time.RFC3339Nano, expStr)
+	if err != nil {
+		exp, err = time.Parse(time.RFC3339, expStr)
+		if err != nil {
+			exp = time.Now().Add(30 * 24 * time.Hour)
+		}
+	}
+	return userID, exp, nil
+}
+
+func (r *authSessionRepo) DeleteByToken(ctx context.Context, token string) error {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE auth_sessions SET revoked_at=? WHERE token_hash=? OR id=?`,
+		now, token, token,
+	)
+	return err
+}

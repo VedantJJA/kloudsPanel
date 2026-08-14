@@ -6,7 +6,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const publicRoutes = ['/login', '/signup', '/access/pending'];
 	
 	const isPublicRoute = publicRoutes.some(route => event.url.pathname.startsWith(route));
-	const sessionToken = event.cookies.get('klouds_session');
+	const sessionToken = event.cookies.get('session_token') || event.cookies.get('klouds_session');
 
 	if (!sessionToken && !isPublicRoute) {
 		throw redirect(302, '/login');
