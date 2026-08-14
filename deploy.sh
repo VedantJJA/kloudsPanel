@@ -81,7 +81,8 @@ run_deployment() {
 
     # Pull changes safely
     echo "==> Pulling latest changes from origin/$BRANCH..."
-    git pull --rebase origin "$BRANCH" 2>/dev/null || git pull origin "$BRANCH" 2>/dev/null || true
+    git fetch origin "$BRANCH" --quiet 2>/dev/null || true
+    git reset --hard "origin/$BRANCH" 2>/dev/null || git pull --rebase origin "$BRANCH" 2>/dev/null || true
 
     CURRENT_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")"
     COMMIT_MSG="$(git log -1 --pretty=%B 2>/dev/null | head -n 1 || echo "")"
