@@ -46,6 +46,7 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 	var currentSvc *ParsedRenderService
 	var inEnvVars bool
 	var inDatabases bool
+	var currentEnvKey string
 
 	for _, rawLine := range lines {
 		trimmed := strings.TrimSpace(rawLine)
@@ -55,6 +56,7 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 
 		if trimmed == "databases:" {
 			inDatabases = true
+			inEnvVars = false
 			if currentSvc != nil {
 				res.Services = append(res.Services, *currentSvc)
 				currentSvc = nil
@@ -62,6 +64,7 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 			continue
 		} else if trimmed == "services:" {
 			inDatabases = false
+			inEnvVars = false
 			if currentSvc != nil {
 				res.Services = append(res.Services, *currentSvc)
 				currentSvc = nil
@@ -103,22 +106,31 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 			continue
 		}
 
-		if strings.HasPrefix(trimmed, "- type:") || (strings.HasPrefix(trimmed, "type:") && currentSvc == nil) {
+		if strings.HasPrefix(trimmed, "- type:") || strings.HasPrefix(trimmed, "- name:") || (strings.HasPrefix(trimmed, "type:") && currentSvc == nil) {
 			if currentSvc != nil {
 				res.Services = append(res.Services, *currentSvc)
 			}
-			parts := strings.SplitN(trimmed, ":", 2)
 			svcType := "web"
+			svcName := ""
+			parts := strings.SplitN(trimmed, ":", 2)
 			if len(parts) > 1 {
-				svcType = strings.ToLower(strings.TrimSpace(parts[1]))
+				val := strings.ToLower(strings.TrimSpace(parts[1]))
+				if strings.HasPrefix(trimmed, "- type:") || strings.HasPrefix(trimmed, "type:") {
+					svcType = val
+				} else if strings.HasPrefix(trimmed, "- name:") {
+					svcName = strings.Trim(strings.TrimSpace(parts[1]), "\"'")
+				}
 			}
 			currentSvc = &ParsedRenderService{
+				Name:         svcName,
+				Slug:         strings.ToLower(svcName),
 				Kind:         svcType,
 				InternalPort: 80,
 				AutoDeploy:   true,
 				EnvVars:      make(map[string]string),
 			}
 			inEnvVars = false
+			currentEnvKey = ""
 			continue
 		}
 
@@ -126,28 +138,30 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 			continue
 		}
 
-		if strings.HasPrefix(trimmed, "name:") {
+		if !inEnvVars && strings.HasPrefix(trimmed, "name:") {
 			parts := strings.SplitN(trimmed, ":", 2)
 			if len(parts) > 1 {
 				val := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
 				currentSvc.Name = val
 				currentSvc.Slug = strings.ToLower(val)
 			}
-			inEnvVars = false
-		} else if strings.HasPrefix(trimmed, "rootDir:") || strings.HasPrefix(trimmed, "directory:") {
+		} else if !inEnvVars && (strings.HasPrefix(trimmed, "type:")) {
+			parts := strings.SplitN(trimmed, ":", 2)
+			if len(parts) > 1 {
+				currentSvc.Kind = strings.ToLower(strings.TrimSpace(parts[1]))
+			}
+		} else if !inEnvVars && (strings.HasPrefix(trimmed, "rootDir:") || strings.HasPrefix(trimmed, "directory:")) {
 			parts := strings.SplitN(trimmed, ":", 2)
 			if len(parts) > 1 {
 				currentSvc.RootDir = strings.Trim(strings.TrimSpace(parts[1]), "\"'")
 			}
-			inEnvVars = false
-		} else if strings.HasPrefix(trimmed, "staticPublishPath:") || strings.HasPrefix(trimmed, "output_dir:") {
+		} else if !inEnvVars && (strings.HasPrefix(trimmed, "staticPublishPath:") || strings.HasPrefix(trimmed, "output_dir:")) {
 			parts := strings.SplitN(trimmed, ":", 2)
 			if len(parts) > 1 {
 				currentSvc.StaticPublishPath = strings.Trim(strings.TrimSpace(parts[1]), "\"'")
 				currentSvc.Kind = "static"
 			}
-			inEnvVars = false
-		} else if strings.HasPrefix(trimmed, "env:") || strings.HasPrefix(trimmed, "runtime:") {
+		} else if !inEnvVars && (strings.HasPrefix(trimmed, "env:") || strings.HasPrefix(trimmed, "runtime:")) {
 			parts := strings.SplitN(trimmed, ":", 2)
 			if len(parts) > 1 {
 				val := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
@@ -195,8 +209,7 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 					currentSvc.Image = "alpine:latest"
 				}
 			}
-			inEnvVars = false
-		} else if strings.HasPrefix(trimmed, "buildCommand:") || strings.HasPrefix(trimmed, "command:") {
+		} else if !inEnvVars && (strings.HasPrefix(trimmed, "buildCommand:") || strings.HasPrefix(trimmed, "command:")) {
 			parts := strings.SplitN(trimmed, ":", 2)
 			if len(parts) > 1 {
 				cmd := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
@@ -204,8 +217,7 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 					currentSvc.BuildCommand = cmd
 				}
 			}
-			inEnvVars = false
-		} else if strings.HasPrefix(trimmed, "startCommand:") {
+		} else if !inEnvVars && strings.HasPrefix(trimmed, "startCommand:") {
 			parts := strings.SplitN(trimmed, ":", 2)
 			if len(parts) > 1 {
 				sCmd := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
@@ -224,42 +236,56 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 					}
 				}
 			}
-			inEnvVars = false
-		} else if strings.HasPrefix(trimmed, "port:") {
+		} else if !inEnvVars && strings.HasPrefix(trimmed, "port:") {
 			var p int
 			if _, err := fmt.Sscanf(trimmed, "port: %d", &p); err == nil && p > 0 {
 				currentSvc.InternalPort = p
 			}
-		} else if strings.HasPrefix(trimmed, "schedule:") {
+		} else if !inEnvVars && strings.HasPrefix(trimmed, "schedule:") {
 			parts := strings.SplitN(trimmed, ":", 2)
 			if len(parts) > 1 {
 				currentSvc.CronSchedule = strings.Trim(strings.TrimSpace(parts[1]), "\"'")
 				currentSvc.Kind = "cron"
 			}
-			inEnvVars = false
 		} else if strings.HasPrefix(trimmed, "envVars:") || strings.HasPrefix(trimmed, "env:") {
 			inEnvVars = true
+			currentEnvKey = ""
 		} else if inEnvVars && (strings.HasPrefix(trimmed, "- key:") || strings.HasPrefix(trimmed, "key:")) {
 			parts := strings.SplitN(trimmed, ":", 2)
 			if len(parts) > 1 {
-				key := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
-				currentSvc.EnvVars[key] = ""
+				currentEnvKey = strings.Trim(strings.TrimSpace(parts[1]), "\"'")
+				currentSvc.EnvVars[currentEnvKey] = ""
 			}
 		} else if inEnvVars && (strings.HasPrefix(trimmed, "value:") || strings.HasPrefix(trimmed, "- value:")) {
 			parts := strings.SplitN(trimmed, ":", 2)
 			if len(parts) > 1 {
 				val := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
-				for k, v := range currentSvc.EnvVars {
-					if v == "" {
-						currentSvc.EnvVars[k] = val
-						if k == "PORT" {
-							var p int
-							if _, err := fmt.Sscanf(val, "%d", &p); err == nil && p > 0 {
-								currentSvc.InternalPort = p
-							}
+				if currentEnvKey != "" {
+					currentSvc.EnvVars[currentEnvKey] = val
+					if currentEnvKey == "PORT" {
+						var p int
+						if _, err := fmt.Sscanf(val, "%d", &p); err == nil && p > 0 {
+							currentSvc.InternalPort = p
 						}
-						break
 					}
+				}
+			}
+		} else if inEnvVars && strings.HasPrefix(trimmed, "fromDatabase:") {
+			// Database reference block started
+		} else if inEnvVars && strings.HasPrefix(trimmed, "name:") {
+			parts := strings.SplitN(trimmed, ":", 2)
+			if len(parts) > 1 && currentEnvKey != "" {
+				dbRef := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
+				currentSvc.EnvVars[currentEnvKey] = fmt.Sprintf("paas-db-%s", dbRef)
+			}
+		} else if inEnvVars && strings.HasPrefix(trimmed, "property:") {
+			parts := strings.SplitN(trimmed, ":", 2)
+			if len(parts) > 1 && currentEnvKey != "" {
+				prop := strings.ToLower(strings.Trim(strings.TrimSpace(parts[1]), "\"'"))
+				if prop == "port" {
+					currentSvc.EnvVars[currentEnvKey] = "5432"
+				} else if prop == "user" {
+					currentSvc.EnvVars[currentEnvKey] = "postgres"
 				}
 			}
 		}
