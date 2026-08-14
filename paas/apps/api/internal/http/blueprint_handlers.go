@@ -434,16 +434,16 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 					s.EnvVars = make(map[string]string)
 				}
 				if _, ok := s.EnvVars["VITE_API_URL"]; !ok {
-					s.EnvVars["VITE_API_URL"] = fmt.Sprintf("${services.%s.url}/api", primaryBackendSlug)
+					s.EnvVars["VITE_API_URL"] = fmt.Sprintf("${services.%s.url}", primaryBackendSlug)
 				}
 				if _, ok := s.EnvVars["NEXT_PUBLIC_API_URL"]; !ok {
-					s.EnvVars["NEXT_PUBLIC_API_URL"] = fmt.Sprintf("${services.%s.url}/api", primaryBackendSlug)
+					s.EnvVars["NEXT_PUBLIC_API_URL"] = fmt.Sprintf("${services.%s.url}", primaryBackendSlug)
 				}
 				if _, ok := s.EnvVars["REACT_APP_API_URL"]; !ok {
-					s.EnvVars["REACT_APP_API_URL"] = fmt.Sprintf("${services.%s.url}/api", primaryBackendSlug)
+					s.EnvVars["REACT_APP_API_URL"] = fmt.Sprintf("${services.%s.url}", primaryBackendSlug)
 				}
 				if _, ok := s.EnvVars["API_URL"]; !ok {
-					s.EnvVars["API_URL"] = fmt.Sprintf("${services.%s.url}/api", primaryBackendSlug)
+					s.EnvVars["API_URL"] = fmt.Sprintf("${services.%s.url}", primaryBackendSlug)
 				}
 				if _, ok := s.EnvVars["BACKEND_URL"]; !ok {
 					s.EnvVars["BACKEND_URL"] = fmt.Sprintf("${services.%s.url}", primaryBackendSlug)

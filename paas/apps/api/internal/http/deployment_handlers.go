@@ -613,26 +613,93 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 			}
 		}
 
-		// Check if proxy directive is needed for static frontend apps
+		// Project-wide auto-wiring for all dynamic service URLs & database URIs
 		var backendProxyDirective string
-		if service.Kind == domain.ServiceKindStatic || presetId == "static" || presetId == "static-spa" {
-			if projectServices, err := h.store.Services().ListForProject(context.Background(), service.ProjectID); err == nil {
-				for _, otherSvc := range projectServices {
-					if otherSvc.ID != service.ID && (otherSvc.Kind == domain.ServiceKindWeb || otherSvc.Kind == "api") {
-						otherPort := 8080
-						if otherSvc.InternalPort != nil && *otherSvc.InternalPort > 0 {
-							otherPort = *otherSvc.InternalPort
-						}
-						backendProxyDirective = fmt.Sprintf("    location /api/ {\n        resolver 127.0.0.11 valid=30s;\n        proxy_pass http://paas-svc-%s:%d/api/;\n        proxy_http_version 1.1;\n        proxy_set_header Upgrade $http_upgrade;\n        proxy_set_header Connection 'upgrade';\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n    }\n", otherSvc.Slug, otherPort)
-						appendLog(serviceID, depID, "build", fmt.Sprintf("[router] Auto-wired /api/ reverse proxy -> http://paas-svc-%s:%d/api/", otherSvc.Slug, otherPort))
-						break
+		if projectServices, err := h.store.Services().ListForProject(context.Background(), service.ProjectID); err == nil {
+			var primaryBackend *domain.Service
+			for _, otherSvc := range projectServices {
+				if otherSvc.ID != service.ID && (otherSvc.Kind == domain.ServiceKindWeb || otherSvc.Kind == "api") {
+					if primaryBackend == nil {
+						primaryBackend = otherSvc
 					}
+				}
+				otherUrl := fmt.Sprintf("https://%s.%s", otherSvc.Slug, rootDomain)
+				otherHost := fmt.Sprintf("%s.%s", otherSvc.Slug, rootDomain)
+				otherPort := 8080
+				if otherSvc.InternalPort != nil && *otherSvc.InternalPort > 0 {
+					otherPort = *otherSvc.InternalPort
+				}
+				otherIntUrl := fmt.Sprintf("http://paas-svc-%s:%d", otherSvc.Slug, otherPort)
+
+				for k, v := range envMap {
+					val := strings.ReplaceAll(v, fmt.Sprintf("${services.%s.url}", otherSvc.Name), otherUrl)
+					val = strings.ReplaceAll(val, fmt.Sprintf("${services.%s.url}", otherSvc.Slug), otherUrl)
+					val = strings.ReplaceAll(val, fmt.Sprintf("${%s.url}", otherSvc.Name), otherUrl)
+					val = strings.ReplaceAll(val, fmt.Sprintf("${%s.url}", otherSvc.Slug), otherUrl)
+					val = strings.ReplaceAll(val, fmt.Sprintf("${services.%s.host}", otherSvc.Name), otherHost)
+					val = strings.ReplaceAll(val, fmt.Sprintf("${services.%s.host}", otherSvc.Slug), otherHost)
+					val = strings.ReplaceAll(val, fmt.Sprintf("${services.%s.internalUrl}", otherSvc.Name), otherIntUrl)
+					val = strings.ReplaceAll(val, fmt.Sprintf("${services.%s.internalUrl}", otherSvc.Slug), otherIntUrl)
+					envMap[k] = val
 				}
 			}
 
-			// Generate nginx.default.conf on disk so COPY in Dockerfile works without shell escaping issues
-			nginxConf := fmt.Sprintf("server {\n    listen 80;\n    server_name _;\n    root /usr/share/nginx/html;\n    index index.html;\n%s    location / {\n        try_files $uri $uri/ /index.html;\n    }\n}\n", backendProxyDirective)
-			_ = os.WriteFile(filepath.Join(contextDir, "nginx.default.conf"), []byte(nginxConf), 0644)
+			// For static frontend apps (like VtopC / React / Vite), auto-inject backend external URL just like Render does
+			if service.Kind == domain.ServiceKindStatic || presetId == "static" || presetId == "static-spa" {
+				if primaryBackend != nil {
+					backendPublicUrl := fmt.Sprintf("https://%s.%s", primaryBackend.Slug, rootDomain)
+					if cur, ok := envMap["VITE_API_URL"]; !ok || cur == "" || strings.HasPrefix(cur, "${") {
+						envMap["VITE_API_URL"] = backendPublicUrl
+					}
+					if cur, ok := envMap["NEXT_PUBLIC_API_URL"]; !ok || cur == "" || strings.HasPrefix(cur, "${") {
+						envMap["NEXT_PUBLIC_API_URL"] = backendPublicUrl
+					}
+					if cur, ok := envMap["REACT_APP_API_URL"]; !ok || cur == "" || strings.HasPrefix(cur, "${") {
+						envMap["REACT_APP_API_URL"] = backendPublicUrl
+					}
+					if cur, ok := envMap["API_URL"]; !ok || cur == "" || strings.HasPrefix(cur, "${") {
+						envMap["API_URL"] = backendPublicUrl
+					}
+					if cur, ok := envMap["BACKEND_URL"]; !ok || cur == "" || strings.HasPrefix(cur, "${") {
+						envMap["BACKEND_URL"] = backendPublicUrl
+					}
+					otherPort := 8080
+					if primaryBackend.InternalPort != nil && *primaryBackend.InternalPort > 0 {
+						otherPort = *primaryBackend.InternalPort
+					}
+					backendProxyDirective = fmt.Sprintf("    location /api/ {\n        resolver 127.0.0.11 valid=30s ipv6=off;\n        proxy_pass http://paas-svc-%s:%d;\n        proxy_http_version 1.1;\n        proxy_set_header Upgrade $http_upgrade;\n        proxy_set_header Connection 'upgrade';\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n    }\n", primaryBackend.Slug, otherPort)
+					appendLog(serviceID, depID, "build", fmt.Sprintf("[router] Auto-wired /api/ reverse proxy -> http://paas-svc-%s:%d", primaryBackend.Slug, otherPort))
+				}
+				nginxConf := fmt.Sprintf("server {\n    listen 80;\n    server_name _;\n    root /usr/share/nginx/html;\n    index index.html;\n%s    location / {\n        try_files $uri $uri/ /index.html;\n    }\n}\n", backendProxyDirective)
+				_ = os.WriteFile(filepath.Join(contextDir, "nginx.default.conf"), []byte(nginxConf), 0644)
+			}
+		}
+
+		// Auto-resolve database connection URIs
+		if projectDbs, err := h.store.Databases().ListForProject(context.Background(), service.ProjectID); err == nil {
+			for _, db := range projectDbs {
+				var meta struct {
+					ConnectionURI         string `json:"connectionUri"`
+					InternalConnectionURI string `json:"internalConnectionUri"`
+				}
+				if db.ResourceJSON != "" {
+					_ = json.Unmarshal([]byte(db.ResourceJSON), &meta)
+				}
+				uri := meta.InternalConnectionURI
+				if uri == "" {
+					uri = meta.ConnectionURI
+				}
+				for k, v := range envMap {
+					val := strings.ReplaceAll(v, fmt.Sprintf("paas-db-%s", db.Name), uri)
+					val = strings.ReplaceAll(val, fmt.Sprintf("paas-db-%s", strings.ToLower(db.Name)), uri)
+					val = strings.ReplaceAll(val, fmt.Sprintf("${databases.%s.connectionString}", db.Name), uri)
+					val = strings.ReplaceAll(val, fmt.Sprintf("${databases.%s.url}", db.Name), uri)
+					if strings.EqualFold(k, "DATABASE_URL") && (val == "" || val == db.Name || strings.HasPrefix(val, "paas-db-")) {
+						val = uri
+					}
+					envMap[k] = val
+				}
+			}
 		}
 
 		// Step 4: Check if Dockerfile exists or generate one
