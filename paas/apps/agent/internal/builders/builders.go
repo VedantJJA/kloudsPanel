@@ -207,7 +207,7 @@ func (d *ImageDriver) Plan(ctx context.Context, req BuildRequest) (BuildPlan, er
 }
 
 func (d *ImageDriver) Build(ctx context.Context, plan BuildPlan, sink LogSink) (ImageArtifact, error) {
-	sink.Write("system", "Image pull driver (stub) — Phase 5 implementation pending")
+	sink.Write("system", "Image pull driver (stub) - Phase 5 implementation pending")
 	return ImageArtifact{ImageRef: plan.Request.ImageReference}, nil
 }
 

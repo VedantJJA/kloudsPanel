@@ -14,7 +14,7 @@ Use **AES-256-GCM envelope encryption**:
 3. The data key is XOR-encrypted with a 256-bit subkey derived from the master key using **HKDF-SHA256** with the secret ID as additional authenticated data (AAD).
 4. Ciphertext stored in the `encrypted_secrets` table as `Envelope{ciphertext, nonce, key_version, aad}`.
 
-**Schema column: `envelope_json`** — all 4 fields serialized as JSON.
+**Schema column: `envelope_json`** - all 4 fields serialized as JSON.
 
 ## Consequences
 
@@ -34,6 +34,6 @@ Use **AES-256-GCM envelope encryption**:
 3. After all secrets are migrated, retire version 1
 
 ## Alternatives Considered
-- **HashiCorp Vault** — too complex for self-hosted single-host
-- **age encryption** — no standard key rotation mechanism
-- **Plaintext** — rejected, violates security requirements
+- **HashiCorp Vault** - too complex for self-hosted single-host
+- **age encryption** - no standard key rotation mechanism
+- **Plaintext** - rejected, violates security requirements

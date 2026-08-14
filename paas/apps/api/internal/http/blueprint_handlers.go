@@ -461,15 +461,21 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 		}
 	}
 
-	// Strip -frontend and -client suffixes from static sites so they have clean primary root domains
+	// Strip -backend, -api, -server, -frontend, -client, -ui, -web suffixes from static sites so they have clean primary root domains
 	for i := range res.Services {
 		s := &res.Services[i]
-		if s.Kind == "static" || s.Preset == "static-spa" || strings.Contains(strings.ToLower(s.RootDir), "front") {
-			cleanName := strings.TrimSuffix(strings.TrimSuffix(s.Name, "-frontend"), "-client")
+		if s.Kind == "static" || s.Preset == "static-spa" || strings.Contains(strings.ToLower(s.RootDir), "front") || strings.Contains(strings.ToLower(s.RootDir), "web") || strings.Contains(strings.ToLower(s.RootDir), "ui") || strings.Contains(strings.ToLower(s.RootDir), "client") {
+			cleanName := s.Name
+			for _, suffix := range []string{"-backend", "-api", "-server", "-frontend", "-client", "-ui", "-web", "_backend", "_api", "_server", "_frontend", "_client", "_ui", "_web"} {
+				cleanName = strings.TrimSuffix(cleanName, suffix)
+			}
 			if cleanName != "" {
 				s.Name = cleanName
 			}
-			cleanSlug := strings.TrimSuffix(strings.TrimSuffix(s.Slug, "-frontend"), "-client")
+			cleanSlug := s.Slug
+			for _, suffix := range []string{"-backend", "-api", "-server", "-frontend", "-client", "-ui", "-web", "_backend", "_api", "_server", "_frontend", "_client", "_ui", "_web"} {
+				cleanSlug = strings.TrimSuffix(cleanSlug, suffix)
+			}
 			if cleanSlug != "" {
 				s.Slug = cleanSlug
 			}

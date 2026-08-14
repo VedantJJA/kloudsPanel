@@ -10,24 +10,24 @@ kloudsPanel targets a single Linux host with no external database dependency req
 Use SQLite with WAL journal mode as the primary database for the control plane state (users, workspaces, projects, services, deployments, jobs, secrets, audit log).
 
 Key configuration:
-- `journal_mode=WAL` — concurrent readers + single writer, no blocking
-- `synchronous=NORMAL` — safe with WAL
-- `busy_timeout=5000` — 5-second retry window for write contention
+- `journal_mode=WAL` - concurrent readers + single writer, no blocking
+- `synchronous=NORMAL` - safe with WAL
+- `busy_timeout=5000` - 5-second retry window for write contention
 - `foreign_keys=ON`
-- `cache_size=-64000` — 64 MB in-memory page cache
+- `cache_size=-64000` - 64 MB in-memory page cache
 
 Migration strategy: append-only DDL in Go `embed.FS` via forward-only migrations.
 
 ## Consequences
 
 **Positive:**
-- Zero external dependency — `apt install` not required
+- Zero external dependency - `apt install` not required
 - Trivial backup: `cp klouds.db klouds.db.bak` or VACUUM INTO
 - Excellent read performance for typical PaaS control-plane loads
 - `go-sqlite3` (CGO) provides battle-tested SQLite bindings
 
 **Negative:**
-- Single-host only — no built-in replication
+- Single-host only - no built-in replication
 - CGO required for go-sqlite3 (adds compilation complexity)
 - Write throughput limited to single writer
 
@@ -37,6 +37,6 @@ Migration strategy: append-only DDL in Go `embed.FS` via forward-only migrations
 - SQLite Litestream can provide continuous WAL replication to S3 if required
 
 ## Alternatives Considered
-- **PostgreSQL** — excellent, but requires external process, more operational complexity
-- **bbolt/buntdb** — embedded KV, not relational enough for complex queries
-- **TiDB serverless** — too complex for self-hosted target
+- **PostgreSQL** - excellent, but requires external process, more operational complexity
+- **bbolt/buntdb** - embedded KV, not relational enough for complex queries
+- **TiDB serverless** - too complex for self-hosted target

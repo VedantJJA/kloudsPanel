@@ -516,8 +516,17 @@
   function applyDetectedService(svc: any, idx: number) {
     selectedBlueprintIndex = idx;
     detectedBlueprint = svc;
-    name = svc.name || name;
-    svcSlug = svc.slug || svcSlug;
+    let svcName = svc.name || name;
+    let sSlug = svc.slug || svcSlug;
+    if (svc.kind === 'static' || svc.preset === 'static-spa' || svc.preset === 'nginx') {
+      const cleaned = cleanStaticName(svcName);
+      if (cleaned) {
+        svcName = cleaned;
+        sSlug = cleaned.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+      }
+    }
+    name = svcName;
+    svcSlug = sSlug;
     kind = svc.kind || kind;
     rootDirectory = svc.root_dir || svc.rootDir || '.';
 
@@ -533,7 +542,7 @@
     if (svc.env_vars && Object.keys(svc.env_vars).length > 0) {
       envVars = Object.entries(svc.env_vars).map(([k, v]) => ({ key: k, value: String(v) }));
     }
-    yamlParsedInfo = `✓ Configured "${svc.name}" (${svc.kind.toUpperCase()} • ${svc.env || svc.preset} in ${rootDirectory === '.' ? 'root' : '/' + rootDirectory} on port :${internalPort})`;
+    yamlParsedInfo = `✓ Configured "${name}" (${svc.kind.toUpperCase()} • ${svc.env || svc.preset} in ${rootDirectory === '.' ? 'root' : '/' + rootDirectory} on port :${internalPort})`;
   }
 
   function requestDeployBlueprint() {
@@ -593,6 +602,24 @@
     autoDetectRenderYaml();
   }
 
+  function cleanStaticName(raw: string): string {
+    return raw
+      .replace(/-backend$/i, '')
+      .replace(/_backend$/i, '')
+      .replace(/-api$/i, '')
+      .replace(/_api$/i, '')
+      .replace(/-server$/i, '')
+      .replace(/_server$/i, '')
+      .replace(/-frontend$/i, '')
+      .replace(/_frontend$/i, '')
+      .replace(/-client$/i, '')
+      .replace(/_client$/i, '')
+      .replace(/-ui$/i, '')
+      .replace(/_ui$/i, '')
+      .replace(/-web$/i, '')
+      .replace(/_web$/i, '');
+  }
+
   function choosePreset(p: ServicePreset) {
     selectedPreset = p;
     kind = p.kind;
@@ -600,6 +627,17 @@
     internalPort = p.port || 80;
     buildCommand = p.defaultBuild || '';
     startCommand = p.defaultStart || '';
+
+    // For static sites, automatically clean -backend / -api / -server / -frontend suffixes so the site has its clean primary name
+    if (p.kind === 'static' || p.id === 'static-spa' || p.id === 'nginx') {
+      if (!slugEdited && name) {
+        const cleaned = cleanStaticName(name);
+        if (cleaned) {
+          name = cleaned;
+          svcSlug = cleaned.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+        }
+      }
+    }
   }
 
   $effect(() => {
