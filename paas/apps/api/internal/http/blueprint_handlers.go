@@ -14,7 +14,7 @@ import (
 	"github.com/yourorg/klouds/api/internal/domain"
 )
 
-// ─── Render / DevPanel YAML Parser ────────────────────────────────────────────
+// ─── klouds.yaml / Blueprint Parser ──────────────────────────────────────────
 
 func generateSecureRandomSecret(length int) string {
 	b := make([]byte, length)
@@ -510,7 +510,7 @@ func parseDotEnvExample(content string, repoName string) ParsedRenderResult {
 	return res
 }
 
-func (h *Handler) handleParseRenderYaml(c fiber.Ctx) error {
+func (h *Handler) handleParseBlueprint(c fiber.Ctx) error {
 	var req struct {
 		Content string `json:"content"`
 		RepoURL string `json:"repoUrl"`
@@ -534,7 +534,7 @@ func (h *Handler) handleParseRenderYaml(c fiber.Ctx) error {
 					repoBase = subparts[1]
 				}
 				client := &nethttp.Client{Timeout: 6 * time.Second}
-				// Try klouds.yaml (primary), devpanel.yaml, render.yaml on main and master branches
+				// Try klouds.yaml (primary), render.yaml on main and master branches
 				paths := []string{
 					"main/klouds.yaml",
 					"main/klouds.yml",
@@ -542,10 +542,6 @@ func (h *Handler) handleParseRenderYaml(c fiber.Ctx) error {
 					"master/klouds.yaml",
 					"master/klouds.yml",
 					"master/.klouds.yaml",
-					"main/devpanel.yaml",
-					"main/devpanel.yml",
-					"master/devpanel.yaml",
-					"master/devpanel.yml",
 					"main/render.yaml",
 					"main/render.yml",
 					"master/render.yaml",
@@ -598,7 +594,7 @@ func (h *Handler) handleParseRenderYaml(c fiber.Ctx) error {
 	}
 
 	if strings.TrimSpace(content) == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "No klouds.yaml, devpanel.yaml, render.yaml, or .env.example found in repository"})
+		return c.Status(400).JSON(fiber.Map{"error": "No klouds.yaml, render.yaml, or .env.example found in repository"})
 	}
 
 	var result ParsedRenderResult
@@ -613,6 +609,11 @@ func (h *Handler) handleParseRenderYaml(c fiber.Ctx) error {
 		"services":  result.Services,
 		"databases": result.Databases,
 	})
+}
+
+// Alias for backward compatibility
+func (h *Handler) handleParseRenderYaml(c fiber.Ctx) error {
+	return h.handleParseBlueprint(c)
 }
 
 func (h *Handler) handleDeployBlueprint(c fiber.Ctx) error {
