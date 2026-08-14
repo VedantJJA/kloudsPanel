@@ -101,16 +101,36 @@
 
   // Extract parsed credentials from resource_json
   const parsedMeta = $derived.by(() => {
+    let raw: any = {};
     try {
       if (database?.resource_json || database?.ResourceJSON) {
-        return JSON.parse(database.resource_json || database.ResourceJSON);
+        raw = JSON.parse(database.resource_json || database.ResourceJSON);
       }
     } catch {}
+
+    const engine = database?.engine || 'postgres';
+    const internalHost = database?.internal_hostname || `paas-db-${database?.name}`;
+    const internalPort = database?.internal_port || (engine === 'mysql' ? 3306 : engine === 'redis' ? 6379 : 5432);
+    const externalPort = raw.externalPort || 15432;
+    const externalHost = raw.externalHost || 'klouds.online';
+    const dbName = raw.databaseName || database?.database_name || database?.name || 'app';
+    const user = raw.username || (engine === 'postgres' ? 'postgres' : 'root');
+    const pass = raw.password || '••••••••';
+    const internalUri = raw.internalConnectionUri || raw.connectionUri || `${engine}://${user}:${pass}@${internalHost}:${internalPort}/${dbName}`;
+    const externalUri = raw.externalConnectionUri || `${engine}://${user}:${pass}@${externalHost}:${externalPort}/${dbName}`;
+
     return {
-      username: database?.engine === 'postgres' ? 'postgres' : 'root',
-      password: '••••••••',
-      databaseName: database?.database_name || database?.name || 'app',
-      connectionUri: `${database?.engine}://${database?.internal_hostname}:${database?.internal_port}/${database?.database_name}`
+      username: user,
+      password: pass,
+      databaseName: dbName,
+      internalHost,
+      internalPort,
+      externalHost,
+      externalPort,
+      internalConnectionUri: internalUri,
+      externalConnectionUri: externalUri,
+      connectionUri: externalUri,
+      psqlCommand: raw.psqlCommand || (engine === 'postgres' ? `psql "${externalUri}?sslmode=disable"` : `mysql -h ${externalHost} -P ${externalPort} -u ${user} -p ${dbName}`)
     };
   });
 
@@ -198,25 +218,25 @@
 
   const cliCommand = $derived.by(() => {
     const eng = database?.engine || 'postgres';
-    const uri = parsedMeta.connectionUri;
-    const host = database?.internal_hostname || 'localhost';
-    const port = database?.internal_port || 5432;
+    const extUri = parsedMeta.externalConnectionUri;
+    const extHost = parsedMeta.externalHost;
+    const extPort = parsedMeta.externalPort;
     const user = parsedMeta.username;
     const db = parsedMeta.databaseName;
 
     switch (eng) {
       case 'postgres':
-        return `psql "${uri}"`;
+        return `psql "${extUri}?sslmode=disable"`;
       case 'mysql':
-        return `mysql -h ${host} -P ${port} -u ${user} -p ${db}`;
+        return `mysql -h ${extHost} -P ${extPort} -u ${user} -p ${db}`;
       case 'redis':
-        return `redis-cli -h ${host} -p ${port} -a "${parsedMeta.password}"`;
+        return `redis-cli -h ${extHost} -p ${extPort} -a "${parsedMeta.password}"`;
       case 'mongodb':
-        return `mongosh "${uri}"`;
+        return `mongosh "${extUri}"`;
       case 'clickhouse':
-        return `clickhouse-client --host ${host} --port ${port} --user ${user} --database ${db}`;
+        return `clickhouse-client --host ${extHost} --port ${extPort} --user ${user} --database ${db}`;
       default:
-        return `${eng} "${uri}"`;
+        return `${eng} "${extUri}"`;
     }
   });
 </script>
@@ -245,7 +265,7 @@
         <span class="badge badge-running">{database?.runtime_status || 'ready'}</span>
       </div>
       <div class="text-xs text-muted" style="margin-top:0.25rem;">
-        Host: <span class="font-mono">{database?.internal_hostname}</span> • Port: <span class="font-mono">:{database?.internal_port}</span>
+        Public: <span class="font-mono">{parsedMeta.externalHost}:{parsedMeta.externalPort}</span> • Internal: <span class="font-mono">{database?.internal_hostname}:{database?.internal_port}</span>
       </div>
     </div>
 
@@ -254,8 +274,8 @@
         {#if actionLoading}<Loader2 size={14} class="animate-spin" />{:else}<RefreshCw size={14} />{/if}
         Restart
       </button>
-      <button class="btn btn-primary" onclick={() => copyText(parsedMeta.connectionUri)}>
-        {#if copied}<Check size={14} /> Copied!{:else}<Copy size={14} /> Copy URI{/if}
+      <button class="btn btn-primary" onclick={() => copyText(parsedMeta.externalConnectionUri)}>
+        {#if copied}<Check size={14} /> Copied!{:else}<Copy size={14} /> Copy External URI{/if}
       </button>
     </div>
   </div>
@@ -285,40 +305,72 @@
 
   <!-- Tab Contents -->
   {#if tab === 'overview'}
-    <!-- Connection String Banner -->
+    <!-- External Public Connection String Banner -->
+    <div class="card" style="margin-bottom:1.5rem; background: var(--color-surface); border: 1.5px solid var(--color-accent); border-radius: var(--radius-lg); padding: 1.25rem;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 0.75rem; flex-wrap:wrap; gap:0.5rem;">
+        <div>
+          <div style="display:flex; align-items:center; gap:0.5rem;">
+            <span class="badge" style="background:rgba(0,166,166,0.15); color:var(--color-accent); font-weight:700;">🌐 External / Public Access</span>
+            <h3 style="margin:0; font-size:1.05rem;">Public Connection URI</h3>
+          </div>
+          <p class="text-xs text-muted" style="margin-top:0.35rem;">Use this URI to connect from your local laptop (<span class="font-mono">psql</span>, DBeaver, TablePlus, pgAdmin, Prisma Studio, scripts).</p>
+        </div>
+        <button class="btn btn-primary" style="font-size:0.8125rem; padding:5px 12px;" onclick={() => copyText(parsedMeta.externalConnectionUri, 'ext_uri')}>
+          {#if copiedField === 'ext_uri'}<Check size={13} /> Copied!{:else}<Copy size={13} /> Copy Public URI{/if}
+        </button>
+      </div>
+      <div style="background: #0d1117; color: #79c0ff; font-family: var(--font-mono); font-size: 0.875rem; padding: 0.85rem 1rem; border-radius: var(--radius-md); word-break: break-all; margin-bottom: 1rem;">
+        {parsedMeta.externalConnectionUri}
+      </div>
+
+      <!-- Quick PSQL / CLI Command -->
+      <div style="background: rgba(0,0,0,0.03); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 0.75rem 1rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
+        <div style="font-size: 0.8125rem; font-weight: 600; color: var(--color-ink);">
+          Terminal Command: <span class="font-mono" style="color: #059669; font-weight: normal; margin-left: 6px;">{cliCommand}</span>
+        </div>
+        <button class="btn btn-secondary" style="font-size:0.75rem; padding:3px 10px; min-height:28px;" onclick={() => copyText(cliCommand, 'cli')}>
+          {#if copiedField === 'cli'}<Check size={12} /> Copied CLI{:else}<Copy size={12} /> Copy Command{/if}
+        </button>
+      </div>
+    </div>
+
+    <!-- Internal Connection URI Card -->
     <div class="card" style="margin-bottom:1.5rem; background: var(--color-surface); border: 1px solid var(--color-border);">
       <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
         <div>
-          <h3 style="margin:0; font-size:1rem;">Internal Connection URI</h3>
-          <p class="text-xs text-muted" style="margin-top:0.25rem;">Use this URI from any web service or application running inside kloudsPanel.</p>
+          <div style="display:flex; align-items:center; gap:0.5rem;">
+            <span class="badge" style="background:#f1f5f9; color:#475569; font-weight:600;">🔒 Private Platform Network</span>
+            <h3 style="margin:0; font-size:0.9375rem;">Internal Connection URI</h3>
+          </div>
+          <p class="text-xs text-muted" style="margin-top:0.25rem;">Use inside web services & background workers running on kloudsPanel.</p>
         </div>
-        <button class="btn btn-secondary" style="font-size:0.75rem; padding:4px 10px; min-height:30px;" onclick={() => copyText(parsedMeta.connectionUri)}>
-          {#if copied}<Check size={12} /> Copied{:else}<Copy size={12} /> Copy{/if}
+        <button class="btn btn-secondary" style="font-size:0.75rem; padding:4px 10px; min-height:30px;" onclick={() => copyText(parsedMeta.internalConnectionUri, 'int_uri')}>
+          {#if copiedField === 'int_uri'}<Check size={12} /> Copied{:else}<Copy size={12} /> Copy Internal URI{/if}
         </button>
       </div>
-      <div style="background: #0d1117; color: #79c0ff; font-family: var(--font-mono); font-size: 0.875rem; padding: 0.85rem 1rem; border-radius: var(--radius-md); word-break: break-all;">
-        {parsedMeta.connectionUri}
+      <div style="background: #0d1117; color: #a5d6ff; font-family: var(--font-mono); font-size: 0.8125rem; padding: 0.75rem 1rem; border-radius: var(--radius-md); word-break: break-all;">
+        {parsedMeta.internalConnectionUri}
       </div>
     </div>
 
     <!-- Credentials Table Grid -->
-    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:1rem; margin-bottom:1.5rem;">
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:1rem; margin-bottom:1.5rem;">
       <div class="card" style="padding:1rem;">
-        <div class="text-xs text-muted" style="margin-bottom:0.25rem;">Internal Hostname</div>
+        <div class="text-xs text-muted" style="margin-bottom:0.25rem;">Public Host / IP</div>
         <div style="display:flex; justify-content:space-between; align-items:center;">
-          <span class="font-mono text-sm" style="font-weight:600;">{database?.internal_hostname}</span>
-          <button class="btn btn-secondary" style="padding:2px 6px; min-height:24px; border:none;" onclick={() => copyText(database?.internal_hostname, 'host')}>
-            {#if copiedField === 'host'}<Check size={12} />{:else}<Copy size={12} />{/if}
+          <span class="font-mono text-sm" style="font-weight:600;">{parsedMeta.externalHost}</span>
+          <button class="btn btn-secondary" style="padding:2px 6px; min-height:24px; border:none;" onclick={() => copyText(parsedMeta.externalHost, 'pubhost')}>
+            {#if copiedField === 'pubhost'}<Check size={12} />{:else}<Copy size={12} />{/if}
           </button>
         </div>
       </div>
 
       <div class="card" style="padding:1rem;">
-        <div class="text-xs text-muted" style="margin-bottom:0.25rem;">Port</div>
+        <div class="text-xs text-muted" style="margin-bottom:0.25rem;">Public Port</div>
         <div style="display:flex; justify-content:space-between; align-items:center;">
-          <span class="font-mono text-sm" style="font-weight:600;">:{database?.internal_port}</span>
-          <button class="btn btn-secondary" style="padding:2px 6px; min-height:24px; border:none;" onclick={() => copyText(String(database?.internal_port), 'port')}>
-            {#if copiedField === 'port'}<Check size={12} />{:else}<Copy size={12} />{/if}
+          <span class="font-mono text-sm" style="font-weight:600;">:{parsedMeta.externalPort}</span>
+          <button class="btn btn-secondary" style="padding:2px 6px; min-height:24px; border:none;" onclick={() => copyText(String(parsedMeta.externalPort), 'pubport')}>
+            {#if copiedField === 'pubport'}<Check size={12} />{:else}<Copy size={12} />{/if}
           </button>
         </div>
       </div>
@@ -336,27 +388,21 @@
       <div class="card" style="padding:1rem;">
         <div class="text-xs text-muted" style="margin-bottom:0.25rem;">Password</div>
         <div style="display:flex; justify-content:space-between; align-items:center;">
-          <span class="font-mono text-sm" style="font-weight:600;">••••••••••••</span>
+          <span class="font-mono text-sm" style="font-weight:600;">{parsedMeta.password}</span>
           <button class="btn btn-secondary" style="padding:2px 6px; min-height:24px; border:none;" onclick={() => copyText(parsedMeta.password, 'pass')}>
             {#if copiedField === 'pass'}<Check size={12} />{:else}<Copy size={12} />{/if}
           </button>
         </div>
       </div>
-    </div>
 
-    <!-- CLI Connection Snippet -->
-    <div class="card">
-      <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
-        <div>
-          <h3 style="margin:0; font-size:1rem;">CLI Direct Connection Command</h3>
-          <p class="text-xs text-muted" style="margin-top:0.25rem;">Run in your local terminal or container to connect directly.</p>
+      <div class="card" style="padding:1rem;">
+        <div class="text-xs text-muted" style="margin-bottom:0.25rem;">Database Name</div>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span class="font-mono text-sm" style="font-weight:600;">{parsedMeta.databaseName}</span>
+          <button class="btn btn-secondary" style="padding:2px 6px; min-height:24px; border:none;" onclick={() => copyText(parsedMeta.databaseName, 'dbname')}>
+            {#if copiedField === 'dbname'}<Check size={12} />{:else}<Copy size={12} />{/if}
+          </button>
         </div>
-        <button class="btn btn-secondary" style="font-size:0.75rem; padding:4px 10px; min-height:30px;" onclick={() => copyText(cliCommand, 'cli')}>
-          {#if copiedField === 'cli'}<Check size={12} /> Copied{:else}<Copy size={12} /> Copy CLI{/if}
-        </button>
-      </div>
-      <div style="background: #0d1117; color: #7ee787; font-family: var(--font-mono); font-size: 0.8125rem; padding: 0.85rem 1rem; border-radius: var(--radius-md); word-break: break-all;">
-        $ {cliCommand}
       </div>
     </div>
 

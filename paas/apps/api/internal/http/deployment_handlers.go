@@ -205,7 +205,21 @@ CMD ["sh", "-c", "./$(ls -p | grep -v / | head -n 1)"]
 `, port)
 
 	case "static", "static-spa", "nginx":
+		bCmd := buildCmd
+		if bCmd != "" {
+			return fmt.Sprintf(`FROM node:20-alpine AS builder
+WORKDIR /app
+COPY . ./
+RUN %s
+FROM nginx:alpine
+RUN printf 'server {\n    listen 80;\n    server_name _;\n    root /usr/share/nginx/html;\n    index index.html;\n    location / {\n        try_files $uri $uri/ /index.html;\n    }\n}\n' > /etc/nginx/conf.d/default.conf
+COPY --from=builder /app/dist /usr/share/nginx/html/ || COPY --from=builder /app/build /usr/share/nginx/html/ || COPY --from=builder /app/public /usr/share/nginx/html/ || COPY --from=builder /app /usr/share/nginx/html/
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
+`, bCmd)
+		}
 		return fmt.Sprintf(`FROM nginx:alpine
+RUN printf 'server {\n    listen 80;\n    server_name _;\n    root /usr/share/nginx/html;\n    index index.html;\n    location / {\n        try_files $uri $uri/ /index.html;\n    }\n}\n' > /etc/nginx/conf.d/default.conf
 COPY . /usr/share/nginx/html
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
@@ -214,12 +228,12 @@ CMD ["nginx", "-g", "daemon off;"]
 	default:
 		sCmd := startCmd
 		if sCmd == "" {
-			sCmd = fmt.Sprintf("python app.py || node index.js || ./server || nginx -g 'daemon off;'")
+			sCmd = fmt.Sprintf("python app.py || python main.py || python server.py || node server.js || node index.js || ./server || nginx -g 'daemon off;'")
 		}
 		return fmt.Sprintf(`FROM python:3.11-slim
 WORKDIR /app
 COPY . /app
-RUN if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+RUN if [ -f requirements.txt ]; then pip install --no-cache-dir -r requirements.txt; elif [ -f pyproject.toml ]; then pip install --no-cache-dir .; fi
 EXPOSE %d
 CMD ["sh", "-c", "%s"]
 `, port, sCmd)
@@ -374,9 +388,54 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 			}
 		}
 
-		// Step 3: Auto-detect runtime from repository files if generic
+		// Step 3: Universal Fallback Engine & Manifests Check
+		// 3a. Check Procfile
+		procfilePath := filepath.Join(contextDir, "Procfile")
+		if pBytes, err := os.ReadFile(procfilePath); err == nil {
+			for _, pLine := range strings.Split(string(pBytes), "\n") {
+				pLine = strings.TrimSpace(pLine)
+				if strings.HasPrefix(pLine, "web:") {
+					extractedCmd := strings.TrimSpace(strings.TrimPrefix(pLine, "web:"))
+					if startCommand == "" {
+						startCommand = extractedCmd
+						appendLog(serviceID, "system", fmt.Sprintf("[procfile] Found Procfile start command: %s", startCommand))
+					}
+					break
+				}
+			}
+		}
+
+		// 3b. Monorepo Subfolder Auto-Discovery if root has no project manifest
+		if contextDir == workspaceDir && rootDirectory == "" {
+			subFolders := []string{"web", "frontend", "client", "ui", "api", "backend", "server", "app", "src/backend", "src/frontend"}
+			for _, sub := range subFolders {
+				subPath := filepath.Join(workspaceDir, sub)
+				if info, err := os.Stat(subPath); err == nil && info.IsDir() {
+					if _, err := os.Stat(filepath.Join(subPath, "package.json")); err == nil {
+						contextDir = subPath
+						appendLog(serviceID, "system", fmt.Sprintf("[universal-builder] Auto-discovered project in subfolder: /%s", sub))
+						break
+					} else if _, err := os.Stat(filepath.Join(subPath, "requirements.txt")); err == nil {
+						contextDir = subPath
+						appendLog(serviceID, "system", fmt.Sprintf("[universal-builder] Auto-discovered project in subfolder: /%s", sub))
+						break
+					} else if _, err := os.Stat(filepath.Join(subPath, "go.mod")); err == nil {
+						contextDir = subPath
+						appendLog(serviceID, "system", fmt.Sprintf("[universal-builder] Auto-discovered project in subfolder: /%s", sub))
+						break
+					}
+				}
+			}
+		}
+
+		// 3c. Auto-detect runtime from repository files
 		if presetId == "" || presetId == "web" || presetId == "custom" {
 			if _, err := os.Stat(filepath.Join(contextDir, "requirements.txt")); err == nil {
+				presetId = "python"
+				if port == 80 {
+					port = 5000
+				}
+			} else if _, err := os.Stat(filepath.Join(contextDir, "pyproject.toml")); err == nil {
 				presetId = "python"
 				if port == 80 {
 					port = 5000
@@ -388,6 +447,11 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 				}
 			} else if _, err := os.Stat(filepath.Join(contextDir, "go.mod")); err == nil {
 				presetId = "go"
+				if port == 80 {
+					port = 8080
+				}
+			} else if _, err := os.Stat(filepath.Join(contextDir, "Cargo.toml")); err == nil {
+				presetId = "rust"
 				if port == 80 {
 					port = 8080
 				}

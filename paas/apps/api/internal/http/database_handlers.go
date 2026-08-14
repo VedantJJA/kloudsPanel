@@ -52,6 +52,39 @@ func (h *Handler) handleCreateDatabase(c fiber.Ctx) error {
 	return c.Status(201).JSON(db)
 }
 
+func (h *Handler) allocateExternalPort(ctx context.Context, engine string) int {
+	basePort := 15432
+	switch engine {
+	case "mysql":
+		basePort = 13306
+	case "redis":
+		basePort = 16379
+	case "mongodb":
+		basePort = 17017
+	case "clickhouse":
+		basePort = 18123
+	}
+
+	dbs, _ := h.store.Databases().ListAll(ctx)
+	usedPorts := make(map[int]bool)
+	for _, d := range dbs {
+		var meta map[string]any
+		if d.ResourceJSON != "" {
+			_ = json.Unmarshal([]byte(d.ResourceJSON), &meta)
+			if p, ok := meta["externalPort"].(float64); ok && p > 0 {
+				usedPorts[int(p)] = true
+			}
+		}
+	}
+
+	for p := basePort; p < basePort+1000; p++ {
+		if !usedPorts[p] {
+			return p
+		}
+	}
+	return basePort
+}
+
 func (h *Handler) provisionDatabaseInternal(ctx context.Context, projectID, name, engine string) (*domain.Database, error) {
 	if name == "" {
 		return nil, fmt.Errorf("database name is required")
@@ -83,27 +116,50 @@ func (h *Handler) provisionDatabaseInternal(ctx context.Context, projectID, name
 		defaultUser = "default"
 	}
 
+	externalPort := h.allocateExternalPort(ctx, engine)
+	externalHost := getRootDomain()
+	if externalHost == "" {
+		externalHost = "klouds.online"
+	}
+
 	dbName := dbSlug
 	password := fmt.Sprintf("kp_sec_%d", time.Now().UnixNano()%1000000)
 	hostname := fmt.Sprintf("paas-db-%s", dbSlug)
 
-	var connURI string
+	var internalConnURI, externalConnURI string
 	switch engine {
 	case "postgres":
-		connURI = fmt.Sprintf("postgresql://%s:%s@%s:%d/%s?sslmode=disable", defaultUser, password, hostname, port, dbName)
+		internalConnURI = fmt.Sprintf("postgresql://%s:%s@%s:%d/%s?sslmode=disable", defaultUser, password, hostname, port, dbName)
+		externalConnURI = fmt.Sprintf("postgresql://%s:%s@%s:%d/%s?sslmode=disable", defaultUser, password, externalHost, externalPort, dbName)
 	case "mysql":
-		connURI = fmt.Sprintf("mysql://%s:%s@%s:%d/%s", defaultUser, password, hostname, port, dbName)
+		internalConnURI = fmt.Sprintf("mysql://%s:%s@%s:%d/%s", defaultUser, password, hostname, port, dbName)
+		externalConnURI = fmt.Sprintf("mysql://%s:%s@%s:%d/%s", defaultUser, password, externalHost, externalPort, dbName)
 	case "redis":
-		connURI = fmt.Sprintf("redis://:%s@%s:%d", password, hostname, port)
+		internalConnURI = fmt.Sprintf("redis://:%s@%s:%d", password, hostname, port)
+		externalConnURI = fmt.Sprintf("redis://:%s@%s:%d", password, externalHost, externalPort)
 	case "mongodb":
-		connURI = fmt.Sprintf("mongodb://%s:%s@%s:%d/%s?authSource=admin", defaultUser, password, hostname, port, dbName)
+		internalConnURI = fmt.Sprintf("mongodb://%s:%s@%s:%d/%s?authSource=admin", defaultUser, password, hostname, port, dbName)
+		externalConnURI = fmt.Sprintf("mongodb://%s:%s@%s:%d/%s?authSource=admin", defaultUser, password, externalHost, externalPort, dbName)
 	case "clickhouse":
-		connURI = fmt.Sprintf("clickhouse://%s:%s@%s:%d/%s", defaultUser, password, hostname, port, dbName)
+		internalConnURI = fmt.Sprintf("clickhouse://%s:%s@%s:%d/%s", defaultUser, password, hostname, port, dbName)
+		externalConnURI = fmt.Sprintf("clickhouse://%s:%s@%s:%d/%s", defaultUser, password, externalHost, externalPort, dbName)
 	default:
-		connURI = fmt.Sprintf("%s://%s:%s@%s:%d/%s", engine, defaultUser, password, hostname, port, dbName)
+		internalConnURI = fmt.Sprintf("%s://%s:%s@%s:%d/%s", engine, defaultUser, password, hostname, port, dbName)
+		externalConnURI = fmt.Sprintf("%s://%s:%s@%s:%d/%s", engine, defaultUser, password, externalHost, externalPort, dbName)
 	}
 
-	metaJSON := fmt.Sprintf(`{"username":"%s","password":"%s","databaseName":"%s","connectionUri":"%s"}`, defaultUser, password, dbName, connURI)
+	metaMap := map[string]any{
+		"username":              defaultUser,
+		"password":              password,
+		"databaseName":          dbName,
+		"connectionUri":         internalConnURI,
+		"internalConnectionUri": internalConnURI,
+		"externalConnectionUri": externalConnURI,
+		"externalHost":          externalHost,
+		"externalPort":          externalPort,
+		"psqlCommand":           fmt.Sprintf("psql \"%s\"", externalConnURI),
+	}
+	metaBytes, _ := json.Marshal(metaMap)
 
 	db := &domain.Database{
 		ProjectID:        projectID,
@@ -114,93 +170,155 @@ func (h *Handler) provisionDatabaseInternal(ctx context.Context, projectID, name
 		InternalHostname: hostname,
 		InternalPort:     port,
 		DatabaseName:     &dbName,
-		ResourceJSON:     metaJSON,
+		ResourceJSON:     string(metaBytes),
 	}
 	if err := h.store.Databases().Create(ctx, db); err != nil {
 		return nil, err
 	}
 
-	// Launch Real Docker Database Container asynchronously
-	go func() {
-		containerName := hostname
-		_ = exec.Command("docker", "rm", "-f", containerName).Run()
-
-		var runArgs []string
-		switch engine {
-		case "postgres":
-			runArgs = []string{
-				"run", "-d",
-				"--name", containerName,
-				"--network", "platform-control",
-				"--restart", "unless-stopped",
-				"-e", fmt.Sprintf("POSTGRES_USER=%s", defaultUser),
-				"-e", fmt.Sprintf("POSTGRES_PASSWORD=%s", password),
-				"-e", fmt.Sprintf("POSTGRES_DB=%s", dbName),
-				"-v", fmt.Sprintf("paas-db-data-%s:/var/lib/postgresql/data", dbSlug),
-				"postgres:16-alpine",
-			}
-		case "mysql":
-			runArgs = []string{
-				"run", "-d",
-				"--name", containerName,
-				"--network", "platform-control",
-				"--restart", "unless-stopped",
-				"-e", fmt.Sprintf("MYSQL_ROOT_PASSWORD=%s", password),
-				"-e", fmt.Sprintf("MYSQL_DATABASE=%s", dbName),
-				"-v", fmt.Sprintf("paas-db-data-%s:/var/lib/mysql", dbSlug),
-				"mysql:8.0",
-			}
-		case "redis":
-			runArgs = []string{
-				"run", "-d",
-				"--name", containerName,
-				"--network", "platform-control",
-				"--restart", "unless-stopped",
-				"-v", fmt.Sprintf("paas-db-data-%s:/data", dbSlug),
-				"redis:7.2-alpine",
-				"redis-server", "--requirepass", password,
-			}
-		case "mongodb":
-			runArgs = []string{
-				"run", "-d",
-				"--name", containerName,
-				"--network", "platform-control",
-				"--restart", "unless-stopped",
-				"-e", fmt.Sprintf("MONGO_INITDB_ROOT_USERNAME=%s", defaultUser),
-				"-e", fmt.Sprintf("MONGO_INITDB_ROOT_PASSWORD=%s", password),
-				"-v", fmt.Sprintf("paas-db-data-%s:/data/db", dbSlug),
-				"mongo:7.0",
-			}
-		case "clickhouse":
-			runArgs = []string{
-				"run", "-d",
-				"--name", containerName,
-				"--network", "platform-control",
-				"--restart", "unless-stopped",
-				"-v", fmt.Sprintf("paas-db-data-%s:/var/lib/clickhouse", dbSlug),
-				"clickhouse/clickhouse-server:24.3-alpine",
-			}
-		default:
-			runArgs = []string{
-				"run", "-d",
-				"--name", containerName,
-				"--network", "platform-control",
-				"--restart", "unless-stopped",
-				"postgres:16-alpine",
-			}
-		}
-
-		_ = exec.Command("docker", runArgs...).Run()
-	}()
+	// Launch Real Docker Database Container asynchronously with published external port
+	go h.startDatabaseContainer(dbSlug, hostname, defaultUser, password, dbName, engine, port, externalPort)
 
 	return db, nil
 }
 
+func (h *Handler) startDatabaseContainer(dbSlug, containerName, defaultUser, password, dbName, engine string, internalPort, externalPort int) {
+	_ = exec.Command("docker", "rm", "-f", containerName).Run()
+
+	var runArgs []string
+	switch engine {
+	case "postgres":
+		runArgs = []string{
+			"run", "-d",
+			"--name", containerName,
+			"--network", "platform-control",
+			"--restart", "unless-stopped",
+			"-p", fmt.Sprintf("%d:%d", externalPort, internalPort),
+			"-e", fmt.Sprintf("POSTGRES_USER=%s", defaultUser),
+			"-e", fmt.Sprintf("POSTGRES_PASSWORD=%s", password),
+			"-e", fmt.Sprintf("POSTGRES_DB=%s", dbName),
+			"-v", fmt.Sprintf("paas-db-data-%s:/var/lib/postgresql/data", dbSlug),
+			"postgres:16-alpine",
+		}
+	case "mysql":
+		runArgs = []string{
+			"run", "-d",
+			"--name", containerName,
+			"--network", "platform-control",
+			"--restart", "unless-stopped",
+			"-p", fmt.Sprintf("%d:%d", externalPort, internalPort),
+			"-e", fmt.Sprintf("MYSQL_ROOT_PASSWORD=%s", password),
+			"-e", fmt.Sprintf("MYSQL_DATABASE=%s", dbName),
+			"-v", fmt.Sprintf("paas-db-data-%s:/var/lib/mysql", dbSlug),
+			"mysql:8.0",
+		}
+	case "redis":
+		runArgs = []string{
+			"run", "-d",
+			"--name", containerName,
+			"--network", "platform-control",
+			"--restart", "unless-stopped",
+			"-p", fmt.Sprintf("%d:%d", externalPort, internalPort),
+			"-v", fmt.Sprintf("paas-db-data-%s:/data", dbSlug),
+			"redis:7.2-alpine",
+			"redis-server", "--requirepass", password,
+		}
+	case "mongodb":
+		runArgs = []string{
+			"run", "-d",
+			"--name", containerName,
+			"--network", "platform-control",
+			"--restart", "unless-stopped",
+			"-p", fmt.Sprintf("%d:%d", externalPort, internalPort),
+			"-e", fmt.Sprintf("MONGO_INITDB_ROOT_USERNAME=%s", defaultUser),
+			"-e", fmt.Sprintf("MONGO_INITDB_ROOT_PASSWORD=%s", password),
+			"-v", fmt.Sprintf("paas-db-data-%s:/data/db", dbSlug),
+			"mongo:7.0",
+		}
+	case "clickhouse":
+		runArgs = []string{
+			"run", "-d",
+			"--name", containerName,
+			"--network", "platform-control",
+			"--restart", "unless-stopped",
+			"-p", fmt.Sprintf("%d:%d", externalPort, internalPort),
+			"-v", fmt.Sprintf("paas-db-data-%s:/var/lib/clickhouse", dbSlug),
+			"clickhouse/clickhouse-server:24.3-alpine",
+		}
+	default:
+		runArgs = []string{
+			"run", "-d",
+			"--name", containerName,
+			"--network", "platform-control",
+			"--restart", "unless-stopped",
+			"-p", fmt.Sprintf("%d:%d", externalPort, internalPort),
+			"postgres:16-alpine",
+		}
+	}
+
+	_ = exec.Command("docker", runArgs...).Run()
+}
+
 func (h *Handler) handleGetDatabase(c fiber.Ctx) error {
 	db, err := h.store.Databases().GetByID(c.Context(), c.Params("id"))
-	if err != nil {
-		return err
+	if err != nil || db == nil {
+		return c.Status(404).JSON(fiber.Map{"error": "database not found"})
 	}
+
+	// Self-heal: ensure externalPort exists in meta and container is exposed
+	var meta map[string]any
+	if db.ResourceJSON != "" {
+		_ = json.Unmarshal([]byte(db.ResourceJSON), &meta)
+	} else {
+		meta = make(map[string]any)
+	}
+
+	extPort, hasPort := meta["externalPort"].(float64)
+	if !hasPort || extPort == 0 {
+		externalPort := h.allocateExternalPort(c.Context(), string(db.Engine))
+		externalHost := getRootDomain()
+		if externalHost == "" {
+			externalHost = "klouds.online"
+		}
+
+		user, _ := meta["username"].(string)
+		if user == "" {
+			user = "postgres"
+		}
+		pass, _ := meta["password"].(string)
+		dbName := db.Name
+		if db.DatabaseName != nil && *db.DatabaseName != "" {
+			dbName = *db.DatabaseName
+		}
+
+		var externalConnURI string
+		switch db.Engine {
+		case "postgres":
+			externalConnURI = fmt.Sprintf("postgresql://%s:%s@%s:%d/%s?sslmode=disable", user, pass, externalHost, externalPort, dbName)
+		case "mysql":
+			externalConnURI = fmt.Sprintf("mysql://%s:%s@%s:%d/%s", user, pass, externalHost, externalPort, dbName)
+		case "redis":
+			externalConnURI = fmt.Sprintf("redis://:%s@%s:%d", pass, externalHost, externalPort)
+		default:
+			externalConnURI = fmt.Sprintf("%s://%s:%s@%s:%d/%s", db.Engine, user, pass, externalHost, externalPort, dbName)
+		}
+
+		meta["externalPort"] = externalPort
+		meta["externalHost"] = externalHost
+		meta["externalConnectionUri"] = externalConnURI
+		meta["psqlCommand"] = fmt.Sprintf("psql \"%s\"", externalConnURI)
+		metaBytes, _ := json.Marshal(meta)
+		db.ResourceJSON = string(metaBytes)
+		_ = h.store.Databases().Update(c.Context(), db)
+
+		dbSlug := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(db.Name), "_", "-"))
+		containerName := db.InternalHostname
+		if containerName == "" {
+			containerName = fmt.Sprintf("paas-db-%s", dbSlug)
+		}
+		go h.startDatabaseContainer(dbSlug, containerName, user, pass, dbName, string(db.Engine), db.InternalPort, externalPort)
+	}
+
 	return c.JSON(db)
 }
 
