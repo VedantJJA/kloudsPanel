@@ -305,25 +305,65 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 		}
 		appendLog(serviceID, "system", "[git] Repository checkout complete.")
 
-		// Step 2: Auto-detect render.yaml inside repository
+		var rootDirectory string
+		if rd, ok := resMap["rootDirectory"].(string); ok && rd != "" && rd != "." {
+			rootDirectory = rd
+		} else if rd, ok := resMap["rootDir"].(string); ok && rd != "" && rd != "." {
+			rootDirectory = rd
+		}
+
+		contextDir := workspaceDir
+		if rootDirectory != "" {
+			subDir := filepath.Join(workspaceDir, rootDirectory)
+			if info, err := os.Stat(subDir); err == nil && info.IsDir() {
+				contextDir = subDir
+				appendLog(serviceID, "system", fmt.Sprintf("[builder] Building from subdirectory: %s", rootDirectory))
+			}
+		}
+
+		// Step 2: Auto-detect render.yaml or devpanel.yaml inside repository
 		renderFile := filepath.Join(workspaceDir, "render.yaml")
 		if _, err := os.Stat(renderFile); os.IsNotExist(err) {
 			renderFile = filepath.Join(workspaceDir, "render.yml")
+		}
+		if _, err := os.Stat(renderFile); os.IsNotExist(err) {
+			renderFile = filepath.Join(workspaceDir, "devpanel.yaml")
 		}
 		if _, err := os.Stat(renderFile); err == nil {
 			if yamlBytes, err := os.ReadFile(renderFile); err == nil {
 				parsed := parseRenderYAMLString(string(yamlBytes))
 				if len(parsed.Services) > 0 {
-					svc := parsed.Services[0]
-					appendLog(serviceID, "system", fmt.Sprintf("[render] Auto-detected render.yaml config for '%s' (preset: %s, port: %d)", svc.Name, svc.Preset, svc.InternalPort))
+					var matchingSvc *ParsedRenderService
+					for _, s := range parsed.Services {
+						if strings.EqualFold(s.Name, service.Name) || strings.EqualFold(s.Slug, service.Slug) {
+							matchingSvc = &s
+							break
+						}
+					}
+					if matchingSvc == nil {
+						matchingSvc = &parsed.Services[0]
+					}
+					svc := *matchingSvc
+					appendLog(serviceID, "system", fmt.Sprintf("[render] Applied config for '%s' (preset: %s, rootDir: %s, port: %d)", svc.Name, svc.Preset, svc.RootDir, svc.InternalPort))
+					if svc.RootDir != "" && rootDirectory == "" {
+						rootDirectory = svc.RootDir
+						subDir := filepath.Join(workspaceDir, rootDirectory)
+						if info, err := os.Stat(subDir); err == nil && info.IsDir() {
+							contextDir = subDir
+							appendLog(serviceID, "system", fmt.Sprintf("[builder] Switched build context to: %s", rootDirectory))
+						}
+					}
 					if buildCommand == "" && svc.BuildCommand != "" {
 						buildCommand = svc.BuildCommand
 					}
 					if startCommand == "" && svc.StartCommand != "" {
 						startCommand = svc.StartCommand
 					}
-					if svc.InternalPort > 0 && service.InternalPort == nil {
+					if svc.InternalPort > 0 && (service.InternalPort == nil || *service.InternalPort == 80) {
 						port = svc.InternalPort
+					}
+					if svc.Preset != "" && (presetId == "" || presetId == "web" || presetId == "custom") {
+						presetId = svc.Preset
 					}
 					for k, v := range svc.EnvVars {
 						if _, exists := envMap[k]; !exists {
@@ -336,33 +376,33 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 
 		// Step 3: Auto-detect runtime from repository files if generic
 		if presetId == "" || presetId == "web" || presetId == "custom" {
-			if _, err := os.Stat(filepath.Join(workspaceDir, "requirements.txt")); err == nil {
+			if _, err := os.Stat(filepath.Join(contextDir, "requirements.txt")); err == nil {
 				presetId = "python"
 				if port == 80 {
 					port = 5000
 				}
-			} else if _, err := os.Stat(filepath.Join(workspaceDir, "package.json")); err == nil {
+			} else if _, err := os.Stat(filepath.Join(contextDir, "package.json")); err == nil {
 				presetId = "node"
 				if port == 80 {
 					port = 3000
 				}
-			} else if _, err := os.Stat(filepath.Join(workspaceDir, "go.mod")); err == nil {
+			} else if _, err := os.Stat(filepath.Join(contextDir, "go.mod")); err == nil {
 				presetId = "go"
 				if port == 80 {
 					port = 8080
 				}
-			} else if _, err := os.Stat(filepath.Join(workspaceDir, "pom.xml")); err == nil {
+			} else if _, err := os.Stat(filepath.Join(contextDir, "pom.xml")); err == nil {
 				presetId = "java"
 				if port == 80 {
 					port = 8080
 				}
-			} else if _, err := os.Stat(filepath.Join(workspaceDir, "index.html")); err == nil {
+			} else if _, err := os.Stat(filepath.Join(contextDir, "index.html")); err == nil {
 				presetId = "static"
 			}
 		}
 
 		// Step 4: Check if Dockerfile exists or generate one
-		dockerfilePath := filepath.Join(workspaceDir, "Dockerfile")
+		dockerfilePath := filepath.Join(contextDir, "Dockerfile")
 		if _, err := os.Stat(dockerfilePath); os.IsNotExist(err) {
 			appendLog(serviceID, "build", fmt.Sprintf("[builder] Generating runtime Dockerfile (preset: %s, port: %d)", presetId, port))
 			dfContent := generateDockerfileForPreset(presetId, buildCommand, startCommand, port)
@@ -370,8 +410,8 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 		}
 
 		// Step 5: Build Container Image with Docker
-		appendLog(serviceID, "build", fmt.Sprintf("[builder] Running 'docker build -t %s %s'...", imageTag, workspaceDir))
-		buildCmd := exec.Command("docker", "build", "-t", imageTag, workspaceDir)
+		appendLog(serviceID, "build", fmt.Sprintf("[builder] Running 'docker build -t %s %s'...", imageTag, contextDir))
+		buildCmd := exec.Command("docker", "build", "-t", imageTag, contextDir)
 		buildOut, err := buildCmd.CombinedOutput()
 		for _, line := range strings.Split(string(buildOut), "\n") {
 			if strings.TrimSpace(line) != "" {

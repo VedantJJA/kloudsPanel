@@ -10,21 +10,23 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-// ─── Render YAML Parser ───────────────────────────────────────────────────────
+// ─── Render / DevPanel YAML Parser ────────────────────────────────────────────
 
 type ParsedRenderService struct {
-	Name         string            `json:"name"`
-	Slug         string            `json:"slug"`
-	Kind         string            `json:"kind"`
-	Env          string            `json:"env"`
-	Preset       string            `json:"preset"`
-	Image        string            `json:"image"`
-	InternalPort int               `json:"internal_port"`
-	BuildCommand string            `json:"build_command"`
-	StartCommand string            `json:"start_command"`
-	CronSchedule string            `json:"cron_schedule,omitempty"`
-	AutoDeploy   bool              `json:"auto_deploy"`
-	EnvVars      map[string]string `json:"env_vars"`
+	Name              string            `json:"name"`
+	Slug              string            `json:"slug"`
+	Kind              string            `json:"kind"`
+	Env               string            `json:"env"`
+	Preset            string            `json:"preset"`
+	Image             string            `json:"image"`
+	RootDir           string            `json:"root_dir,omitempty"`
+	InternalPort      int               `json:"internal_port"`
+	BuildCommand      string            `json:"build_command"`
+	StartCommand      string            `json:"start_command"`
+	StaticPublishPath string            `json:"static_publish_path,omitempty"`
+	CronSchedule      string            `json:"cron_schedule,omitempty"`
+	AutoDeploy        bool              `json:"auto_deploy"`
+	EnvVars           map[string]string `json:"env_vars"`
 }
 
 type ParsedRenderResult struct {
@@ -41,10 +43,61 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 	lines := strings.Split(yamlStr, "\n")
 	var currentSvc *ParsedRenderService
 	var inEnvVars bool
+	var inDatabases bool
 
 	for _, rawLine := range lines {
 		trimmed := strings.TrimSpace(rawLine)
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+
+		if trimmed == "databases:" {
+			inDatabases = true
+			if currentSvc != nil {
+				res.Services = append(res.Services, *currentSvc)
+				currentSvc = nil
+			}
+			continue
+		} else if trimmed == "services:" {
+			inDatabases = false
+			if currentSvc != nil {
+				res.Services = append(res.Services, *currentSvc)
+				currentSvc = nil
+			}
+			continue
+		}
+
+		if inDatabases {
+			if strings.HasPrefix(trimmed, "- name:") || strings.HasPrefix(trimmed, "name:") {
+				parts := strings.SplitN(trimmed, ":", 2)
+				if len(parts) > 1 {
+					dbName := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
+					engine := "postgres"
+					if strings.Contains(strings.ToLower(dbName), "redis") {
+						engine = "redis"
+					} else if strings.Contains(strings.ToLower(dbName), "mysql") {
+						engine = "mysql"
+					} else if strings.Contains(strings.ToLower(dbName), "mongo") {
+						engine = "mongodb"
+					}
+					res.Databases = append(res.Databases, fiber.Map{
+						"name":   dbName,
+						"engine": engine,
+					})
+				}
+			} else if strings.HasPrefix(trimmed, "image:") && len(res.Databases) > 0 {
+				parts := strings.SplitN(trimmed, ":", 2)
+				if len(parts) > 1 {
+					img := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
+					if strings.Contains(img, "redis") {
+						res.Databases[len(res.Databases)-1]["engine"] = "redis"
+					} else if strings.Contains(img, "mysql") {
+						res.Databases[len(res.Databases)-1]["engine"] = "mysql"
+					} else if strings.Contains(img, "mongo") {
+						res.Databases[len(res.Databases)-1]["engine"] = "mongodb"
+					}
+				}
+			}
 			continue
 		}
 
@@ -67,19 +120,6 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 			continue
 		}
 
-		if strings.HasPrefix(trimmed, "- name:") && currentSvc == nil {
-			// Database item
-			parts := strings.SplitN(trimmed, ":", 2)
-			if len(parts) > 1 {
-				dbName := strings.TrimSpace(parts[1])
-				res.Databases = append(res.Databases, fiber.Map{
-					"name":   dbName,
-					"engine": "postgres",
-				})
-			}
-			continue
-		}
-
 		if currentSvc == nil {
 			continue
 		}
@@ -92,7 +132,20 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 				currentSvc.Slug = strings.ToLower(val)
 			}
 			inEnvVars = false
-		} else if strings.HasPrefix(trimmed, "env:") {
+		} else if strings.HasPrefix(trimmed, "rootDir:") || strings.HasPrefix(trimmed, "directory:") {
+			parts := strings.SplitN(trimmed, ":", 2)
+			if len(parts) > 1 {
+				currentSvc.RootDir = strings.Trim(strings.TrimSpace(parts[1]), "\"'")
+			}
+			inEnvVars = false
+		} else if strings.HasPrefix(trimmed, "staticPublishPath:") || strings.HasPrefix(trimmed, "output_dir:") {
+			parts := strings.SplitN(trimmed, ":", 2)
+			if len(parts) > 1 {
+				currentSvc.StaticPublishPath = strings.Trim(strings.TrimSpace(parts[1]), "\"'")
+				currentSvc.Kind = "static"
+			}
+			inEnvVars = false
+		} else if strings.HasPrefix(trimmed, "env:") || strings.HasPrefix(trimmed, "runtime:") {
 			parts := strings.SplitN(trimmed, ":", 2)
 			if len(parts) > 1 {
 				val := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
@@ -141,10 +194,13 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 				}
 			}
 			inEnvVars = false
-		} else if strings.HasPrefix(trimmed, "buildCommand:") {
+		} else if strings.HasPrefix(trimmed, "buildCommand:") || strings.HasPrefix(trimmed, "command:") {
 			parts := strings.SplitN(trimmed, ":", 2)
 			if len(parts) > 1 {
-				currentSvc.BuildCommand = strings.Trim(strings.TrimSpace(parts[1]), "\"'")
+				cmd := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
+				if currentSvc.BuildCommand == "" {
+					currentSvc.BuildCommand = cmd
+				}
 			}
 			inEnvVars = false
 		} else if strings.HasPrefix(trimmed, "startCommand:") {
@@ -167,6 +223,11 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 				}
 			}
 			inEnvVars = false
+		} else if strings.HasPrefix(trimmed, "port:") {
+			var p int
+			if _, err := fmt.Sscanf(trimmed, "port: %d", &p); err == nil && p > 0 {
+				currentSvc.InternalPort = p
+			}
 		} else if strings.HasPrefix(trimmed, "schedule:") {
 			parts := strings.SplitN(trimmed, ":", 2)
 			if len(parts) > 1 {
@@ -174,15 +235,15 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 				currentSvc.Kind = "cron"
 			}
 			inEnvVars = false
-		} else if strings.HasPrefix(trimmed, "envVars:") {
+		} else if strings.HasPrefix(trimmed, "envVars:") || strings.HasPrefix(trimmed, "env:") {
 			inEnvVars = true
-		} else if inEnvVars && strings.HasPrefix(trimmed, "- key:") {
+		} else if inEnvVars && (strings.HasPrefix(trimmed, "- key:") || strings.HasPrefix(trimmed, "key:")) {
 			parts := strings.SplitN(trimmed, ":", 2)
 			if len(parts) > 1 {
 				key := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
 				currentSvc.EnvVars[key] = ""
 			}
-		} else if inEnvVars && strings.HasPrefix(trimmed, "value:") {
+		} else if inEnvVars && (strings.HasPrefix(trimmed, "value:") || strings.HasPrefix(trimmed, "- value:")) {
 			parts := strings.SplitN(trimmed, ":", 2)
 			if len(parts) > 1 {
 				val := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
@@ -226,21 +287,35 @@ func (h *Handler) handleParseRenderYaml(c fiber.Ctx) error {
 			clean := strings.TrimSuffix(strings.TrimSuffix(rawURL, "/"), ".git")
 			parts := strings.Split(clean, "github.com/")
 			if len(parts) == 2 {
-				rawURL = fmt.Sprintf("https://raw.githubusercontent.com/%s/main/render.yaml", parts[1])
 				client := &nethttp.Client{Timeout: 6 * time.Second}
-				resp, err := client.Get(rawURL)
-				if err == nil && resp.StatusCode == 200 {
-					var b strings.Builder
-					_, _ = io.Copy(&b, resp.Body)
-					content = b.String()
-					resp.Body.Close()
+				// Try render.yaml, render.yml, devpanel.yaml on main and master branches
+				paths := []string{
+					"main/render.yaml",
+					"main/render.yml",
+					"main/devpanel.yaml",
+					"master/render.yaml",
+					"master/devpanel.yaml",
+				}
+				for _, p := range paths {
+					testURL := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s", parts[1], p)
+					resp, err := client.Get(testURL)
+					if err == nil && resp.StatusCode == 200 {
+						var b strings.Builder
+						_, _ = io.Copy(&b, resp.Body)
+						content = b.String()
+						resp.Body.Close()
+						break
+					}
+					if resp != nil {
+						resp.Body.Close()
+					}
 				}
 			}
 		}
 	}
 
 	if strings.TrimSpace(content) == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "No render.yaml content provided or found in repository"})
+		return c.Status(400).JSON(fiber.Map{"error": "No render.yaml or devpanel.yaml found in repository"})
 	}
 
 	result := parseRenderYAMLString(content)
