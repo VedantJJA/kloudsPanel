@@ -1,5 +1,5 @@
 # Multi-stage Dockerfile for kloudsPanel Agent (Go)
-# No CGO needed — pure Go binary.
+# No CGO needed - pure Go binary.
 # Build context must be the repo root (contains go.work + go.work.sum).
 
 FROM golang:1.26-alpine AS builder

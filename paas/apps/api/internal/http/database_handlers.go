@@ -119,7 +119,7 @@ func (h *Handler) provisionDatabaseInternal(ctx context.Context, projectID, name
 	externalPort := h.allocateExternalPort(ctx, engine)
 	externalHost := getRootDomain()
 	if externalHost == "" {
-		externalHost = "klouds.online"
+		externalHost = "yourdomain.com"
 	}
 
 	dbName := dbSlug
@@ -358,7 +358,7 @@ func (h *Handler) handleGetDatabase(c fiber.Ctx) error {
 		externalPort := h.allocateExternalPort(c.Context(), string(db.Engine))
 		externalHost := getRootDomain()
 		if externalHost == "" {
-			externalHost = "klouds.online"
+			externalHost = "yourdomain.com"
 		}
 
 		user, _ := meta["username"].(string)

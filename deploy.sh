@@ -91,7 +91,9 @@ run_deployment() {
     docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up --build -d --remove-orphans
 
     echo ""
-    echo -e "${GREEN}${BOLD}✓ Deployment complete! kloudsPanel is live at https://klouds.online${NC}"
+    ROOT_HOST="$(grep -E '^ROOT_DOMAIN=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2 | tr -d '\"' | tr -d '\'' || echo "yourdomain.com")"
+    [ -z "$ROOT_HOST" ] && ROOT_HOST="yourdomain.com"
+    echo -e "${GREEN}${BOLD}✓ Deployment complete! kloudsPanel is live at https://${ROOT_HOST}${NC}"
     echo -e "${CYAN}=================================================================${NC}"
 }
 

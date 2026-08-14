@@ -185,14 +185,14 @@
                 </span>
               </td>
               <td>
-                {#if svc.endpoint_url || svcSlug}
+                {#if svc.endpoint_url || svc.domain || svcSlug}
                   <a 
-                    href={svc.endpoint_url || `https://${svcSlug}.klouds.online`} 
+                    href={svc.endpoint_url || (svc.domain ? `https://${svc.domain}` : `https://${svcSlug}.${typeof window !== 'undefined' ? window.location.hostname : 'yourdomain.com'}`)} 
                     target="_blank" 
                     rel="noreferrer"
                     style="display:inline-flex; align-items:center; gap:4px; font-size:0.8125rem; color:var(--color-accent); font-weight:500;"
                   >
-                    <Globe size={13} /> {svcSlug}.klouds.online <ExternalLink size={11} />
+                    <Globe size={13} /> {svc.domain || (typeof window !== 'undefined' ? `${svcSlug}.${window.location.hostname}` : `${svcSlug}.yourdomain.com`)} <ExternalLink size={11} />
                   </a>
                 {:else}
                   <span class="text-muted text-xs">-</span>

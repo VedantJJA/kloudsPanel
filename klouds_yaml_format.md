@@ -27,8 +27,8 @@ kloudsPanel classifies application components into **5 distinct phases**:
 
 When a `klouds.yaml` declares both a static/web frontend and a backend API:
 1. **Dynamic URL Binding**: kloudsPanel automatically resolves backend service URLs into the frontend:
-   - `${services.<backend-name>.url}` -> `https://<actual-allocated-slug>.klouds.online`
-   - `${services.<backend-name>.host}` -> `<actual-allocated-slug>.klouds.online`
+   - `${services.<backend-name>.url}` -> `https://<actual-allocated-slug>.<root-domain>`
+   - `${services.<backend-name>.host}` -> `<actual-allocated-slug>.<root-domain>`
    - `${services.<backend-name>.internalUrl}` -> `http://paas-svc-<actual-slug>:<port>`
 2. **Auto-Injected Environment Variables**:
    - `VITE_API_URL: ${services.<backend-name>.url}/api`
@@ -62,7 +62,7 @@ services:
       - key: VITE_API_URL
         fromService:
           name: "backend"
-          property: "url" # Dynamically resolves to https://<backend-slug>.klouds.online/api
+          property: "url" # Dynamically resolves to https://<backend-slug>.<root-domain>/api
 
   # --------------------------------------------------
   # Phase 2: REST / GraphQL Backend API (Go / Node / Python)

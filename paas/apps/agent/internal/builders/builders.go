@@ -92,11 +92,11 @@ func (d *CNBDriver) Plan(ctx context.Context, req BuildRequest) (BuildPlan, erro
 }
 
 func (d *CNBDriver) Build(ctx context.Context, plan BuildPlan, sink LogSink) (ImageArtifact, error) {
-	sink.Write("system", "CNB build driver (stub) — Phase 5 implementation pending")
+	sink.Write("system", "CNB build driver (stub) - Phase 5 implementation pending")
 	return ImageArtifact{}, nil
 }
 
-// ─── Nixpacks Driver ──────────────────────────────────────────────────────────
+// --- Nixpacks Driver ----------------------------------------------------------
 
 type NixpacksDriver struct{}
 
@@ -114,11 +114,11 @@ func (d *NixpacksDriver) Plan(ctx context.Context, req BuildRequest) (BuildPlan,
 }
 
 func (d *NixpacksDriver) Build(ctx context.Context, plan BuildPlan, sink LogSink) (ImageArtifact, error) {
-	sink.Write("system", "Nixpacks build driver (stub) — Phase 5 implementation pending")
+	sink.Write("system", "Nixpacks build driver (stub) - Phase 5 implementation pending")
 	return ImageArtifact{}, nil
 }
 
-// ─── Dockerfile Driver ────────────────────────────────────────────────────────
+// --- Dockerfile Driver --------------------------------------------------------
 
 type DockerfileDriver struct{}
 
@@ -139,11 +139,11 @@ func (d *DockerfileDriver) Plan(ctx context.Context, req BuildRequest) (BuildPla
 }
 
 func (d *DockerfileDriver) Build(ctx context.Context, plan BuildPlan, sink LogSink) (ImageArtifact, error) {
-	sink.Write("system", "Dockerfile build driver (stub) — Phase 5 implementation pending")
+	sink.Write("system", "Dockerfile build driver (stub) - Phase 5 implementation pending")
 	return ImageArtifact{}, nil
 }
 
-// ─── Manual Stack Driver ──────────────────────────────────────────────────────
+// --- Manual Stack Driver ------------------------------------------------------
 
 type ManualDriver struct{}
 
@@ -163,7 +163,7 @@ func (d *ManualDriver) Plan(ctx context.Context, req BuildRequest) (BuildPlan, e
 }
 
 func (d *ManualDriver) Build(ctx context.Context, plan BuildPlan, sink LogSink) (ImageArtifact, error) {
-	sink.Write("system", "Manual stack build driver (stub) — Phase 5 implementation pending")
+	sink.Write("system", "Manual stack build driver (stub) - Phase 5 implementation pending")
 	return ImageArtifact{}, nil
 }
 
@@ -186,7 +186,7 @@ func generateManualDockerfile(stack, buildCmd, startCmd string) string {
 	return ""
 }
 
-// ─── Image Driver ─────────────────────────────────────────────────────────────
+// --- Image Driver -------------------------------------------------------------
 
 type ImageDriver struct{}
 

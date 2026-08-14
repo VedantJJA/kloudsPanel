@@ -112,7 +112,7 @@
     const internalHost = database?.internal_hostname || `paas-db-${database?.name}`;
     const internalPort = database?.internal_port || (engine === 'mysql' ? 3306 : engine === 'redis' ? 6379 : 5432);
     const externalPort = raw.externalPort || 15432;
-    const externalHost = raw.externalHost || 'klouds.online';
+    const externalHost = raw.externalHost || (typeof window !== 'undefined' ? window.location.hostname : 'yourdomain.com');
     const dbName = raw.databaseName || database?.database_name || database?.name || 'app';
     const user = raw.username || (engine === 'postgres' ? 'postgres' : 'root');
     const pass = raw.password || '••••••••';

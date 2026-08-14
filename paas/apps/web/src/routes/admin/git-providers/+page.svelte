@@ -44,9 +44,12 @@
   let manualToken = $state('');
   let savingManual = $state(false);
   let manualSaved = $state(false);
+  let hostDomain = $derived(
+    rootDomain || (typeof window !== 'undefined' ? window.location.host : 'yourdomain.com')
+  );
 
   let currentCallbackUrl = $derived(
-    `https://${rootDomain || 'klouds.online'}/api/v1/integrations/git/${activeTab}/callback`
+    `https://${hostDomain}/api/v1/integrations/git/${activeTab}/callback`
   );
 
   let currentConnected = $derived(
@@ -298,7 +301,7 @@
         Open <strong><a href={current.devUrl} target="_blank" rel="noreferrer" style="color:var(--color-accent-dim); text-decoration:underline;">{current.name} Developer Settings <ExternalLink size={12} style="display:inline;" /></a></strong> and create a new application/consumer.
       </li>
       <li>Set <strong>Application Name</strong> to <code class="font-mono">kloudsPanel</code>.</li>
-      <li>Set <strong>Homepage URL</strong> to <code class="font-mono">https://{rootDomain || 'klouds.online'}</code>.</li>
+      <li>Set <strong>Homepage URL</strong> to <code class="font-mono">https://{hostDomain}</code>.</li>
       <li>
         Set <strong>Authorization Callback URL / Redirect URI</strong> to:
         <div style="display:flex; align-items:center; gap:0.5rem; margin-top:6px; margin-bottom:6px;">
@@ -364,7 +367,7 @@
         <form onsubmit={saveManualToken} style="display:grid; grid-template-columns:1fr 2fr auto; gap:0.75rem; align-items:flex-end;">
           <div class="form-group" style="margin:0;">
             <label class="form-label" for="manual-username" style="font-size:0.8125rem;">Username</label>
-            <input id="manual-username" type="text" class="form-input" placeholder="e.g. vedantjja" bind:value={manualUsername} required />
+            <input id="manual-username" type="text" class="form-input" placeholder="e.g. your-git-username" bind:value={manualUsername} required />
           </div>
 
           <div class="form-group" style="margin:0;">

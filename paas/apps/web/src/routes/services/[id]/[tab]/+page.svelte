@@ -711,7 +711,7 @@
           </button>
         </div>
         <p class="text-xs text-muted" style="margin-top: 0.5rem; margin-bottom: 0;">
-          Point your domain's CNAME record to <code class="font-mono">{service?.domain || `${service?.slug}.klouds.online`}</code> to complete verification.
+          Point your domain's CNAME record to <code class="font-mono">{service?.domain || (typeof window !== 'undefined' ? `${service?.slug}.${window.location.hostname}` : 'yourdomain.com')}</code> to complete verification.
         </p>
       </div>
 
@@ -734,8 +734,8 @@
               <td>
                 <div style="display:flex; align-items:center; gap:0.5rem;">
                   <Globe size={16} style="color:var(--color-accent);" />
-                  <a href="https://{service?.domain || `${service?.slug}.klouds.online`}" target="_blank" rel="noreferrer" class="font-mono text-sm" style="font-weight:600; color:var(--color-accent-dim);">
-                    {service?.domain || `${service?.slug}.klouds.online`}
+                  <a href="https://{service?.domain || (typeof window !== 'undefined' ? `${service?.slug}.${window.location.hostname}` : 'yourdomain.com')}" target="_blank" rel="noreferrer" class="font-mono text-sm" style="font-weight:600; color:var(--color-accent-dim);">
+                    {service?.domain || (typeof window !== 'undefined' ? `${service?.slug}.${window.location.hostname}` : 'yourdomain.com')}
                   </a>
                   <ExternalLink size={12} style="color:var(--color-ink-muted);" />
                 </div>
@@ -769,7 +769,7 @@
                   </span>
                 </td>
                 <td class="font-mono text-xs" style="color:var(--color-ink-muted);">
-                  CNAME → {service?.domain || `${service?.slug}.klouds.online`}
+                  CNAME → {service?.domain || (typeof window !== 'undefined' ? `${service?.slug}.${window.location.hostname}` : 'yourdomain.com')}
                 </td>
                 <td style="text-align:right;">
                   <button 

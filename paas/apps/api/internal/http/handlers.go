@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"log/slog"
+	"os"
 
 	"github.com/yourorg/klouds/api/internal/domain"
 	"github.com/yourorg/klouds/api/internal/repository"
@@ -25,8 +26,12 @@ func (h *Handler) bootstrapAdmin() {
 	users, err := h.store.Users().ListAll(ctx, 10, 0)
 	if err == nil && len(users) == 0 {
 		hash, _ := bcrypt.GenerateFromPassword([]byte("admin321"), bcrypt.DefaultCost)
+		adminEmail := os.Getenv("ADMIN_EMAIL")
+		if adminEmail == "" {
+			adminEmail = "admin@klouds.local"
+		}
 		admin := &domain.User{
-			Email:        "vedantjja@gmail.com",
+			Email:        adminEmail,
 			DisplayName:  "Admin",
 			PasswordHash: string(hash),
 			Status:       domain.UserStatusActive,

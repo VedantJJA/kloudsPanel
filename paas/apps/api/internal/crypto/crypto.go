@@ -1,7 +1,7 @@
 // Package crypto provides envelope encryption for secret values.
 // The platform master key is an AES-256-GCM key loaded from environment.
 // Each secret is encrypted with the master key; ciphertext, nonce, and
-// key version are stored separately — never the plaintext.
+// key version are stored separately - never the plaintext.
 package crypto
 
 import (

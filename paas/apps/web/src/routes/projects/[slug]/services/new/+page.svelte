@@ -40,7 +40,7 @@
   let sourceType = $state<'git_public' | 'git_provider' | 'image'>('git_public');
 
   // Public Git source fields
-  let gitRepoUrl = $state('https://github.com/vedantjja/vtopc');
+  let gitRepoUrl = $state('');
   let gitBranch = $state('main');
   let rootDirectory = $state('.');
 
@@ -130,18 +130,18 @@
   let selectedPreset = $state<any>(null);
 
   // Form fields
-  let name = $state('vtopc');
-  let svcSlug = $state('vtopc');
+  let name = $state('');
+  let svcSlug = $state('');
   let slugEdited = false;
   let kind = $state('web');
-  let imageRef = $state('python:3.11-slim');
-  let internalPort = $state(5000);
-  let buildCommand = $state('pip install -r requirements.txt');
-  let startCommand = $state('gunicorn app:app --bind 0.0.0.0:5000 --workers 2');
+  let imageRef = $state('node:20-alpine');
+  let internalPort = $state(3000);
+  let buildCommand = $state('npm install && npm run build');
+  let startCommand = $state('npm start');
   let cronSchedule = $state('0 * * * *');
   let envVars = $state<Array<{ key: string; value: string }>>([
-    { key: 'PYTHONUNBUFFERED', value: '1' },
-    { key: 'PORT', value: '5000' }
+    { key: 'NODE_ENV', value: 'production' },
+    { key: 'PORT', value: '3000' }
   ]);
   let autoDeploy = $state(true);
 
@@ -784,7 +784,7 @@
               id="public-repo-url" 
               type="url" 
               class="form-input font-mono" 
-              placeholder="https://github.com/vedantjja/vtopc" 
+              placeholder="https://github.com/username/repository" 
               bind:value={gitRepoUrl} 
               oninput={(e: any) => handleRepoUrlChange(e.target.value)}
               required 
@@ -818,7 +818,7 @@
 
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.75rem; flex-wrap:wrap; gap:0.5rem;">
           <p class="text-xs text-muted" style="margin: 0;">
-            💡 Try pasting any public repo URL (e.g. <code>https://github.com/vedantjja/vtopc</code>).
+            💡 Paste any public Git repository URL (e.g. <code>https://github.com/username/repository</code>).
           </p>
           <button 
             type="button" 
@@ -1344,7 +1344,7 @@
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.25rem;">
         <div class="form-group" style="margin:0;">
           <label for="svc-name-input" class="form-label">Service Name</label>
-          <input id="svc-name-input" type="text" class="form-input" placeholder="e.g. vtopc" bind:value={name} required />
+          <input id="svc-name-input" type="text" class="form-input" placeholder="e.g. my-api-service" bind:value={name} required />
         </div>
 
         <div class="form-group" style="margin:0;">
@@ -1354,14 +1354,14 @@
               id="svc-slug-input" 
               type="text" 
               class="form-input font-mono" 
-              placeholder="vtopc" 
+              placeholder="my-api-service" 
               bind:value={svcSlug} 
               oninput={() => slugEdited = true} 
               required 
             />
           </div>
           <p class="text-xs text-muted" style="margin-top:0.25rem;">
-            Preview URL: <strong>https://{svcSlug || 'app'}.klouds.online</strong>
+            Preview URL: <strong>https://{svcSlug || 'app'}.{typeof window !== 'undefined' ? window.location.hostname : 'yourdomain.com'}</strong>
           </p>
         </div>
       </div>

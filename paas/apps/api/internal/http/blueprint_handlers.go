@@ -687,7 +687,7 @@ func (h *Handler) handleDeployBlueprint(c fiber.Ctx) error {
 	// 2. Pre-allocate unique slugs and mapping for all services in blueprint
 	rootDomain := getRootDomain()
 	if rootDomain == "" {
-		rootDomain = "klouds.online"
+		rootDomain = "yourdomain.com"
 	}
 	type serviceEntry struct {
 		info ParsedRenderService

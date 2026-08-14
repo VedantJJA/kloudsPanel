@@ -112,7 +112,7 @@ func getRootDomain() string {
 	if d := os.Getenv("ROOT_DOMAIN"); d != "" {
 		return d
 	}
-	return "klouds.online"
+	return "yourdomain.com"
 }
 
 func writeTraefikDynamicConfigWithDomains(slug string, port int, rootDomain string, customDomains []string) {

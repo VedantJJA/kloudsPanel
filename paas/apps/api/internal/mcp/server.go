@@ -27,7 +27,7 @@ func NewServer(logger *slog.Logger) *Server {
 func (s *Server) Handler() http.Handler {
 	// TODO Phase 10: configure Stateless=true, register tools/resources
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, `{"error":"mcp_not_implemented","detail":"MCP server — Phase 10 implementation pending"}`, http.StatusNotImplemented)
+		http.Error(w, `{"error":"mcp_not_implemented","detail":"MCP server - Phase 10 implementation pending"}`, http.StatusNotImplemented)
 	})
 }
 
@@ -70,11 +70,11 @@ func validateToolName(name string) {
 //   - projects.list       (mcp:projects:read)
 //   - projects.get        (mcp:projects:read)
 //   - deployments.get     (mcp:projects:read)
-//   - logs.tail           (mcp:logs:read) — bounded, redacted
-//   - project.structure   (mcp:projects:read) — filtered tree
-//   - deployment.explain_failure (mcp:logs:read) — diagnosis suggestions
-//   - deployment.trigger  (mcp:deployments:write) — requires idempotency key
-//   - deployment.rollback (mcp:deployments:write) — requires idempotency key
+//   - logs.tail           (mcp:logs:read) - bounded, redacted
+//   - project.structure   (mcp:projects:read) - filtered tree
+//   - deployment.explain_failure (mcp:logs:read) - diagnosis suggestions
+//   - deployment.trigger  (mcp:deployments:write) - requires idempotency key
+//   - deployment.rollback (mcp:deployments:write) - requires idempotency key
 //   - docs.search         (mcp:docs:read)
 //   - docs.fetch          (mcp:docs:read)
 
