@@ -51,7 +51,23 @@ func (h *Handler) handleGetProject(c fiber.Ctx) error {
 	if err != nil || p == nil {
 		return c.Status(404).JSON(fiber.Map{"error": "project not found"})
 	}
-	return c.JSON(p)
+	wsName := ""
+	wsSlug := ""
+	if ws, err := h.store.Workspaces().GetByID(c.Context(), p.WorkspaceID); err == nil && ws != nil {
+		wsName = ws.Name
+		wsSlug = ws.Slug
+	}
+	return c.JSON(fiber.Map{
+		"id":             p.ID,
+		"workspace_id":   p.WorkspaceID,
+		"workspace_name": wsName,
+		"workspace_slug": wsSlug,
+		"name":           p.Name,
+		"slug":           p.Slug,
+		"description":    p.Description,
+		"created_at":     p.CreatedAt,
+		"updated_at":     p.UpdatedAt,
+	})
 }
 
 func (h *Handler) handleUpdateProject(c fiber.Ctx) error {

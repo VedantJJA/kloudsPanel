@@ -186,8 +186,8 @@
         label: 'Active Containers',
         icon: Layers,
         value: `${metrics.active_containers ?? 0} Containers`,
-        sub: `Network: platform-control`,
-        pct: Math.min((metrics.active_containers ?? 0) * 10, 100),
+        sub: `Docker Engine (platform-control)`,
+        pct: Math.min(Math.round(((metrics.active_containers ?? 0) / 64) * 100), 100),
         color: '#8b5cf6'
       }
     ] as m}

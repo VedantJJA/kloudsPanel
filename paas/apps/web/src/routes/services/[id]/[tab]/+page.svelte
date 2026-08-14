@@ -75,7 +75,7 @@
         const d = await res.json();
         customDomainsList = d.domains ?? [];
         newDomainInput = '';
-        domainNotice = { type: 'success', message: '✓ Custom domain saved and TLS certificate configured with Let\'s Encrypt!' };
+        domainNotice = { type: 'success', message: 'Custom domain saved and TLS certificate configured with Let\'s Encrypt!' };
       }
     } catch (e: any) {
       domainNotice = { type: 'error', message: e.message || 'Network error' };
@@ -95,7 +95,7 @@
       if (res.ok) {
         const d = await res.json();
         customDomainsList = d.domains ?? [];
-        domainNotice = { type: 'success', message: `✓ Domain ${domainName} removed.` };
+        domainNotice = { type: 'success', message: `Domain ${domainName} removed.` };
       }
     } catch {}
   }
@@ -162,7 +162,7 @@
         const d = await res.json().catch(() => ({}));
         bannerNotice = { type: 'error', message: d.error || 'Failed to trigger deployment' };
       } else {
-        bannerNotice = { type: 'success', message: '✓ Deployment initiated! Compiling and launching container in background.' };
+        bannerNotice = { type: 'success', message: 'Deployment initiated! Compiling and launching container in background.' };
         if (tab !== 'logs') {
           goto(`/services/${id}/logs`);
         }
@@ -185,7 +185,7 @@
         const d = await res.json().catch(() => ({}));
         bannerNotice = { type: 'error', message: d.error || 'Failed to stop service' };
       } else {
-        bannerNotice = { type: 'success', message: '✓ Service container stopped' };
+        bannerNotice = { type: 'success', message: 'Service container stopped' };
       }
       await loadService();
     } catch (e: any) {
@@ -205,7 +205,7 @@
         const d = await res.json().catch(() => ({}));
         bannerNotice = { type: 'error', message: d.error || 'Failed to start service' };
       } else {
-        bannerNotice = { type: 'success', message: '✓ Service container started' };
+        bannerNotice = { type: 'success', message: 'Service container started' };
       }
       await loadService();
     } catch (e: any) {
@@ -282,7 +282,7 @@
       });
       if (res.ok) {
         envSuccess = true;
-        bannerNotice = { type: 'success', message: '✓ Environment variables saved successfully' };
+        bannerNotice = { type: 'success', message: 'Environment variables saved successfully' };
         setTimeout(() => envSuccess = false, 3000);
       } else {
         const d = await res.json().catch(() => ({}));
@@ -344,7 +344,7 @@
       if (res.ok) {
         settingsSaved = true;
         settingsDirty = false;
-        bannerNotice = { type: 'success', message: '✓ Service settings saved successfully' };
+        bannerNotice = { type: 'success', message: 'Service settings saved successfully' };
         await loadService();
         setTimeout(() => settingsSaved = false, 3000);
       } else {
@@ -365,7 +365,7 @@
       const targetId = service?.id || id;
       const res = await fetch(`/api/v1/services/${targetId}/restart`, { method: 'POST', credentials: 'include' });
       if (res.ok) {
-        bannerNotice = { type: 'success', message: '✓ Service container restarted successfully' };
+        bannerNotice = { type: 'success', message: 'Service container restarted successfully' };
       } else {
         const d = await res.json().catch(() => ({}));
         bannerNotice = { type: 'error', message: d.error || 'Failed to restart service' };
@@ -664,7 +664,7 @@
 
       {#if envSuccess}
         <div style="background:#d1fae5; border:1px solid #6ee7b7; color:#065f46; border-radius:var(--radius-md); padding:0.6rem 1rem; font-size:0.875rem; margin-bottom:1rem;">
-          ✓ Environment variables saved successfully. Redeploy to apply changes.
+          Environment variables saved successfully. Redeploy to apply changes.
         </div>
       {/if}
 
@@ -825,7 +825,7 @@
 
         {#if settingsSaved}
           <div style="background:#d1fae5; border:1px solid #6ee7b7; color:#065f46; border-radius:var(--radius-md); padding:0.65rem 1rem; font-size:0.875rem; margin-bottom:1.25rem;">
-            ✓ Service configuration updated successfully. Click "Trigger Deployment" to apply changes.
+            Service configuration updated successfully. Click "Trigger Deployment" to apply changes.
           </div>
         {/if}
 

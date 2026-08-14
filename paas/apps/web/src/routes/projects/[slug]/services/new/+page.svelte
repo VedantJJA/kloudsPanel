@@ -159,6 +159,7 @@
     badge: string;
     iconColor: string;
     iconText: string;
+    iconSvg?: string;
     defaultBuild?: string;
     defaultStart?: string;
   };
@@ -176,6 +177,7 @@
       badge: 'JavaScript/TS',
       iconColor: '#22c55e',
       iconText: 'Node',
+      iconSvg: '/icons/nodejs.svg',
       defaultBuild: 'npm install && npm run build',
       defaultStart: 'npm start'
     },
@@ -190,6 +192,7 @@
       badge: 'Python 3.11',
       iconColor: '#3b82f6',
       iconText: 'Py',
+      iconSvg: '/icons/python.svg',
       defaultBuild: 'pip install -r requirements.txt',
       defaultStart: 'gunicorn app:app --bind 0.0.0.0:5000 --workers 2'
     },
@@ -204,6 +207,7 @@
       badge: 'Go 1.22',
       iconColor: '#06b6d4',
       iconText: 'Go',
+      iconSvg: '/icons/golang.svg',
       defaultBuild: 'go build -o server .',
       defaultStart: './server'
     },
@@ -218,6 +222,7 @@
       badge: 'Rust Cargo',
       iconColor: '#f97316',
       iconText: 'Rust',
+      iconSvg: '/icons/rust.svg',
       defaultBuild: 'cargo build --release',
       defaultStart: './target/release/app'
     },
@@ -232,6 +237,7 @@
       badge: 'Java 21',
       iconColor: '#ef4444',
       iconText: 'Java',
+      iconSvg: '/icons/java.svg',
       defaultBuild: './mvnw clean package -DskipTests',
       defaultStart: 'java -jar target/*.jar'
     },
@@ -246,6 +252,7 @@
       badge: 'PHP 8.3',
       iconColor: '#8b5cf6',
       iconText: 'PHP',
+      iconSvg: '/icons/php.svg',
       defaultBuild: 'composer install --no-dev --optimize-autoloader',
       defaultStart: 'apache2-foreground'
     },
@@ -260,6 +267,7 @@
       badge: 'Ruby 3.3',
       iconColor: '#e11d48',
       iconText: 'Ruby',
+      iconSvg: '/icons/ruby.svg',
       defaultBuild: 'bundle install && rails assets:precompile',
       defaultStart: 'bundle exec puma -C config/puma.rb'
     },
@@ -274,6 +282,7 @@
       badge: 'Docker',
       iconColor: '#0284c7',
       iconText: 'Docker',
+      iconSvg: '/icons/docker.svg',
       defaultBuild: 'docker build -t app .',
       defaultStart: 'docker run app'
     },
@@ -290,6 +299,7 @@
       badge: 'Static / SPA',
       iconColor: '#0ea5e9',
       iconText: 'SPA',
+      iconSvg: '/icons/react.svg',
       defaultBuild: 'npm install && npm run build',
       defaultStart: 'nginx -g "daemon off;"'
     },
@@ -304,6 +314,7 @@
       badge: 'Web Server',
       iconColor: '#10b981',
       iconText: 'Nginx',
+      iconSvg: '/icons/nginx.svg',
       defaultBuild: '',
       defaultStart: 'nginx -g "daemon off;"'
     },
@@ -818,7 +829,7 @@
 
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.75rem; flex-wrap:wrap; gap:0.5rem;">
           <p class="text-xs text-muted" style="margin: 0;">
-            💡 Paste any public Git repository URL (e.g. <code>https://github.com/username/repository</code>).
+            Paste any public Git repository URL (e.g. <code>https://github.com/username/repository</code>).
           </p>
           <button 
             type="button" 
@@ -1310,9 +1321,15 @@
           <div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
               <div style="display: flex; align-items: center; gap: 0.6rem;">
-                <div style="width: 32px; height: 32px; border-radius: var(--radius-sm); background: {preset.iconColor}; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.75rem; letter-spacing: -0.02em; box-shadow: 0 2px 4px rgba(0,0,0,0.15);">
-                  {preset.iconText}
-                </div>
+                {#if preset.iconSvg}
+                  <div style="width: 32px; height: 32px; border-radius: var(--radius-sm); background: rgba(0,0,0,0.03); border: 1px solid var(--color-border); display: flex; align-items: center; justify-content: center; padding: 4px;">
+                    <img src={preset.iconSvg} alt={preset.title} style="width: 20px; height: 20px; object-fit: contain;" />
+                  </div>
+                {:else}
+                  <div style="width: 32px; height: 32px; border-radius: var(--radius-sm); background: {preset.iconColor}; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.75rem; letter-spacing: -0.02em; box-shadow: 0 2px 4px rgba(0,0,0,0.15);">
+                    {preset.iconText}
+                  </div>
+                {/if}
                 <span class="badge" style="background: rgba(0,0,0,0.04); font-size: 0.7rem; font-weight: 600;">{preset.badge}</span>
               </div>
               {#if selectedPreset?.id === preset.id}

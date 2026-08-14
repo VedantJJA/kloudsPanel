@@ -288,7 +288,7 @@
 
   {#if oauthSaved}
     <div style="background:#d1fae5;border:1px solid #6ee7b7;color:#065f46;border-radius:var(--radius-md);padding:0.75rem 1rem;font-size:0.875rem;margin-bottom:1.25rem">
-      ✓ {current.name} App credentials saved successfully. Click "Authorize with {current.name}" above to link your account!
+      {current.name} App credentials saved successfully. Click "Authorize with {current.name}" above to link your account!
     </div>
   {/if}
 
@@ -360,7 +360,7 @@
       <div style="margin-top:1rem; padding:1.25rem; background:var(--color-canvas); border-radius:var(--radius-md); border:1px solid var(--color-border);">
         {#if manualSaved}
           <div style="background:#d1fae5;border:1px solid #6ee7b7;color:#065f46;border-radius:var(--radius-md);padding:0.5rem 1rem;font-size:0.8125rem;margin-bottom:1rem">
-            ✓ {current.name} token connected successfully.
+            {current.name} token connected successfully.
           </div>
         {/if}
 

@@ -108,7 +108,7 @@
 
       {#if saved}
         <div style="background:#d1fae5;border:1px solid #6ee7b7;color:#065f46;border-radius:var(--radius-md);padding:0.75rem 1rem;font-size:0.875rem;margin-bottom:1.25rem">
-          ✓ Workspace updated successfully.
+          Workspace updated successfully.
         </div>
       {/if}
 

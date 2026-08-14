@@ -425,7 +425,7 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 			return
 		}
 		imageTag = dockerImageName
-		appendLog(serviceID, depID, "build", fmt.Sprintf("✓ Docker image '%s' is ready.", dockerImageName))
+		appendLog(serviceID, depID, "build", fmt.Sprintf("Docker image '%s' is ready.", dockerImageName))
 	} else if gitRepoUrl != "" {
 		appendLog(serviceID, depID, "system", fmt.Sprintf("[git] Cloning %s (branch: %s)...", gitRepoUrl, gitBranch))
 		cmd := exec.Command("git", "clone", "--depth", "1", "--branch", gitBranch, gitRepoUrl, workspaceDir)
@@ -656,13 +656,14 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 			_ = h.store.Services().Update(context.Background(), service)
 			return
 		}
-		appendLog(serviceID, depID, "build", "✓ Container image built successfully.")
+		appendLog(serviceID, depID, "build", "Container image built successfully.")
 	}
 
 	// Step 5: Stop previous container and run the new container
 	containerName := fmt.Sprintf("paas-svc-%s", service.Slug)
 	appendLog(serviceID, depID, "runtime", fmt.Sprintf("[runtime] Deploying container '%s' on network platform-control...", containerName))
 
+	_ = exec.Command("docker", "network", "create", "platform-control").Run()
 	_ = exec.Command("docker", "rm", "-f", containerName).Run()
 
 	runArgs := []string{
@@ -717,7 +718,7 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 		}
 	}
 
-	appendLog(serviceID, depID, "stdout", fmt.Sprintf("✓ Application '%s' is live and accessible at https://%s.%s", service.Name, service.Slug, rootDomain))
+	appendLog(serviceID, depID, "stdout", fmt.Sprintf("Application '%s' is live and accessible at https://%s.%s", service.Name, service.Slug, rootDomain))
 
 	finishTime := time.Now().UTC()
 	dep.Status = domain.DeploymentHealthy

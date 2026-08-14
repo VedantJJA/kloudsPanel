@@ -172,3 +172,13 @@ services:
     depends_on:
       - api
     logging: *default-logging
+
+networks:
+  platform-control:
+    name: platform-control
+    driver: bridge
+
+volumes:
+  traefik-acme:
+  api-data:
+

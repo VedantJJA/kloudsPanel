@@ -113,12 +113,16 @@
 {:else}
   <div class="page-header">
     <div>
-      <div class="page-breadcrumbs">
-        <a href="/workspaces">Workspaces</a> /
-        {#if project?.workspace_id || project?.WorkspaceID}
-          <a href="/workspaces/{project.workspace_id || project.WorkspaceID}">Workspace</a> /
+      <div class="page-breadcrumbs" style="display:flex; align-items:center; gap:6px; font-size:0.8125rem; margin-bottom:0.5rem;">
+        <a href="/workspaces" style="color:var(--color-accent); text-decoration:none;">Workspaces</a>
+        <span style="color:var(--color-ink-muted);">/</span>
+        {#if project?.workspace_slug || project?.WorkspaceSlug || project?.workspace_id || project?.WorkspaceID}
+          <a href="/workspaces/{project.workspace_slug || project.WorkspaceSlug || project.workspace_id || project.WorkspaceID}" style="color:var(--color-accent); text-decoration:none;">
+            {project.workspace_name || project.WorkspaceName || 'Workspace'}
+          </a>
+          <span style="color:var(--color-ink-muted);">/</span>
         {/if}
-        <span>{project?.name || project?.Name || slug}</span>
+        <span style="color:var(--color-ink-secondary); font-weight:500;">{project?.name || project?.Name || slug}</span>
       </div>
       <h1 class="page-title">{project?.name || project?.Name || slug}</h1>
       <p class="page-subtitle">{project?.description ?? 'Project environments & deployments'}</p>
