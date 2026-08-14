@@ -565,20 +565,16 @@ func (h *Handler) handleParseBlueprint(c fiber.Ctx) error {
 					repoBase = subparts[1]
 				}
 				client := &nethttp.Client{Timeout: 6 * time.Second}
-				// Try klouds.yaml (primary), render.yaml on main and master branches
-				paths := []string{
+				// 1. Primary Choice: klouds.yaml in repository root
+				primaryPaths := []string{
 					"main/klouds.yaml",
 					"main/klouds.yml",
 					"main/.klouds.yaml",
 					"master/klouds.yaml",
 					"master/klouds.yml",
 					"master/.klouds.yaml",
-					"main/render.yaml",
-					"main/render.yml",
-					"master/render.yaml",
-					"master/render.yml",
 				}
-				for _, p := range paths {
+				for _, p := range primaryPaths {
 					testURL := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s", parts[1], p)
 					resp, err := client.Get(testURL)
 					if err == nil && resp.StatusCode == 200 {
@@ -590,6 +586,30 @@ func (h *Handler) handleParseBlueprint(c fiber.Ctx) error {
 					}
 					if resp != nil {
 						resp.Body.Close()
+					}
+				}
+
+				// 2. Fallback Option: render.yaml in repository root (only if klouds.yaml is NOT present)
+				if strings.TrimSpace(content) == "" {
+					fallbackPaths := []string{
+						"main/render.yaml",
+						"main/render.yml",
+						"master/render.yaml",
+						"master/render.yml",
+					}
+					for _, p := range fallbackPaths {
+						testURL := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s", parts[1], p)
+						resp, err := client.Get(testURL)
+						if err == nil && resp.StatusCode == 200 {
+							var b strings.Builder
+							_, _ = io.Copy(&b, resp.Body)
+							content = b.String()
+							resp.Body.Close()
+							break
+						}
+						if resp != nil {
+							resp.Body.Close()
+						}
 					}
 				}
 

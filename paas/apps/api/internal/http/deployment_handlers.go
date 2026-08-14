@@ -282,6 +282,8 @@ CMD ["sh", "-c", "./$(ls -p | grep -v / | head -n 1)"]
 			}
 			return fmt.Sprintf(`FROM node:20-alpine AS builder
 WORKDIR /app
+RUN apk add --no-cache bash curl
+RUN corepack enable 2>/dev/null || npm install -g pnpm@latest yarn@latest 2>/dev/null || true
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
 ARG API_URL
@@ -292,7 +294,14 @@ ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 COPY . ./
 RUN %s
-RUN mkdir -p /dist && if [ -d dist ]; then cp -a dist/. /dist/; elif [ -d build ]; then cp -a build/. /dist/; elif [ -d public ]; then cp -a public/. /dist/; else cp -a . /dist/; fi
+RUN mkdir -p /dist && \
+    if [ -d artifacts/*/dist/public ]; then cp -a artifacts/*/dist/public/. /dist/; \
+    elif [ -d dist/public ]; then cp -a dist/public/. /dist/; \
+    elif [ -d dist ]; then cp -a dist/. /dist/; \
+    elif [ -d build ]; then cp -a build/. /dist/; \
+    elif [ -d public ]; then cp -a public/. /dist/; \
+    elif [ -d out ]; then cp -a out/. /dist/; \
+    else cp -a . /dist/; fi
 
 FROM nginx:alpine
 COPY nginx.default.conf /etc/nginx/conf.d/default.conf
