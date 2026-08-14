@@ -590,6 +590,7 @@ func (h *Handler) handleParseBlueprint(c fiber.Ctx) error {
 	var req struct {
 		Content string `json:"content"`
 		RepoURL string `json:"repoUrl"`
+		Token   string `json:"token"`
 	}
 	if err := c.Bind().JSON(&req); err != nil {
 		return err
@@ -611,27 +612,63 @@ func (h *Handler) handleParseBlueprint(c fiber.Ctx) error {
 					repoBase = subparts[1]
 				}
 
+				var userToken string
+				if req.Token != "" {
+					userToken = req.Token
+				}
+				if userToken == "" {
+					if u, ok := c.Locals("user").(*domain.User); ok && u != nil {
+						if it, err := h.store.GitIntegrations().Get(c.Context(), u.ID, "github"); err == nil && it != nil && it.Token != "" {
+							userToken = it.Token
+						}
+					}
+				}
+
 				branches := []string{"main", "master", "HEAD", "dev", "develop"}
 				kloudsFilenames := []string{"klouds.yaml", "klouds.yml", ".klouds.yaml", ".klouds.yml"}
 				renderFilenames := []string{"render.yaml", "render.yml", ".render.yaml", ".render.yml"}
 
 				client := &nethttp.Client{Timeout: 8 * time.Second}
 				fetchRaw := func(repoPath, branch, filename string) string {
+					// 1. Try raw.githubusercontent.com
 					testURL := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s", repoPath, branch, filename)
 					r, err := nethttp.NewRequest("GET", testURL, nil)
-					if err != nil {
-						return ""
+					if err == nil {
+						r.Header.Set("User-Agent", "kloudsPanel-App/1.0")
+						if userToken != "" {
+							r.Header.Set("Authorization", "token "+userToken)
+						}
+						resp, err := client.Do(r)
+						if err == nil && resp.StatusCode == 200 {
+							var b strings.Builder
+							_, _ = io.Copy(&b, resp.Body)
+							resp.Body.Close()
+							return b.String()
+						}
+						if resp != nil {
+							resp.Body.Close()
+						}
 					}
-					r.Header.Set("User-Agent", "kloudsPanel-App/1.0")
-					resp, err := client.Do(r)
-					if err == nil && resp.StatusCode == 200 {
-						var b strings.Builder
-						_, _ = io.Copy(&b, resp.Body)
-						resp.Body.Close()
-						return b.String()
-					}
-					if resp != nil {
-						resp.Body.Close()
+
+					// 2. Try api.github.com (works for private repositories with token!)
+					apiURL := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s?ref=%s", repoPath, filename, branch)
+					apiReq, err := nethttp.NewRequest("GET", apiURL, nil)
+					if err == nil {
+						apiReq.Header.Set("User-Agent", "kloudsPanel-App/1.0")
+						apiReq.Header.Set("Accept", "application/vnd.github.raw+json")
+						if userToken != "" {
+							apiReq.Header.Set("Authorization", "Bearer "+userToken)
+						}
+						resp, err := client.Do(apiReq)
+						if err == nil && resp.StatusCode == 200 {
+							var b strings.Builder
+							_, _ = io.Copy(&b, resp.Body)
+							resp.Body.Close()
+							return b.String()
+						}
+						if resp != nil {
+							resp.Body.Close()
+						}
 					}
 					return ""
 				}
