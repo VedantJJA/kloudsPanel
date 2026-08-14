@@ -23,7 +23,8 @@
     ChevronLeft,
     ChevronRight,
     PanelLeftClose,
-    PanelLeftOpen
+    PanelLeftOpen,
+    FolderGit2
   } from 'lucide-svelte';
 
   let sidebarOpen = $state(false);
@@ -97,6 +98,7 @@
     { label: 'Databases', href: '/databases', icon: Database },
     { section: 'Administration', label: '', href: '', icon: null },
     { label: 'Platform', href: '/admin/setup', icon: Settings },
+    { label: 'Git Providers', href: '/admin/git-providers', icon: FolderGit2 },
     { label: 'Users', href: '/admin/users', icon: Users },
     { label: 'Telemetry', href: '/admin/telemetry', icon: Activity },
     { label: 'Audit Log', href: '/admin/audit', icon: ClipboardList },

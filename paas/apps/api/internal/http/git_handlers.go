@@ -3,6 +3,8 @@ package http
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	nethttp "net/http"
@@ -486,6 +488,31 @@ func (h *Handler) handleGitOAuthCallback(c fiber.Ctx) error {
 		Scopes:    "repo",
 	}
 	_ = h.store.GitIntegrations().Upsert(context.Background(), gitItem)
+
+	// Ensure the user's authenticated session cookie is preserved on redirect
+	if userID != "" {
+		raw := make([]byte, 32)
+		_, _ = rand.Read(raw)
+		sessToken := hex.EncodeToString(raw)
+		expires := time.Now().Add(7 * 24 * time.Hour)
+
+		sessionMu.Lock()
+		sessionTokens[sessToken] = SessionInfo{
+			UserID:    userID,
+			ExpiresAt: expires,
+		}
+		sessionMu.Unlock()
+
+		c.Cookie(&fiber.Cookie{
+			Name:     "session_token",
+			Value:    sessToken,
+			Path:     "/",
+			Expires:  expires,
+			HTTPOnly: true,
+			SameSite: "Lax",
+			Secure:   false,
+		})
+	}
 
 	sep := "?"
 	if strings.Contains(returnTo, "?") {

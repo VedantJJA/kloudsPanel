@@ -139,10 +139,10 @@ func (h *Handler) handleLogin(c fiber.Ctx) error {
 		ExpiresAt: expires,
 	}
 	sessionMu.Unlock()
-
 	c.Cookie(&fiber.Cookie{
 		Name:     "session_token",
 		Value:    token,
+		Path:     "/",
 		Expires:  expires,
 		HTTPOnly: true,
 		SameSite: "Lax",
@@ -170,8 +170,10 @@ func (h *Handler) handleLogout(c fiber.Ctx) error {
 	c.Cookie(&fiber.Cookie{
 		Name:     "session_token",
 		Value:    "",
+		Path:     "/",
 		Expires:  time.Now().Add(-1 * time.Hour),
 		HTTPOnly: true,
+		SameSite: "Lax",
 	})
 	return c.JSON(fiber.Map{"status": "ok"})
 }
