@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { Settings, FolderGit2, Check, Loader2, Plus, Trash2 } from 'lucide-svelte';
+  import { Settings, FolderGit2, Check, Loader2, Plus, Trash2, Key, Globe, ShieldCheck, Copy, ExternalLink, Sparkles } from 'lucide-svelte';
 
   let rootDomain = $state('');
   let acmeEmail = $state('');
@@ -8,6 +8,13 @@
   let saving = $state(false);
   let saved = $state(false);
   let error = $state('');
+
+  // OAuth App Credentials
+  let githubClientId = $state('');
+  let githubClientSecret = $state('');
+  let savingOAuth = $state(false);
+  let oauthSaved = $state(false);
+  let copiedCallback = $state(false);
 
   // Git Integrations
   let gitIntegrations = $state<any[]>([]);
@@ -17,10 +24,12 @@
   let savingGit = $state(false);
   let gitSaved = $state(false);
 
+  let callbackUrl = $derived(`https://${rootDomain || 'klouds.online'}/api/v1/integrations/git/github/callback`);
+
   async function loadData() {
     try {
       const [res, gitRes] = await Promise.all([
-        fetch('/api/v1/admin/platform', { credentials: 'include' }),
+        fetch('/api/v1/admin/settings', { credentials: 'include' }),
         fetch('/api/v1/integrations/git', { credentials: 'include' })
       ]);
       if (res.ok) {
@@ -28,6 +37,8 @@
         rootDomain = data.settings?.root_domain ?? '';
         acmeEmail = data.settings?.acme_email ?? '';
         dnsMode = data.settings?.dns_mode ?? 'http-01';
+        githubClientId = data.settings?.github_client_id ?? '';
+        githubClientSecret = data.settings?.github_client_secret ?? '';
       }
       if (gitRes.ok) {
         gitIntegrations = (await gitRes.json()).integrations ?? [];
@@ -51,34 +62,43 @@
       });
       if (!res.ok) { error = (await res.json()).detail; return; }
       saved = true;
+      setTimeout(() => saved = false, 3000);
     } catch { error = 'Network error'; }
     finally { saving = false; }
   }
 
-  async function saveGitProvider(e: Event) {
+  async function saveOAuthCredentials(e: Event) {
     e.preventDefault();
-    savingGit = true;
-    gitSaved = false;
+    savingOAuth = true;
+    oauthSaved = false;
     try {
-      const res = await fetch('/api/v1/integrations/git', {
-        method: 'POST',
+      const res = await fetch('/api/v1/admin/settings', {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          provider: selectedProvider,
-          username: providerUsername,
-          token: providerToken
+          github_client_id: githubClientId,
+          github_client_secret: githubClientSecret
         })
       });
       if (res.ok) {
-        gitSaved = true;
-        providerToken = '';
+        oauthSaved = true;
         await loadData();
-        setTimeout(() => gitSaved = false, 3000);
+        setTimeout(() => oauthSaved = false, 3000);
       }
     } finally {
-      savingGit = false;
+      savingOAuth = false;
     }
+  }
+
+  async function copyCallback() {
+    navigator.clipboard.writeText(callbackUrl);
+    copiedCallback = true;
+    setTimeout(() => copiedCallback = false, 2000);
+  }
+
+  async function authorizeWithGitHub() {
+    window.location.href = `/api/v1/integrations/git/github/authorize?return_to=${encodeURIComponent('/admin/setup')}`;
   }
 
   async function disconnectGit(provider: string) {
@@ -89,13 +109,117 @@
 </script>
 
 <svelte:head>
-  <title>Platform Setup — kloudsPanel</title>
+  <title>Platform Setup - kloudsPanel</title>
 </svelte:head>
 
-<div class="page-header">
+<div class="page-header" style="margin-bottom: 1.5rem;">
   <div>
     <h1 class="page-title">Platform Setup</h1>
-    <p class="page-subtitle">Configure root domain, TLS, networking, and Git provider integrations — main admin only</p>
+    <p class="page-subtitle">Configure root domain, TLS, networking, and 1-Click GitHub App authorization - main admin only</p>
+  </div>
+</div>
+
+<!-- 1-Click GitHub App Authorization Card (Primary) -->
+<div class="card" style="margin-bottom: 2rem; padding: 1.5rem; border: 2px solid var(--color-accent); background: var(--color-surface);">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:1rem; margin-bottom:1.25rem;">
+    <div style="display:flex; align-items:center; gap:0.75rem;">
+      <div style="width:44px; height:44px; border-radius:var(--radius-md); background:#24292f; color:#fff; display:flex; align-items:center; justify-content:center;">
+        <FolderGit2 size={24} />
+      </div>
+      <div>
+        <div style="font-size:1.1rem; font-weight:700; color:var(--color-ink); display:flex; align-items:center; gap:6px;">
+          GitHub 1-Click App Authorization
+          <span class="badge badge-running" style="font-size:0.7rem;">Official Flow</span>
+        </div>
+        <p class="text-xs text-muted" style="margin:2px 0 0 0;">
+          Allow kloudsPanel to authorize with GitHub like Vercel and Render without using personal access tokens.
+        </p>
+      </div>
+    </div>
+
+    <!-- Live Status / Connect Button -->
+    {#if gitIntegrations.find(g => g.provider === 'github' && g.connected)}
+      {@const gh = gitIntegrations.find(g => g.provider === 'github')}
+      <div style="display:flex; align-items:center; gap:0.75rem; background:rgba(16,185,129,0.1); border:1px solid #10b981; border-radius:var(--radius-md); padding:6px 12px;">
+        <ShieldCheck size={18} style="color:#059669;" />
+        <span style="font-size:0.875rem; font-weight:600; color:#065f46;">
+          Connected as @{gh.username}
+        </span>
+        <button 
+          type="button" 
+          class="btn btn-secondary" 
+          style="padding:2px 8px; font-size:0.75rem; color:var(--color-error); border:none;"
+          onclick={() => disconnectGit('github')}
+        >
+          Disconnect
+        </button>
+      </div>
+    {:else if githubClientId}
+      <button 
+        type="button" 
+        class="btn btn-primary" 
+        style="padding:8px 18px; font-size:0.875rem; background:#24292f; border-color:transparent; display:flex; align-items:center; gap:8px;"
+        onclick={authorizeWithGitHub}
+      >
+        <FolderGit2 size={16} /> Authorize with GitHub (1-Click)
+      </button>
+    {/if}
+  </div>
+
+  {#if oauthSaved}
+    <div style="background:#d1fae5;border:1px solid #6ee7b7;color:#065f46;border-radius:var(--radius-md);padding:0.75rem 1rem;font-size:0.875rem;margin-bottom:1.25rem">
+      ✓ GitHub OAuth credentials saved. You can now click "Authorize with GitHub" above!
+    </div>
+  {/if}
+
+  <!-- Configuration Steps -->
+  <div style="background:rgba(0,0,0,0.02); padding:1.25rem; border-radius:var(--radius-md); border:1px solid var(--color-border); margin-bottom:1.25rem;">
+    <div style="font-weight:700; font-size:0.875rem; margin-bottom:0.6rem;">Quick 30-Second Setup on GitHub:</div>
+    <ol style="margin:0 0 1rem 1.25rem; padding:0; font-size:0.8125rem; line-height:1.6; color:var(--color-ink);">
+      <li>Go to <strong><a href="https://github.com/settings/developers" target="_blank" rel="noreferrer" style="color:var(--color-accent-dim);">GitHub Developer Settings → OAuth Apps</a></strong> and click <strong>"New OAuth App"</strong>.</li>
+      <li>Set <strong>Homepage URL</strong> to <code class="font-mono">https://{rootDomain || 'klouds.online'}</code>.</li>
+      <li>
+        Set <strong>Authorization callback URL</strong> to:
+        <div style="display:flex; align-items:center; gap:0.5rem; margin-top:4px;">
+          <input type="text" readonly value={callbackUrl} class="form-input font-mono text-xs" style="max-width:480px;" />
+          <button type="button" class="btn btn-secondary" style="padding:4px 8px; font-size:0.75rem;" onclick={copyCallback}>
+            {#if copiedCallback}<Check size={14} style="color:var(--color-success);" /> Copied{:else}<Copy size={14} /> Copy{/if}
+          </button>
+        </div>
+      </li>
+      <li>Click <strong>Register application</strong>, then copy your <strong>Client ID</strong> and generate a <strong>Client Secret</strong> below.</li>
+    </ol>
+
+    <!-- Credentials Form -->
+    <form onsubmit={saveOAuthCredentials} style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)) auto; gap:0.75rem; align-items:flex-end;">
+      <div class="form-group" style="margin:0;">
+        <label class="form-label" for="gh-client-id" style="font-size:0.8125rem;">GitHub Client ID</label>
+        <input 
+          id="gh-client-id" 
+          type="text" 
+          class="form-input font-mono" 
+          placeholder="e.g. Iv1.8a2b3c4d5e6f7g8h" 
+          bind:value={githubClientId} 
+          required 
+        />
+      </div>
+
+      <div class="form-group" style="margin:0;">
+        <label class="form-label" for="gh-client-secret" style="font-size:0.8125rem;">GitHub Client Secret</label>
+        <input 
+          id="gh-client-secret" 
+          type="password" 
+          class="form-input font-mono" 
+          placeholder="••••••••••••••••••••••••••••••••" 
+          bind:value={githubClientSecret} 
+          required 
+        />
+      </div>
+
+      <button type="submit" class="btn btn-primary" style="height:38px; padding:0 16px; font-size:0.8125rem;" disabled={savingOAuth || !githubClientId || !githubClientSecret}>
+        {#if savingOAuth}<Loader2 size={14} class="animate-spin" /> Saving...{:else}<Key size={14} /> Save App Keys{/if}
+      </button>
+    </form>
   </div>
 </div>
 
@@ -103,12 +227,13 @@
   <!-- Domain & TLS Configuration -->
   <div class="card">
     <div class="card-header">
-      <h3 style="margin:0;">Domain & TLS Configuration</h3>
+      <h3 style="margin:0;">Root Domain & TLS</h3>
+      <p class="text-xs text-muted" style="margin-top:0.25rem;">Master domain and Let's Encrypt certificate settings.</p>
     </div>
 
     {#if saved}
       <div style="background:#d1fae5;border:1px solid #6ee7b7;color:#065f46;border-radius:var(--radius-md);padding:0.75rem 1rem;font-size:0.875rem;margin-bottom:1.25rem">
-        ✓ Configuration saved. Traefik will reload within 30 seconds.
+        ✓ Configuration saved.
       </div>
     {/if}
     {#if error}
@@ -147,28 +272,22 @@
       </div>
 
       <button type="submit" class="btn btn-primary" disabled={saving}>
-        {#if saving}Saving & Verifying…{:else}Save Domain Config{/if}
+        {#if saving}Saving & Verifying...{:else}Save Domain Config{/if}
       </button>
     </form>
   </div>
 
-  <!-- Git Integrations Card -->
+  <!-- Connected Git Accounts -->
   <div class="card">
     <div class="card-header">
-      <h3 style="margin:0;">Git Provider Integrations</h3>
-      <p class="text-xs text-muted" style="margin-top:0.25rem;">Connect GitHub, Bitbucket, and GitLab accounts.</p>
+      <h3 style="margin:0;">Connected Git Accounts</h3>
+      <p class="text-xs text-muted" style="margin-top:0.25rem;">Active provider authorizations for your account.</p>
     </div>
 
-    {#if gitSaved}
-      <div style="background:#d1fae5;border:1px solid #6ee7b7;color:#065f46;border-radius:var(--radius-md);padding:0.75rem 1rem;font-size:0.875rem;margin-bottom:1.25rem">
-        ✓ Git provider connected successfully.
-      </div>
-    {/if}
-
     <!-- Connected Providers List -->
-    <div style="display:flex; flex-direction:column; gap:0.75rem; margin-bottom:1.5rem;">
+    <div style="display:flex; flex-direction:column; gap:0.75rem;">
       {#each gitIntegrations as item}
-        <div style="display:flex; align-items:center; justify-content:space-between; padding:0.75rem; border:1px solid var(--color-border); border-radius:var(--radius-md); background:var(--color-surface);">
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:0.85rem; border:1px solid var(--color-border); border-radius:var(--radius-md); background:var(--color-surface);">
           <div style="display:flex; align-items:center; gap:0.75rem;">
             <FolderGit2 size={20} style="color:var(--color-accent);" />
             <div>
@@ -177,7 +296,7 @@
                 {#if item.connected}
                   Connected as <span class="font-mono" style="color:var(--color-ink); font-weight:600;">@{item.username}</span>
                 {:else}
-                  Not connected (Public cloning enabled)
+                  Not connected
                 {/if}
               </div>
             </div>
@@ -187,41 +306,15 @@
             <button class="btn btn-secondary" style="padding:4px 8px; color:var(--color-error); font-size:0.75rem;" onclick={() => disconnectGit(item.provider)}>
               Disconnect
             </button>
+          {:else if item.provider === 'github' && githubClientId}
+            <button class="btn btn-primary" style="padding:4px 10px; font-size:0.75rem; background:#24292f; border-color:transparent;" onclick={authorizeWithGitHub}>
+              Connect
+            </button>
           {:else}
             <span class="badge" style="background:#f1f5f9; color:#475569;">Ready</span>
           {/if}
         </div>
       {/each}
     </div>
-
-    <!-- Link Provider Form -->
-    <form onsubmit={saveGitProvider} style="border-top:1px solid var(--color-border); padding-top:1.25rem;">
-      <h4 style="margin:0 0 1rem 0; font-size:0.9375rem;">Link Account / Access Token</h4>
-      
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; margin-bottom:0.75rem;">
-        <div class="form-group" style="margin:0;">
-          <label class="form-label" for="git-prov-select">Provider</label>
-          <select id="git-prov-select" class="form-select" bind:value={selectedProvider}>
-            <option value="github">GitHub</option>
-            <option value="bitbucket">Bitbucket</option>
-            <option value="gitlab">GitLab</option>
-          </select>
-        </div>
-
-        <div class="form-group" style="margin:0;">
-          <label class="form-label" for="git-prov-user">Username</label>
-          <input id="git-prov-user" type="text" class="form-input" placeholder="e.g. vedantjja" bind:value={providerUsername} required />
-        </div>
-      </div>
-
-      <div class="form-group" style="margin-bottom:1rem;">
-        <label class="form-label" for="git-prov-token">Personal Access Token / Password</label>
-        <input id="git-prov-token" type="password" class="form-input font-mono text-xs" placeholder="ghp_... or Bitbucket token" bind:value={providerToken} required />
-      </div>
-
-      <button type="submit" class="btn btn-secondary" disabled={savingGit || !providerUsername || !providerToken}>
-        {#if savingGit}<Loader2 size={14} class="animate-spin" /> Saving...{:else}<Plus size={14} /> Connect {selectedProvider}{/if}
-      </button>
-    </form>
   </div>
 </div>

@@ -9,16 +9,28 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/yourorg/klouds/api/internal/domain"
 )
 
-// ─── Git Integrations Handlers (GitHub, GitLab, Bitbucket) ───────────────────
+var (
+	oauthCredsMu   sync.RWMutex
+	oauthConfigMap = make(map[string]map[string]string)
+)
 
 func getProviderOAuthCredentials(provider string) (string, string) {
-	switch strings.ToLower(provider) {
+	provider = strings.ToLower(provider)
+	oauthCredsMu.RLock()
+	if creds, ok := oauthConfigMap[provider]; ok && creds["client_id"] != "" {
+		oauthCredsMu.RUnlock()
+		return creds["client_id"], creds["client_secret"]
+	}
+	oauthCredsMu.RUnlock()
+
+	switch provider {
 	case "github":
 		return os.Getenv("GITHUB_CLIENT_ID"), os.Getenv("GITHUB_CLIENT_SECRET")
 	case "gitlab":
@@ -28,6 +40,17 @@ func getProviderOAuthCredentials(provider string) (string, string) {
 	default:
 		return "", ""
 	}
+}
+
+func setProviderOAuthCredentials(provider, clientID, clientSecret string) {
+	oauthCredsMu.Lock()
+	defer oauthCredsMu.Unlock()
+	provider = strings.ToLower(provider)
+	if oauthConfigMap[provider] == nil {
+		oauthConfigMap[provider] = make(map[string]string)
+	}
+	oauthConfigMap[provider]["client_id"] = clientID
+	oauthConfigMap[provider]["client_secret"] = clientSecret
 }
 
 // Fetch GitHub Repositories

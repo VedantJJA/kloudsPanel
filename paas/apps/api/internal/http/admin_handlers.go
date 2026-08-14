@@ -115,24 +115,51 @@ func (h *Handler) handleGetPlatformSettings(c fiber.Ctx) error {
 	autoApprove := autoApproveUsers
 	autoApproveMu.RUnlock()
 
+	ghClient, ghSecret := getProviderOAuthCredentials("github")
+	glClient, glSecret := getProviderOAuthCredentials("gitlab")
+	bbClient, bbSecret := getProviderOAuthCredentials("bitbucket")
+
 	return c.JSON(fiber.Map{
 		"settings": fiber.Map{
-			"root_domain":        getRootDomain(),
-			"acme_email":         "",
-			"dns_mode":           "http-01",
-			"auto_approve_users": autoApprove,
+			"root_domain":             getRootDomain(),
+			"acme_email":              "",
+			"dns_mode":                "http-01",
+			"auto_approve_users":      autoApprove,
+			"github_client_id":        ghClient,
+			"github_client_secret":    ghSecret,
+			"gitlab_client_id":        glClient,
+			"gitlab_client_secret":    glSecret,
+			"bitbucket_client_id":     bbClient,
+			"bitbucket_client_secret": bbSecret,
 		},
 	})
 }
 
 func (h *Handler) handleUpdatePlatformSettings(c fiber.Ctx) error {
 	var req struct {
-		AutoApproveUsers *bool `json:"auto_approve_users"`
+		AutoApproveUsers      *bool  `json:"auto_approve_users"`
+		GitHubClientID        string `json:"github_client_id"`
+		GitHubClientSecret    string `json:"github_client_secret"`
+		GitLabClientID        string `json:"gitlab_client_id"`
+		GitLabClientSecret    string `json:"gitlab_client_secret"`
+		BitbucketClientID     string `json:"bitbucket_client_id"`
+		BitbucketClientSecret string `json:"bitbucket_client_secret"`
 	}
-	if err := c.Bind().JSON(&req); err == nil && req.AutoApproveUsers != nil {
-		autoApproveMu.Lock()
-		autoApproveUsers = *req.AutoApproveUsers
-		autoApproveMu.Unlock()
+	if err := c.Bind().JSON(&req); err == nil {
+		if req.AutoApproveUsers != nil {
+			autoApproveMu.Lock()
+			autoApproveUsers = *req.AutoApproveUsers
+			autoApproveMu.Unlock()
+		}
+		if req.GitHubClientID != "" {
+			setProviderOAuthCredentials("github", req.GitHubClientID, req.GitHubClientSecret)
+		}
+		if req.GitLabClientID != "" {
+			setProviderOAuthCredentials("gitlab", req.GitLabClientID, req.GitLabClientSecret)
+		}
+		if req.BitbucketClientID != "" {
+			setProviderOAuthCredentials("bitbucket", req.BitbucketClientID, req.BitbucketClientSecret)
+		}
 	}
 	return h.handleGetPlatformSettings(c)
 }
