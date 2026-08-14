@@ -428,9 +428,6 @@
             <button type="button" class="btn btn-secondary" style="font-size: 0.75rem; padding: 3px 8px;" onclick={() => setTemplateQuery("SELECT table_name FROM information_schema.tables WHERE table_schema='public';")}>
               List Tables
             </button>
-            <button type="button" class="btn btn-secondary" style="font-size: 0.75rem; padding: 3px 8px;" onclick={() => setTemplateQuery('CREATE TABLE IF NOT EXISTS demo (id SERIAL PRIMARY KEY, title TEXT, created_at TIMESTAMPTZ DEFAULT NOW()); INSERT INTO demo (title) VALUES (\'Hello kloudsPanel\'); SELECT * FROM demo;')}>
-              Create Demo Table
-            </button>
           {:else if database?.engine === 'mysql'}
             <button type="button" class="btn btn-secondary" style="font-size: 0.75rem; padding: 3px 8px;" onclick={() => setTemplateQuery('SHOW TABLES;')}>
               Show Tables

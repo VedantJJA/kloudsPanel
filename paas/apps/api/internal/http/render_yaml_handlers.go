@@ -418,12 +418,16 @@ func (h *Handler) handleDeployBlueprint(c fiber.Ctx) error {
 		}
 
 		// Trigger deployment
+		seq, _ := h.store.Deployments().GetNextSequence(c.Context(), s.ID)
+		now := time.Now().UTC()
 		dep := &domain.Deployment{
 			ServiceID:   s.ID,
+			Sequence:    seq,
 			Trigger:     domain.TriggerManual,
 			TriggeredBy: &u.ID,
 			Status:      domain.DeploymentQueued,
 			BuildDriver: "docker",
+			StartedAt:   &now,
 		}
 		_ = h.store.Deployments().Create(c.Context(), dep)
 

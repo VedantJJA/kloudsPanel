@@ -28,7 +28,7 @@ var (
 	serviceLatestLogs = make(map[string][]LogEntry)
 )
 
-func appendLog(serviceID, stream, message string) {
+func appendLog(serviceID, depID, stream, message string) {
 	logMu.Lock()
 	defer logMu.Unlock()
 
@@ -38,17 +38,32 @@ func appendLog(serviceID, stream, message string) {
 		Message:   message,
 	}
 
-	logs := serviceLatestLogs[serviceID]
-	if len(logs) > 500 {
-		logs = logs[1:]
+	if serviceID != "" {
+		logs := serviceLatestLogs[serviceID]
+		if len(logs) > 500 {
+			logs = logs[1:]
+		}
+		serviceLatestLogs[serviceID] = append(logs, entry)
 	}
-	serviceLatestLogs[serviceID] = append(logs, entry)
+
+	if depID != "" {
+		logs := serviceLatestLogs[depID]
+		if len(logs) > 500 {
+			logs = logs[1:]
+		}
+		serviceLatestLogs[depID] = append(logs, entry)
+	}
 }
 
-func clearLogs(serviceID string) {
+func clearLogs(serviceID, depID string) {
 	logMu.Lock()
 	defer logMu.Unlock()
-	serviceLatestLogs[serviceID] = []LogEntry{}
+	if serviceID != "" {
+		serviceLatestLogs[serviceID] = []LogEntry{}
+	}
+	if depID != "" {
+		serviceLatestLogs[depID] = []LogEntry{}
+	}
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -244,8 +259,9 @@ CMD ["sh", "-c", "%s"]
 
 func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deployment, rootDomain string) {
 	serviceID := service.ID
-	clearLogs(serviceID)
-	appendLog(serviceID, "system", fmt.Sprintf("[platform] Deployment #%d triggered for service '%s' (%s)", dep.Sequence, service.Name, service.Slug))
+	depID := dep.ID
+	clearLogs(serviceID, depID)
+	appendLog(serviceID, depID, "system", fmt.Sprintf("[platform] Deployment #%d triggered for service '%s' (%s)", dep.Sequence, service.Name, service.Slug))
 
 	var resMap map[string]any
 	var gitRepoUrl, gitBranch, buildCommand, startCommand, presetId string
@@ -296,7 +312,7 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 
 	// Step 1: Clone Git Repository if URL is provided
 	if gitRepoUrl != "" {
-		appendLog(serviceID, "system", fmt.Sprintf("[git] Cloning %s (branch: %s)...", gitRepoUrl, gitBranch))
+		appendLog(serviceID, depID, "system", fmt.Sprintf("[git] Cloning %s (branch: %s)...", gitRepoUrl, gitBranch))
 		cmd := exec.Command("git", "clone", "--depth", "1", "--branch", gitBranch, gitRepoUrl, workspaceDir)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
@@ -307,17 +323,19 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 
 		for _, line := range strings.Split(string(out), "\n") {
 			if strings.TrimSpace(line) != "" {
-				appendLog(serviceID, "stdout", line)
+				appendLog(serviceID, depID, "stdout", line)
 			}
 		}
 
 		if err != nil {
-			appendLog(serviceID, "stderr", fmt.Sprintf("[git] Error cloning repository: %v", err))
+			appendLog(serviceID, depID, "stderr", fmt.Sprintf("[git] Error cloning repository: %v", err))
 			dep.Status = domain.DeploymentFailed
 			_ = h.store.Deployments().Update(context.Background(), dep)
+			service.RuntimeStatus = domain.ServiceStatusFailed
+			_ = h.store.Services().Update(context.Background(), service)
 			return
 		}
-		appendLog(serviceID, "system", "[git] Repository checkout complete.")
+		appendLog(serviceID, depID, "system", "[git] Repository checkout complete.")
 
 		var rootDirectory string
 		if rd, ok := resMap["rootDirectory"].(string); ok && rd != "" && rd != "." {
@@ -331,7 +349,7 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 			subDir := filepath.Join(workspaceDir, rootDirectory)
 			if info, err := os.Stat(subDir); err == nil && info.IsDir() {
 				contextDir = subDir
-				appendLog(serviceID, "system", fmt.Sprintf("[builder] Building from subdirectory: %s", rootDirectory))
+				appendLog(serviceID, depID, "system", fmt.Sprintf("[builder] Building from subdirectory: %s", rootDirectory))
 			}
 		}
 
@@ -358,13 +376,13 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 						matchingSvc = &parsed.Services[0]
 					}
 					svc := *matchingSvc
-					appendLog(serviceID, "system", fmt.Sprintf("[render] Applied config for '%s' (preset: %s, rootDir: %s, port: %d)", svc.Name, svc.Preset, svc.RootDir, svc.InternalPort))
+					appendLog(serviceID, depID, "system", fmt.Sprintf("[render] Applied config for '%s' (preset: %s, rootDir: %s, port: %d)", svc.Name, svc.Preset, svc.RootDir, svc.InternalPort))
 					if svc.RootDir != "" && rootDirectory == "" {
 						rootDirectory = svc.RootDir
 						subDir := filepath.Join(workspaceDir, rootDirectory)
 						if info, err := os.Stat(subDir); err == nil && info.IsDir() {
 							contextDir = subDir
-							appendLog(serviceID, "system", fmt.Sprintf("[builder] Switched build context to: %s", rootDirectory))
+							appendLog(serviceID, depID, "system", fmt.Sprintf("[builder] Switched build context to: %s", rootDirectory))
 						}
 					}
 					if buildCommand == "" && svc.BuildCommand != "" {
@@ -398,7 +416,7 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 					extractedCmd := strings.TrimSpace(strings.TrimPrefix(pLine, "web:"))
 					if startCommand == "" {
 						startCommand = extractedCmd
-						appendLog(serviceID, "system", fmt.Sprintf("[procfile] Found Procfile start command: %s", startCommand))
+						appendLog(serviceID, depID, "system", fmt.Sprintf("[procfile] Found Procfile start command: %s", startCommand))
 					}
 					break
 				}
@@ -413,15 +431,15 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 				if info, err := os.Stat(subPath); err == nil && info.IsDir() {
 					if _, err := os.Stat(filepath.Join(subPath, "package.json")); err == nil {
 						contextDir = subPath
-						appendLog(serviceID, "system", fmt.Sprintf("[universal-builder] Auto-discovered project in subfolder: /%s", sub))
+						appendLog(serviceID, depID, "system", fmt.Sprintf("[universal-builder] Auto-discovered project in subfolder: /%s", sub))
 						break
 					} else if _, err := os.Stat(filepath.Join(subPath, "requirements.txt")); err == nil {
 						contextDir = subPath
-						appendLog(serviceID, "system", fmt.Sprintf("[universal-builder] Auto-discovered project in subfolder: /%s", sub))
+						appendLog(serviceID, depID, "system", fmt.Sprintf("[universal-builder] Auto-discovered project in subfolder: /%s", sub))
 						break
 					} else if _, err := os.Stat(filepath.Join(subPath, "go.mod")); err == nil {
 						contextDir = subPath
-						appendLog(serviceID, "system", fmt.Sprintf("[universal-builder] Auto-discovered project in subfolder: /%s", sub))
+						appendLog(serviceID, depID, "system", fmt.Sprintf("[universal-builder] Auto-discovered project in subfolder: /%s", sub))
 						break
 					}
 				}
@@ -468,32 +486,34 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 		// Step 4: Check if Dockerfile exists or generate one
 		dockerfilePath := filepath.Join(contextDir, "Dockerfile")
 		if _, err := os.Stat(dockerfilePath); os.IsNotExist(err) {
-			appendLog(serviceID, "build", fmt.Sprintf("[builder] Generating runtime Dockerfile (preset: %s, port: %d)", presetId, port))
+			appendLog(serviceID, depID, "build", fmt.Sprintf("[builder] Generating runtime Dockerfile (preset: %s, port: %d)", presetId, port))
 			dfContent := generateDockerfileForPreset(presetId, buildCommand, startCommand, port)
 			_ = os.WriteFile(dockerfilePath, []byte(dfContent), 0644)
 		}
 
 		// Step 5: Build Container Image with Docker
-		appendLog(serviceID, "build", fmt.Sprintf("[builder] Running 'docker build -t %s %s'...", imageTag, contextDir))
+		appendLog(serviceID, depID, "build", fmt.Sprintf("[builder] Running 'docker build -t %s %s'...", imageTag, contextDir))
 		buildCmd := exec.Command("docker", "build", "-t", imageTag, contextDir)
 		buildOut, err := buildCmd.CombinedOutput()
 		for _, line := range strings.Split(string(buildOut), "\n") {
 			if strings.TrimSpace(line) != "" {
-				appendLog(serviceID, "build", line)
+				appendLog(serviceID, depID, "build", line)
 			}
 		}
 		if err != nil {
-			appendLog(serviceID, "stderr", fmt.Sprintf("[builder] Build failed: %v", err))
+			appendLog(serviceID, depID, "stderr", fmt.Sprintf("[builder] Build failed: %v", err))
 			dep.Status = domain.DeploymentFailed
 			_ = h.store.Deployments().Update(context.Background(), dep)
+			service.RuntimeStatus = domain.ServiceStatusFailed
+			_ = h.store.Services().Update(context.Background(), service)
 			return
 		}
-		appendLog(serviceID, "build", "✓ Container image built successfully.")
+		appendLog(serviceID, depID, "build", "✓ Container image built successfully.")
 	}
 
 	// Step 5: Stop previous container and run the new container
 	containerName := fmt.Sprintf("paas-svc-%s", service.Slug)
-	appendLog(serviceID, "runtime", fmt.Sprintf("[runtime] Deploying container '%s' on network platform-control...", containerName))
+	appendLog(serviceID, depID, "runtime", fmt.Sprintf("[runtime] Deploying container '%s' on network platform-control...", containerName))
 
 	_ = exec.Command("docker", "rm", "-f", containerName).Run()
 
@@ -523,19 +543,21 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 	runOut, err := runCmd.CombinedOutput()
 	for _, line := range strings.Split(string(runOut), "\n") {
 		if strings.TrimSpace(line) != "" {
-			appendLog(serviceID, "stdout", line)
+			appendLog(serviceID, depID, "stdout", line)
 		}
 	}
 	if err != nil {
-		appendLog(serviceID, "stderr", fmt.Sprintf("[runtime] Failed to launch container: %v", err))
+		appendLog(serviceID, depID, "stderr", fmt.Sprintf("[runtime] Failed to launch container: %v", err))
 		dep.Status = domain.DeploymentFailed
 		_ = h.store.Deployments().Update(context.Background(), dep)
+		service.RuntimeStatus = domain.ServiceStatusFailed
+		_ = h.store.Services().Update(context.Background(), service)
 		return
 	}
 
 	// Step 6: Write Dynamic Traefik Configuration
 	writeTraefikDynamicConfig(service.Slug, port, rootDomain)
-	appendLog(serviceID, "system", fmt.Sprintf("[traefik] Ingress route active -> https://%s.%s (port :%d)", service.Slug, rootDomain, port))
+	appendLog(serviceID, depID, "system", fmt.Sprintf("[traefik] Ingress route active -> https://%s.%s (port :%d)", service.Slug, rootDomain, port))
 
 	// Step 7: Stream container logs
 	time.Sleep(2 * time.Second)
@@ -543,11 +565,11 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 	cLogs, _ := containerLogsCmd.CombinedOutput()
 	for _, line := range strings.Split(string(cLogs), "\n") {
 		if strings.TrimSpace(line) != "" {
-			appendLog(serviceID, "stdout", line)
+			appendLog(serviceID, depID, "stdout", line)
 		}
 	}
 
-	appendLog(serviceID, "stdout", fmt.Sprintf("✓ Application '%s' is live and accessible at https://%s.%s", service.Name, service.Slug, rootDomain))
+	appendLog(serviceID, depID, "stdout", fmt.Sprintf("✓ Application '%s' is live and accessible at https://%s.%s", service.Name, service.Slug, rootDomain))
 
 	finishTime := time.Now().UTC()
 	dep.Status = domain.DeploymentHealthy
@@ -624,6 +646,10 @@ func (h *Handler) handleGetDeployment(c fiber.Ctx) error {
 
 func (h *Handler) handleGetLogs(c fiber.Ctx) error {
 	id := c.Params("id")
+	if id == "" {
+		id = c.Params("deployId")
+	}
+
 	logMu.RLock()
 	entries, exists := serviceLatestLogs[id]
 	logMu.RUnlock()
@@ -632,7 +658,52 @@ func (h *Handler) handleGetLogs(c fiber.Ctx) error {
 		return c.JSON(fiber.Map{"entries": entries})
 	}
 
-	// Try resolving service to check by other identifier (slug or ID)
+	// 1. Try resolving as a Deployment ID
+	dep, err := h.store.Deployments().GetByID(c.Context(), id)
+	if err == nil && dep != nil {
+		logMu.RLock()
+		entries, exists = serviceLatestLogs[dep.ID]
+		if !exists || len(entries) == 0 {
+			entries, exists = serviceLatestLogs[dep.ServiceID]
+		}
+		logMu.RUnlock()
+		if exists && len(entries) > 0 {
+			return c.JSON(fiber.Map{"entries": entries})
+		}
+
+		s, sErr := h.store.Services().GetByID(c.Context(), dep.ServiceID)
+		if sErr == nil && s != nil {
+			logMu.RLock()
+			entries, exists = serviceLatestLogs[s.Slug]
+			logMu.RUnlock()
+			if exists && len(entries) > 0 {
+				return c.JSON(fiber.Map{"entries": entries})
+			}
+
+			// Query live docker logs
+			containerName := fmt.Sprintf("paas-svc-%s", s.Slug)
+			cmd := exec.Command("docker", "logs", "--tail", "150", containerName)
+			out, err := cmd.CombinedOutput()
+			if err == nil && len(out) > 0 {
+				var liveEntries []LogEntry
+				now := time.Now().UTC()
+				for _, line := range strings.Split(string(out), "\n") {
+					if strings.TrimSpace(line) != "" {
+						liveEntries = append(liveEntries, LogEntry{
+							Timestamp: now.Format("15:04:05"),
+							Stream:    "stdout",
+							Message:   line,
+						})
+					}
+				}
+				if len(liveEntries) > 0 {
+					return c.JSON(fiber.Map{"entries": liveEntries})
+				}
+			}
+		}
+	}
+
+	// 2. Try resolving service to check by other identifier (slug or ID)
 	s, err := h.store.Services().GetByID(c.Context(), id)
 	if err == nil && s != nil {
 		logMu.RLock()
@@ -647,7 +718,7 @@ func (h *Handler) handleGetLogs(c fiber.Ctx) error {
 
 		// Fallback to query live docker logs from container
 		containerName := fmt.Sprintf("paas-svc-%s", s.Slug)
-		cmd := exec.Command("docker", "logs", "--tail", "100", containerName)
+		cmd := exec.Command("docker", "logs", "--tail", "150", containerName)
 		out, err := cmd.CombinedOutput()
 		if err == nil && len(out) > 0 {
 			var liveEntries []LogEntry
@@ -671,7 +742,7 @@ func (h *Handler) handleGetLogs(c fiber.Ctx) error {
 		{
 			Timestamp: time.Now().UTC().Format("15:04:05"),
 			Stream:    "system",
-			Message:   "Ready for deployment. Click 'Deploy Now' to clone, build, and start container.",
+			Message:   "Deployment in progress. Initializing build worker...",
 		},
 	}})
 }
