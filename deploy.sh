@@ -35,6 +35,10 @@ run_deployment() {
 
     mkdir -p "$SCRIPT_DIR/paas/deploy/traefik/dynamic"
 
+    # Ensure Traefik ACME storage file has strict 600 permissions required by Let's Encrypt
+    docker volume create klouds-traefik-acme >/dev/null 2>&1 || true
+    docker run --rm -v klouds-traefik-acme:/acme alpine sh -c "touch /acme/acme.json && chmod 600 /acme/acme.json" >/dev/null 2>&1 || true
+
     echo "==> Pulling latest changes from GitHub ($BRANCH)..."
     git -C "$SCRIPT_DIR" pull origin "$BRANCH"
 

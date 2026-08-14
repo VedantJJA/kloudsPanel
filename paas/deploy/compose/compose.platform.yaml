@@ -47,8 +47,14 @@ services:
       - traefik-acme:/acme
     command:
       - --configfile=/traefik/static.yaml
+      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:-vedantjja@gmail.com}
+      - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
     environment:
-      - ACME_EMAIL=${ACME_EMAIL}
+      - TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL=${ACME_EMAIL:-vedantjja@gmail.com}
+      - TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_STORAGE=/acme/acme.json
+      - TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_HTTPCHALLENGE=true
+      - TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_HTTPCHALLENGE_ENTRYPOINT=web
     labels:
       - "io.paas.managed=true"
       - "io.paas.component=traefik"
