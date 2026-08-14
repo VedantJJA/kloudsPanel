@@ -1,6 +1,8 @@
 package http
 
 import (
+	"strings"
+
 	"github.com/gofiber/fiber/v3"
 	"github.com/yourorg/klouds/api/internal/domain"
 )
@@ -21,31 +23,50 @@ func (h *Handler) handleListProjects(c fiber.Ctx) error {
 
 func (h *Handler) handleCreateProject(c fiber.Ctx) error {
 	var req struct {
-		WorkspaceID string `json:"workspaceId"`
-		Name        string `json:"name"`
-		Slug        string `json:"slug"`
-		Description string `json:"description"`
-		SourceKind  string `json:"sourceKind"`
+		WorkspaceID  string `json:"workspaceId"`
+		WorkspaceID2 string `json:"workspace_id"`
+		Name         string `json:"name"`
+		Slug         string `json:"slug"`
+		Description  string `json:"description"`
+		SourceKind   string `json:"sourceKind"`
+		SourceKind2  string `json:"source_kind"`
 	}
 	if err := c.Bind().JSON(&req); err != nil {
 		return err
+	}
+	wsID := req.WorkspaceID
+	if wsID == "" {
+		wsID = req.WorkspaceID2
+	}
+	if ws, err := h.store.Workspaces().GetByID(c.Context(), wsID); err == nil && ws != nil {
+		wsID = ws.ID
 	}
 	var desc *string
 	if req.Description != "" {
 		desc = &req.Description
 	}
-	sk := domain.SourceKind(req.SourceKind)
-	if sk != domain.SourceKindGit && sk != domain.SourceKindUpload && sk != domain.SourceKindEmpty {
-		sk = domain.SourceKindEmpty
+	sourceStr := strings.ToLower(strings.TrimSpace(req.SourceKind))
+	if sourceStr == "" {
+		sourceStr = strings.ToLower(strings.TrimSpace(req.SourceKind2))
+	}
+	sk := domain.SourceKindEmpty
+	if sourceStr == "git" {
+		sk = domain.SourceKindGit
+	} else if sourceStr == "upload" {
+		sk = domain.SourceKindUpload
 	}
 	var createdBy string
 	if u, ok := c.Locals("user").(*domain.User); ok && u != nil {
 		createdBy = u.ID
 	}
+	pSlug := req.Slug
+	if pSlug == "" {
+		pSlug = strings.ToLower(strings.ReplaceAll(req.Name, " ", "-"))
+	}
 	p := &domain.Project{
-		WorkspaceID:   req.WorkspaceID,
+		WorkspaceID:   wsID,
 		Name:          req.Name,
-		Slug:          req.Slug,
+		Slug:          pSlug,
 		Description:   desc,
 		SourceKind:    sk,
 		RootDirectory: ".",

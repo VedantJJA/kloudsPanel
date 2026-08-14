@@ -45,9 +45,11 @@
         credentials: 'include',
         body: JSON.stringify({ 
           workspaceId, 
+          workspace_id: workspaceId,
           name, 
           slug: projSlug,
-          sourceKind: 'empty'
+          sourceKind: 'empty',
+          source_kind: 'empty'
         })
       });
       if (!res.ok) {
