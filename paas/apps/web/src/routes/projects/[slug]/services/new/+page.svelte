@@ -31,6 +31,7 @@
     AlertTriangle,
     Wand2
   } from 'lucide-svelte';
+  import FrameworkIcon from '$lib/components/icons/FrameworkIcon.svelte';
 
   const { slug } = $derived($page.params);
   let project = $state<any>(null);
@@ -1321,15 +1322,9 @@
           <div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
               <div style="display: flex; align-items: center; gap: 0.6rem;">
-                {#if preset.iconSvg}
-                  <div style="width: 32px; height: 32px; border-radius: var(--radius-sm); background: rgba(0,0,0,0.03); border: 1px solid var(--color-border); display: flex; align-items: center; justify-content: center; padding: 4px;">
-                    <img src={preset.iconSvg} alt={preset.title} style="width: 20px; height: 20px; object-fit: contain;" />
-                  </div>
-                {:else}
-                  <div style="width: 32px; height: 32px; border-radius: var(--radius-sm); background: {preset.iconColor}; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.75rem; letter-spacing: -0.02em; box-shadow: 0 2px 4px rgba(0,0,0,0.15);">
-                    {preset.iconText}
-                  </div>
-                {/if}
+                <div style="width: 34px; height: 34px; border-radius: var(--radius-sm); background: rgba(0,0,0,0.03); border: 1px solid var(--color-border); display: flex; align-items: center; justify-content: center; padding: 4px;">
+                  <FrameworkIcon name={preset.id} size={20} />
+                </div>
                 <span class="badge" style="background: rgba(0,0,0,0.04); font-size: 0.7rem; font-weight: 600;">{preset.badge}</span>
               </div>
               {#if selectedPreset?.id === preset.id}

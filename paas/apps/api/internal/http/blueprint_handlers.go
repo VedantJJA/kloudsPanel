@@ -461,24 +461,17 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 		}
 	}
 
-	// Disambiguate collisions: frontend gets the clean primary slug, backend gets -backend
+	// Strip -frontend and -client suffixes from static sites so they have clean primary root domains
 	for i := range res.Services {
-		for j := range res.Services {
-			if i != j && strings.EqualFold(res.Services[i].Name, res.Services[j].Name) {
-				isFrontendI := res.Services[i].Kind == "static" || res.Services[i].Preset == "static-spa" || strings.Contains(strings.ToLower(res.Services[i].RootDir), "front")
-				isFrontendJ := res.Services[j].Kind == "static" || res.Services[j].Preset == "static-spa" || strings.Contains(strings.ToLower(res.Services[j].RootDir), "front")
-				base := strings.TrimSuffix(strings.TrimSuffix(res.Services[i].Name, "-backend"), "-frontend")
-				if isFrontendI && !isFrontendJ {
-					res.Services[i].Name = base
-					res.Services[i].Slug = strings.ToLower(strings.ReplaceAll(base, "_", "-"))
-					res.Services[j].Name = base + "-backend"
-					res.Services[j].Slug = strings.ToLower(strings.ReplaceAll(base+"-backend", "_", "-"))
-				} else if isFrontendJ && !isFrontendI {
-					res.Services[j].Name = base
-					res.Services[j].Slug = strings.ToLower(strings.ReplaceAll(base, "_", "-"))
-					res.Services[i].Name = base + "-backend"
-					res.Services[i].Slug = strings.ToLower(strings.ReplaceAll(base+"-backend", "_", "-"))
-				}
+		s := &res.Services[i]
+		if s.Kind == "static" || s.Preset == "static-spa" || strings.Contains(strings.ToLower(s.RootDir), "front") {
+			cleanName := strings.TrimSuffix(strings.TrimSuffix(s.Name, "-frontend"), "-client")
+			if cleanName != "" {
+				s.Name = cleanName
+			}
+			cleanSlug := strings.TrimSuffix(strings.TrimSuffix(s.Slug, "-frontend"), "-client")
+			if cleanSlug != "" {
+				s.Slug = cleanSlug
 			}
 		}
 	}

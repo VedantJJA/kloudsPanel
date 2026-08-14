@@ -25,6 +25,7 @@ func (h *Handler) handleCreateProject(c fiber.Ctx) error {
 		Name        string `json:"name"`
 		Slug        string `json:"slug"`
 		Description string `json:"description"`
+		SourceKind  string `json:"sourceKind"`
 	}
 	if err := c.Bind().JSON(&req); err != nil {
 		return err
@@ -33,11 +34,18 @@ func (h *Handler) handleCreateProject(c fiber.Ctx) error {
 	if req.Description != "" {
 		desc = &req.Description
 	}
+	sk := domain.SourceKind(req.SourceKind)
+	if sk != domain.SourceKindGit && sk != domain.SourceKindUpload && sk != domain.SourceKindEmpty {
+		sk = domain.SourceKindEmpty
+	}
 	p := &domain.Project{
-		WorkspaceID: req.WorkspaceID,
-		Name:        req.Name,
-		Slug:        req.Slug,
-		Description: desc,
+		WorkspaceID:   req.WorkspaceID,
+		Name:          req.Name,
+		Slug:          req.Slug,
+		Description:   desc,
+		SourceKind:    sk,
+		RootDirectory: ".",
+		Status:        domain.ProjectStatusReady,
 	}
 	if err := h.store.Projects().Create(c.Context(), p); err != nil {
 		return err

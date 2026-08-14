@@ -17,6 +17,15 @@ func (r *projectRepo) Create(ctx context.Context, p *domain.Project) error {
 	if p.ID == "" {
 		p.ID = ids.NewV7()
 	}
+	if p.SourceKind == "" {
+		p.SourceKind = domain.SourceKindEmpty
+	}
+	if p.Status == "" {
+		p.Status = domain.ProjectStatusReady
+	}
+	if p.RootDirectory == "" {
+		p.RootDirectory = "."
+	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO projects (id,workspace_id,name,slug,description,source_kind,
