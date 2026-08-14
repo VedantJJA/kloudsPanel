@@ -130,6 +130,19 @@ func (h *Handler) handleDeleteProject(c fiber.Ctx) error {
 	if id == "" || id == "undefined" {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid project id"})
 	}
+
+	// Clean up all services in this project
+	svcs, _ := h.store.Services().ListForProject(c.Context(), id)
+	for _, s := range svcs {
+		cleanupServiceResources(s.Slug)
+	}
+
+	// Clean up all databases in this project
+	dbs, _ := h.store.Databases().ListForProject(c.Context(), id)
+	for _, db := range dbs {
+		cleanupDatabaseResources(db.Name, db.InternalHostname)
+	}
+
 	if err := h.store.Projects().Delete(c.Context(), id); err != nil {
 		return err
 	}

@@ -1,11 +1,14 @@
 package http
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/shirou/gopsutil/v4/disk"
 	"github.com/yourorg/klouds/api/internal/domain"
 )
 
@@ -182,4 +185,88 @@ func (h *Handler) handleUpdatePlatformSettings(c fiber.Ctx) error {
 
 func (h *Handler) handleAdminSetup(c fiber.Ctx) error {
 	return h.handleUpdatePlatformSettings(c)
+}
+
+func formatBytes(b uint64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.2f %cB", float64(b)/float64(div), "KMGTPE"[exp])
+}
+
+func (h *Handler) handlePruneStorage(c fiber.Ctx) error {
+	diskBefore, _ := disk.Usage("/")
+	beforeUsed := uint64(0)
+	if diskBefore != nil {
+		beforeUsed = diskBefore.Used
+	}
+
+	var logs []string
+
+	// 1. Prune Docker build cache (BuildKit)
+	out1, err1 := exec.Command("docker", "builder", "prune", "-a", "-f").CombinedOutput()
+	if err1 == nil {
+		logs = append(logs, "Docker BuildKit cache cleared.")
+	} else if len(out1) > 0 {
+		logs = append(logs, fmt.Sprintf("BuildKit: %s", strings.TrimSpace(string(out1))))
+	}
+
+	// 2. Prune dangling and unused Docker images
+	out2, _ := exec.Command("docker", "image", "prune", "-f").CombinedOutput()
+	if len(out2) > 0 {
+		logs = append(logs, "Dangling image layers pruned.")
+	}
+
+	// 3. Prune stopped ephemeral build containers
+	out3, _ := exec.Command("docker", "container", "prune", "-f").CombinedOutput()
+	if len(out3) > 0 {
+		logs = append(logs, "Stopped build containers removed.")
+	}
+
+	// 4. Prune orphaned anonymous volumes
+	out4, _ := exec.Command("docker", "volume", "prune", "-f").CombinedOutput()
+	if len(out4) > 0 {
+		logs = append(logs, "Orphaned volumes removed.")
+	}
+
+	// 5. Clean systemd journal logs (Linux VPS)
+	_ = exec.Command("journalctl", "--vacuum-time=2d").Run()
+
+	// 6. Clean APT package cache
+	_ = exec.Command("apt-get", "clean").Run()
+
+	// 7. Clean temp build directories
+	_ = exec.Command("rm", "-rf", "/tmp/paas-*").Run()
+
+	diskAfter, _ := disk.Usage("/")
+	afterUsed := uint64(0)
+	totalBytes := uint64(0)
+	if diskAfter != nil {
+		afterUsed = diskAfter.Used
+		totalBytes = diskAfter.Total
+	}
+
+	var reclaimedBytes int64
+	if beforeUsed > afterUsed {
+		reclaimedBytes = int64(beforeUsed - afterUsed)
+	}
+
+	reclaimedFormatted := formatBytes(uint64(reclaimedBytes))
+
+	return c.JSON(fiber.Map{
+		"success":             true,
+		"reclaimed_bytes":     reclaimedBytes,
+		"reclaimed_formatted": reclaimedFormatted,
+		"used_before":         beforeUsed,
+		"used_after":          afterUsed,
+		"storage_total":       totalBytes,
+		"logs":                logs,
+		"message":             fmt.Sprintf("Storage reclamation complete. Reclaimed %s of build cache, dangling layers, and logs.", reclaimedFormatted),
+	})
 }

@@ -188,6 +188,28 @@ func (h *Handler) handleUpdateService(c fiber.Ctx) error {
 	})
 }
 
+func cleanupServiceResources(slug string) {
+	if slug == "" {
+		return
+	}
+	containerName := fmt.Sprintf("paas-svc-%s", slug)
+	// Stop & remove container
+	_ = exec.Command("docker", "rm", "-f", containerName).Run()
+	// Remove service images (current and tagged versions)
+	_ = exec.Command("docker", "rmi", "-f", fmt.Sprintf("paas-svc-%s:latest", slug)).Run()
+	_ = exec.Command("docker", "rmi", "-f", fmt.Sprintf("paas-app-%s:latest", slug)).Run()
+	_ = exec.Command("docker", "rmi", "-f", fmt.Sprintf("paas-svc-%s", slug)).Run()
+	// Remove volume if created
+	_ = exec.Command("docker", "volume", "rm", "-f", fmt.Sprintf("paas-svc-data-%s", slug)).Run()
+	// Remove Traefik dynamic routing
+	removeTraefikDynamicConfig(slug)
+	// Prune dangling build cache
+	go func() {
+		_ = exec.Command("docker", "builder", "prune", "-f", "--filter", "until=2h").Run()
+		_ = exec.Command("docker", "image", "prune", "-f").Run()
+	}()
+}
+
 func (h *Handler) handleDeleteService(c fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" || id == "undefined" {
@@ -195,9 +217,7 @@ func (h *Handler) handleDeleteService(c fiber.Ctx) error {
 	}
 	s, err := h.store.Services().GetByID(c.Context(), id)
 	if err == nil && s != nil {
-		containerName := fmt.Sprintf("paas-svc-%s", s.Slug)
-		_ = exec.Command("docker", "rm", "-f", containerName).Run()
-		removeTraefikDynamicConfig(s.Slug)
+		cleanupServiceResources(s.Slug)
 	}
 	if err := h.store.Services().Delete(c.Context(), id); err != nil {
 		return err

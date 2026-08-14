@@ -18,7 +18,9 @@
     Save,
     ExternalLink,
     Activity,
-    Users
+    Users,
+    HardDrive,
+    Sparkles
   } from 'lucide-svelte';
 
   type SettingsTab = 'assist' | 'domain' | 'git' | 'security';
@@ -31,6 +33,10 @@
   let dnsMode = $state('http-01');
   let autoApprove = $state(true);
   let dbAidEnabled = $state(true);
+
+  // Storage Maintenance state
+  let pruning = $state(false);
+  let pruneResult = $state<any>(null);
 
   // OAuth credentials state
   let githubClientId = $state('');
@@ -49,6 +55,32 @@
 
   let dbAidSaving = $state(false);
   let autoApproveSaving = $state(false);
+
+  async function handleReclaimStorage() {
+    if (!confirm('Are you sure you want to reclaim storage? This will prune BuildKit build caches, dangling Docker layers, ephemeral build containers, and old system logs. Running containers and database volumes are fully preserved.')) {
+      return;
+    }
+    pruning = true;
+    pruneResult = null;
+    try {
+      const res = await fetch('/api/v1/admin/maintenance/prune-storage', {
+        method: 'POST',
+        credentials: 'include'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        pruneResult = data;
+        setTimeout(() => { pruneResult = null; }, 8000);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Failed to reclaim storage');
+      }
+    } catch (e: any) {
+      alert('Error during storage reclamation: ' + e.message);
+    } finally {
+      pruning = false;
+    }
+  }
 
   async function loadData() {
     try {
@@ -303,6 +335,49 @@
               Auto-Approve: ON (Disable)
             {:else}
               Auto-Approve: OFF (Enable)
+            {/if}
+          </button>
+        </div>
+      </div>
+
+      <!-- Storage Maintenance & Build Cache Pruning Card -->
+      <div class="card" style="background: var(--color-surface); border: 1px solid var(--color-border); padding: 1.5rem;">
+        {#if pruneResult}
+          <div style="background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); border-radius: var(--radius-md); padding: 0.875rem 1.25rem; margin-bottom: 1.25rem; display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 8px; color: #16a34a; font-weight: 600; font-size: 0.875rem;">
+              <Check size={18} />
+              {pruneResult.message}
+            </div>
+            <button class="btn btn-secondary" style="padding: 2px 8px; font-size: 0.75rem; min-height: 24px;" onclick={() => pruneResult = null}>Dismiss</button>
+          </div>
+        {/if}
+
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+          <div style="display:flex; align-items:flex-start; gap:1rem; max-width:580px;">
+            <div style="width:44px; height:44px; border-radius:var(--radius-md); background:rgba(16,185,129,0.1); color:#10b981; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+              <HardDrive size={22} />
+            </div>
+            <div>
+              <div style="font-weight:700; font-size:1.05rem; color:var(--color-ink); display:flex; align-items:center; gap:8px;">
+                Storage & Build Cache Maintenance
+              </div>
+              <p class="text-xs text-muted" style="margin:4px 0 0 0; line-height:1.5;">
+                Prune BuildKit build cache, dangling image layers from previous builds, ephemeral build containers, and systemd journal logs. Running services and database data are completely protected.
+              </p>
+            </div>
+          </div>
+
+          <button 
+            type="button" 
+            class="btn btn-secondary" 
+            onclick={handleReclaimStorage}
+            disabled={pruning}
+            style="padding:10px 22px; font-weight:700; font-size:0.875rem; display:flex; align-items:center; gap:6px;"
+          >
+            {#if pruning}
+              <Loader2 size={16} class="animate-spin" /> Reclaiming Storage...
+            {:else}
+              <Sparkles size={16} style="color:var(--color-accent);" /> Reclaim Storage Now
             {/if}
           </button>
         </div>

@@ -656,6 +656,21 @@ func (h *Handler) handleRestartDatabase(c fiber.Ctx) error {
 	return c.JSON(db)
 }
 
+func cleanupDatabaseResources(name, internalHostname string) {
+	containerName := internalHostname
+	dbSlug := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(name), "_", "-"))
+	if containerName == "" {
+		containerName = fmt.Sprintf("paas-db-%s", dbSlug)
+	}
+	// Stop and remove Docker container
+	_ = exec.Command("docker", "rm", "-f", containerName).Run()
+	// Remove persistent data volume
+	_ = exec.Command("docker", "volume", "rm", "-f", fmt.Sprintf("paas-db-data-%s", dbSlug)).Run()
+	if name != dbSlug {
+		_ = exec.Command("docker", "volume", "rm", "-f", fmt.Sprintf("paas-db-data-%s", strings.ToLower(name))).Run()
+	}
+}
+
 func (h *Handler) handleDeleteDatabase(c fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" || id == "undefined" {
@@ -664,11 +679,7 @@ func (h *Handler) handleDeleteDatabase(c fiber.Ctx) error {
 
 	db, _ := h.store.Databases().GetByID(c.Context(), id)
 	if db != nil {
-		containerName := db.InternalHostname
-		if containerName == "" {
-			containerName = fmt.Sprintf("paas-db-%s", strings.ToLower(db.Name))
-		}
-		_ = exec.Command("docker", "rm", "-f", containerName).Run()
+		cleanupDatabaseResources(db.Name, db.InternalHostname)
 	}
 
 	if err := h.store.Databases().Delete(c.Context(), id); err != nil {

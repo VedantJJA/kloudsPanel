@@ -45,6 +45,8 @@
   let logFilter = $state('');
   let levelFilter = $state('all');
   let autoRefresh = $state(true);
+  let pruning = $state(false);
+  let pruneResult = $state<any>(null);
 
   const fmt = (bytes: number) => {
     const gb = bytes / 1024 / 1024 / 1024;
@@ -53,6 +55,33 @@
 
   const pct = (used: number, total: number) => total > 0 ? Math.round((used / total) * 100) : 0;
   const barClass = (p: number) => p >= 90 ? 'critical' : p >= 80 ? 'warn' : '';
+
+  async function handleReclaimStorage() {
+    if (!confirm('Are you sure you want to reclaim storage? This will clean BuildKit build caches, dangling image layers, ephemeral containers, and old system logs. Running containers and databases are fully preserved.')) {
+      return;
+    }
+    pruning = true;
+    pruneResult = null;
+    try {
+      const res = await fetch('/api/v1/admin/maintenance/prune-storage', {
+        method: 'POST',
+        credentials: 'include'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        pruneResult = data;
+        await fetchTelemetry();
+        setTimeout(() => { pruneResult = null; }, 8000);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Failed to reclaim storage');
+      }
+    } catch (e: any) {
+      alert('Error during storage reclamation: ' + e.message);
+    } finally {
+      pruning = false;
+    }
+  }
 
   async function fetchTelemetry() {
     try {
@@ -155,6 +184,16 @@
     <p>The host agent must be running to stream capacity metrics.</p>
   </div>
 {:else}
+  {#if pruneResult}
+    <div style="background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); border-radius: var(--radius-md); padding: 0.875rem 1.25rem; margin-bottom: 1.25rem; display: flex; align-items: center; justify-content: space-between;">
+      <div style="display: flex; align-items: center; gap: 8px; color: #16a34a; font-weight: 600; font-size: 0.875rem;">
+        <ShieldCheck size={18} />
+        {pruneResult.message}
+      </div>
+      <button class="btn btn-secondary" style="padding: 2px 8px; font-size: 0.75rem; min-height: 24px;" onclick={() => pruneResult = null}>Dismiss</button>
+    </div>
+  {/if}
+
   <!-- Capacity Metric Cards -->
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1rem;margin-bottom:1.5rem">
     {#each [
@@ -203,6 +242,22 @@
               <div style="font-size:1.125rem;font-weight:700">{m.value}</div>
             </div>
           </div>
+          {#if m.label === 'Storage Capacity'}
+            <button 
+              type="button"
+              class="btn btn-secondary" 
+              style="padding: 4px 10px; font-size: 0.75rem; min-height: 28px; display: inline-flex; align-items: center; gap: 4px; border-color: var(--color-border);"
+              disabled={pruning}
+              onclick={handleReclaimStorage}
+              title="Prune BuildKit cache, dangling layers, and logs"
+            >
+              {#if pruning}
+                <Loader2 size={12} class="animate-spin" /> Reclaiming...
+              {:else}
+                <Sparkles size={12} style="color: var(--color-accent);" /> Reclaim Storage
+              {/if}
+            </button>
+          {/if}
         </div>
         <div class="capacity-bar" style="height:6px;">
           <div
