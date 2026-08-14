@@ -153,108 +153,48 @@
       return;
     }
     isPanning = true;
-    const startX = e.clientX;
-    const startY = e.clientY;
-    const initialPanX = panOffset.x;
-    const initialPanY = panOffset.y;
+    panStart = { x: e.clientX - panOffset.x, y: e.clientY - panOffset.y };
+  }
 
-    const onMove = (moveEvt: MouseEvent) => {
-      if (isPanning) {
-        panOffset = {
-          x: initialPanX + (moveEvt.clientX - startX),
-          y: initialPanY + (moveEvt.clientY - startY)
-        };
-      }
-    };
+  function handleCanvasMouseMove(e: MouseEvent) {
+    if (isPanning) {
+      panOffset = {
+        x: e.clientX - panStart.x,
+        y: e.clientY - panStart.y
+      };
+    } else if (activeDragTable) {
+      tablePositions = {
+        ...tablePositions,
+        [activeDragTable]: {
+          x: Math.max(0, (e.clientX - dragOffset.x - panOffset.x) / zoomLevel),
+          y: Math.max(0, (e.clientY - dragOffset.y - panOffset.y) / zoomLevel)
+        }
+      };
+    }
+  }
 
-    const onUp = () => {
-      isPanning = false;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
+  function handleCanvasMouseUp() {
+    isPanning = false;
+    activeDragTable = null;
   }
 
   function handleTableMouseDown(e: MouseEvent, tableName: string) {
-    if ((e.target as HTMLElement).closest('button')) return;
-    
-    selectedTable = tableName;
+    e.stopPropagation();
     activeDragTable = tableName;
-    const current = tablePositions[tableName] || { x: 60, y: 60 };
-    const initialX = current.x;
-    const initialY = current.y;
-    const startX = e.clientX;
-    const startY = e.clientY;
-
-    const onMove = (moveEvt: MouseEvent) => {
-      const dx = (moveEvt.clientX - startX) / zoomLevel;
-      const dy = (moveEvt.clientY - startY) / zoomLevel;
-      tablePositions = {
-        ...tablePositions,
-        [tableName]: {
-          x: Math.round(initialX + dx),
-          y: Math.round(initialY + dy)
-        }
-      };
+    const currentPos = tablePositions[tableName] || { x: 100, y: 100 };
+    dragOffset = {
+      x: e.clientX - (currentPos.x * zoomLevel + panOffset.x),
+      y: e.clientY - (currentPos.y * zoomLevel + panOffset.y)
     };
-
-    const onUp = () => {
-      activeDragTable = null;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
+    selectedTable = tableName;
   }
 
   function zoomIn() {
-    zoomLevel = Math.min(3.0, Number((zoomLevel + 0.15).toFixed(2)));
+    zoomLevel = Math.min(2.0, Number((zoomLevel + 0.15).toFixed(2)));
   }
 
   function zoomOut() {
-    zoomLevel = Math.max(0.2, Number((zoomLevel - 0.15).toFixed(2)));
-  }
-
-  function canvasWheel(node: HTMLElement) {
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const zoomFactor = e.deltaY < 0 ? 1.12 : 0.88;
-      const newZoom = Math.min(3.0, Math.max(0.2, Number((zoomLevel * zoomFactor).toFixed(3))));
-      
-      const rect = node.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left;
-      const mouseY = e.clientY - rect.top;
-
-      panOffset = {
-        x: mouseX - (mouseX - panOffset.x) * (newZoom / zoomLevel),
-        y: mouseY - (mouseY - panOffset.y) * (newZoom / zoomLevel)
-      };
-      zoomLevel = newZoom;
-    };
-
-    node.addEventListener('wheel', onWheel, { passive: false });
-
-    return {
-      destroy() {
-        node.removeEventListener('wheel', onWheel);
-      }
-    };
-  }
-
-  function handleTableDblClick(tableName: string) {
-    if (database?.engine === 'mongodb') {
-      queryText = `db.${tableName}.find().limit(50);`;
-    } else {
-      queryText = `SELECT * FROM ${tableName} LIMIT 50;`;
-    }
-    goto(`/databases/${id}/query`);
-    setTimeout(() => {
-      runQuery();
-    }, 150);
+    zoomLevel = Math.max(0.4, Number((zoomLevel - 0.15).toFixed(2)));
   }
 
   function resetView() {
@@ -416,12 +356,10 @@
     }, 2500);
   });
 
-  let prevActiveTab = $state<string | undefined>(undefined);
   $effect(() => {
-    if (tab === 'visualizer' && prevActiveTab !== 'visualizer') {
+    if (tab === 'visualizer') {
       loadSchema();
     }
-    prevActiveTab = tab;
   });
 
   onDestroy(() => {
@@ -533,6 +471,10 @@
       const data = await res.json();
       if (res.ok) {
         queryResult = data;
+        const upper = queryText.toUpperCase();
+        if (upper.includes('CREATE') || upper.includes('ALTER') || upper.includes('DROP') || upper.includes('TRUNCATE') || upper.includes('TABLE')) {
+          loadSchema();
+        }
       } else {
         queryResult = { error: data.error || 'Failed to execute query' };
       }
@@ -607,6 +549,7 @@
     {#each tabs as t}
       <a
         href="/databases/{id}/{t}"
+        onclick={() => { if (t === 'visualizer') loadSchema(); }}
         style="
           padding:0.625rem 1.25rem; font-size:0.875rem; font-weight:500;
           color:{tab === t ? 'var(--color-accent)' : 'var(--color-ink-secondary)'};
@@ -931,7 +874,6 @@
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div 
         class="er-canvas-container"
-        use:canvasWheel
         style="
           position: relative;
           height: 600px;
@@ -945,10 +887,12 @@
           background-size: 24px 24px;
         "
         onmousedown={handleCanvasMouseDown}
+        onmousemove={handleCanvasMouseMove}
+        onmouseup={handleCanvasMouseUp}
       >
         <!-- Canvas Instructions overlay -->
         <div style="position: absolute; bottom: 12px; left: 12px; z-index: 10; pointer-events: none; background: rgba(15,23,42,0.85); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 4px 10px; font-size: 0.75rem; color: #94a3b8; display: flex; align-items: center; gap: 8px;">
-          <Move size={12} /> Scroll to zoom • Drag canvas to pan • Drag headers to move • Double-click table to view rows in SQL Studio
+          <Move size={12} /> Drag canvas to pan • Drag table headers to reposition • Click tables to inspect
         </div>
 
         {#if schemaLoading}
@@ -1048,11 +992,8 @@
                   overflow: hidden;
                   z-index: {selectedTable === table.name ? 5 : 2};
                   transition: border-color 0.15s, box-shadow 0.15s;
-                  cursor: pointer;
                 "
                 onclick={() => selectedTable = table.name}
-                ondblclick={() => handleTableDblClick(table.name)}
-                title="Double-click to query table in SQL Studio"
               >
                 <!-- Table Header (Draggable) -->
                 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -1067,7 +1008,6 @@
                     cursor: move;
                   "
                   onmousedown={(e) => handleTableMouseDown(e, table.name)}
-                  ondblclick={(e) => { e.stopPropagation(); handleTableDblClick(table.name); }}
                 >
                   <div style="display: flex; align-items: center; gap: 7px; overflow: hidden;">
                     <Table size={14} style="color: var(--color-accent); flex-shrink: 0;" />
@@ -1075,20 +1015,9 @@
                       {table.name}
                     </span>
                   </div>
-                  <div style="display: flex; align-items: center; gap: 5px;">
-                    <span style="font-size: 0.6875rem; background: rgba(255,255,255,0.08); color: #94a3b8; padding: 1px 6px; border-radius: 4px; font-weight: 600;">
-                      {table.column_count || table.columns?.length || 0}
-                    </span>
-                    <button 
-                      type="button"
-                      class="btn btn-secondary"
-                      style="padding: 2px 6px; height: 22px; font-size: 0.6875rem; min-height: 22px; background: rgba(0,166,166,0.15); color: var(--color-accent); border: 1px solid rgba(0,166,166,0.3);"
-                      onclick={(e) => { e.stopPropagation(); handleTableDblClick(table.name); }}
-                      title="Open in SQL Studio"
-                    >
-                      <Terminal size={11} />
-                    </button>
-                  </div>
+                  <span style="font-size: 0.6875rem; background: rgba(255,255,255,0.08); color: #94a3b8; padding: 1px 6px; border-radius: 4px; font-weight: 600;">
+                    {table.column_count || table.columns?.length || 0}
+                  </span>
                 </div>
 
                 <!-- Column Items -->
