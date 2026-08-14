@@ -102,23 +102,24 @@
 </script>
 
 <svelte:head>
-  <title>{project?.name || project?.Name || 'Project'} — kloudsPanel</title>
+  <title>{project?.name || project?.Name || 'Project'} - kloudsPanel</title>
 </svelte:head>
 
 {#if loading}
   <div class="empty-state">
     <div class="animate-spin text-muted" style="margin-bottom:1rem"><Loader2 size={48} /></div>
-    <p>Loading project…</p>
+    <p>Loading project...</p>
   </div>
 {:else}
   <div class="page-header">
     <div>
-      <p class="text-xs text-muted" style="margin-bottom:0.25rem">
+      <div class="page-breadcrumbs">
         <a href="/workspaces">Workspaces</a> /
         {#if project?.workspace_id || project?.WorkspaceID}
           <a href="/workspaces/{project.workspace_id || project.WorkspaceID}">Workspace</a> /
         {/if}
-      </p>
+        <span>{project?.name || project?.Name || slug}</span>
+      </div>
       <h1 class="page-title">{project?.name || project?.Name || slug}</h1>
       <p class="page-subtitle">{project?.description ?? 'Project environments & deployments'}</p>
     </div>
@@ -194,7 +195,7 @@
                     <Globe size={13} /> {svcSlug}.klouds.online <ExternalLink size={11} />
                   </a>
                 {:else}
-                  <span class="text-muted text-xs">—</span>
+                  <span class="text-muted text-xs">-</span>
                 {/if}
               </td>
               <td><span class="font-mono text-xs">:{svc.internal_port || svc.InternalPort || 80}</span></td>
@@ -260,8 +261,8 @@
                 </a>
               </td>
               <td><span class="badge" style="background:#e0f2fe; color:#0369a1; text-transform:uppercase;">{db.engine || db.Engine}</span></td>
-              <td><span class="font-mono text-xs">{db.internal_hostname || db.InternalHostname || '—'}</span></td>
-              <td><span class="font-mono text-xs">:{db.internal_port || db.InternalPort || '—'}</span></td>
+              <td><span class="font-mono text-xs">{db.internal_hostname || db.InternalHostname || '-'}</span></td>
+              <td><span class="font-mono text-xs">:{db.internal_port || db.InternalPort || '-'}</span></td>
               <td><span class={statusClass(db.runtime_status || db.RuntimeStatus)}>{db.runtime_status || db.RuntimeStatus || 'ready'}</span></td>
               <td style="text-align:right;">
                 <div style="display:inline-flex; align-items:center; gap:0.5rem;">

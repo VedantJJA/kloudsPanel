@@ -92,7 +92,7 @@
 </script>
 
 <svelte:head>
-  <title>New Database — kloudsPanel</title>
+  <title>New Database - kloudsPanel</title>
 </svelte:head>
 
 <div class="page-header" style="margin-bottom: 2rem;">

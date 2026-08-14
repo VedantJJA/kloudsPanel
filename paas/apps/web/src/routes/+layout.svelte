@@ -13,7 +13,7 @@
 </script>
 
 <svelte:head>
-  <title>kloudsPanel — Self-Hosted PaaS</title>
+  <title>kloudsPanel - Self-Hosted PaaS</title>
   <meta name="description" content="Lightweight self-hosted platform-as-a-service. Deploy any stack with zero Docker knowledge." />
 </svelte:head>
 

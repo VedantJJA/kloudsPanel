@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════════════════
-   kloudsPanel — Global Design System
+   kloudsPanel - Global Design System
    Follows Section 4 visual language from the blueprint exactly.
    ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -101,7 +101,50 @@ code, pre {
   font-size: 0.875rem;
 }
 
-/* ── Layout — App Shell ─────────────────────────────────────────────────────── */
+/* ── Page Header & Breadcrumbs ────────────────────────────────────────────── */
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-6);
+}
+
+.page-breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+  color: var(--color-ink-secondary);
+  margin-bottom: 6px;
+  line-height: 1.4;
+}
+
+.page-breadcrumbs a {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+.page-breadcrumbs a:hover {
+  text-decoration: underline;
+}
+
+.page-title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--color-ink);
+  line-height: 1.25;
+  margin: 0 0 6px 0;
+}
+
+.page-subtitle {
+  font-size: 0.875rem;
+  color: var(--color-ink-secondary);
+  margin: 0;
+}
+
+/* ── Layout - App Shell ─────────────────────────────────────────────────────── */
 .app-shell {
   display: flex;
   min-height: 100vh;
@@ -176,7 +219,7 @@ code, pre {
   transition: margin-left var(--transition-normal), margin var(--transition-normal);
 }
 
-/* ── Sidebar — Navigation ─────────────────────────────────────────────────── */
+/* ── Sidebar - Navigation ─────────────────────────────────────────────────── */
 .sidebar-logo {
   display: flex;
   align-items: center;
@@ -475,7 +518,7 @@ tbody tr:hover { background: rgba(244, 246, 248, 0.6); }
 .w-full        { width: 100%; }
 .truncate      { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* ── Responsive — collapse sidebar on < 960px ──────────────────────────────── */
+/* ── Responsive - collapse sidebar on < 960px ──────────────────────────────── */
 @media (max-width: 960px) {
   .sidebar {
     transform: translateX(calc(-100% - var(--sidebar-margin)));

@@ -44,7 +44,7 @@
 </script>
 
 <svelte:head>
-  <title>Databases — kloudsPanel</title>
+  <title>Databases - kloudsPanel</title>
 </svelte:head>
 
 <div class="page-header">
@@ -93,8 +93,8 @@
               </a>
             </td>
             <td><span class="badge" style="background:#e0f2fe; color:#0369a1; text-transform:uppercase; font-weight:700;">{db.engine || db.Engine}</span></td>
-            <td><span class="font-mono text-xs">{db.internal_hostname || db.InternalHostname || '—'}</span></td>
-            <td><span class="font-mono text-xs">:{db.internal_port || db.InternalPort || '—'}</span></td>
+            <td><span class="font-mono text-xs">{db.internal_hostname || db.InternalHostname || '-'}</span></td>
+            <td><span class="font-mono text-xs">:{db.internal_port || db.InternalPort || '-'}</span></td>
             <td><span class={statusClass(db.runtime_status || db.RuntimeStatus)}>{db.runtime_status || db.RuntimeStatus || 'ready'}</span></td>
             <td style="text-align:right;" onclick={(e) => e.stopPropagation()}>
               <button 

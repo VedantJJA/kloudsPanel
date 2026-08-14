@@ -24,7 +24,9 @@
     ChevronRight,
     PanelLeftClose,
     PanelLeftOpen,
-    FolderGit2
+    FolderGit2,
+    FolderOpen,
+    Box
   } from 'lucide-svelte';
 
   let sidebarOpen = $state(false);
@@ -34,13 +36,22 @@
   const pathname = $derived($page.url.pathname);
   const isServiceContext = $derived(pathname.startsWith('/services/') && !pathname.endsWith('/services/new'));
   const isDatabaseContext = $derived(pathname.startsWith('/databases/') && pathname !== '/databases/new');
+  const isWorkspaceContext = $derived(
+    pathname.startsWith('/workspaces/') && 
+    pathname !== '/workspaces/new' && 
+    !pathname.includes('/projects/new') && 
+    !isServiceContext && 
+    !isDatabaseContext
+  );
 
   // Extract entity ID from route params
   const currentServiceId = $derived(isServiceContext ? pathname.split('/')[2] : null);
   const currentDatabaseId = $derived(isDatabaseContext ? pathname.split('/')[2] : null);
+  const currentWorkspaceSlug = $derived(isWorkspaceContext ? pathname.split('/')[2] : null);
 
   let currentService = $state<any>(null);
   let currentDatabase = $state<any>(null);
+  let currentWorkspace = $state<any>(null);
 
   onMount(() => {
     try {
@@ -86,6 +97,17 @@
     }
   });
 
+  $effect(() => {
+    if (currentWorkspaceSlug) {
+      fetch(`/api/v1/workspaces/${currentWorkspaceSlug}`, { credentials: 'include' })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => { if (data) currentWorkspace = data; })
+        .catch(() => {});
+    } else {
+      currentWorkspace = null;
+    }
+  });
+
   type NavItem = {
     label: string;
     href: string;
@@ -121,8 +143,22 @@
     { label: 'Settings', href: `/databases/${currentDatabaseId}/settings`, icon: Settings },
   ]);
 
+  const workspaceTabs = $derived([
+    { label: 'Projects', href: `/workspaces/${currentWorkspaceSlug}`, icon: FolderOpen },
+    { label: 'Shared Env Vars', href: `/workspaces/${currentWorkspaceSlug}/variables`, icon: Key },
+    { label: 'Members', href: `/workspaces/${currentWorkspaceSlug}/members`, icon: Users },
+    { label: 'Settings', href: `/workspaces/${currentWorkspaceSlug}/settings`, icon: Settings },
+  ]);
+
   function isTabActive(href: string): boolean {
     return pathname === href || (href.endsWith('/overview') && pathname === href.replace('/overview', ''));
+  }
+
+  function isWorkspaceTabActive(href: string): boolean {
+    if (href === `/workspaces/${currentWorkspaceSlug}`) {
+      return pathname === href;
+    }
+    return pathname.startsWith(href);
   }
 
   function isDefaultActive(href: string): boolean {
@@ -262,6 +298,53 @@
       {/each}
     </div>
 
+  {:else if isWorkspaceContext && currentWorkspaceSlug}
+    <!-- Workspace Context Header -->
+    <div style="padding: 0 var(--sp-2); margin-bottom: 1.25rem;">
+      <a 
+        href="/workspaces" 
+        class="nav-item" 
+        style="padding: 6px var(--sp-2); min-height: 32px; font-size: 0.8125rem; color: rgba(234,241,250,0.6);"
+        title="Back to All Workspaces"
+      >
+        <ArrowLeft size={14} style="margin-right: 4px; flex-shrink:0;" /> 
+        <span class="nav-item-text">All Workspaces</span>
+      </a>
+      <div class="context-header-details" style="margin-top: 0.75rem; padding: 0.75rem; background: rgba(234,241,250,0.06); border-radius: var(--radius-md); border: 1px solid rgba(234,241,250,0.1);">
+        <div style="font-size: 0.875rem; font-weight: 600; color: #fff; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
+          {currentWorkspace?.name || currentWorkspace?.Name || currentWorkspaceSlug}
+        </div>
+        <div style="display: flex; gap: 0.4rem; align-items: center; margin-top: 0.25rem;">
+          <span style="font-size: 0.6875rem; text-transform: uppercase; background: rgba(16,185,129,0.25); color: #34d399; padding: 2px 6px; border-radius: 4px; font-weight: 600;">
+            Workspace
+          </span>
+          <span style="font-size: 0.6875rem; color: rgba(234,241,250,0.5);">
+            {currentWorkspace?.status || 'active'}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Workspace Specific Nav Tabs -->
+    <div class="sidebar-nav" role="list">
+      <div class="nav-section" style="font-size: 0.6875rem; color: rgba(234,241,250,0.4); text-transform: uppercase; letter-spacing: 0.05em; padding: 0 var(--sp-2); margin-bottom: 0.5rem;">
+        Workspace Management
+      </div>
+      {#each workspaceTabs as item}
+        {@const Icon = item.icon}
+        <a
+          href={item.href}
+          class="nav-item"
+          class:active={isWorkspaceTabActive(item.href)}
+          aria-current={isWorkspaceTabActive(item.href) ? 'page' : undefined}
+          title={item.label}
+        >
+          <span class="nav-item-icon" aria-hidden="true"><Icon size={18} /></span>
+          <span class="nav-item-text">{item.label}</span>
+        </a>
+      {/each}
+    </div>
+
   {:else}
     <!-- Default Global Nav items -->
     <div class="sidebar-nav" role="list">
@@ -287,20 +370,8 @@
     </div>
   {/if}
 
-  <!-- Footer: User account & Quick Telemetry -->
+  <!-- Footer: User account only -->
   <div class="sidebar-footer" style="display:flex; flex-direction:column; gap:0.25rem;">
-    <a
-      href="/admin/telemetry"
-      class="nav-item"
-      class:active={pathname === '/admin/telemetry'}
-      style="width:100%; color:rgba(234,241,250,0.85); font-size:0.8125rem; margin-bottom:2px;"
-      title="Host Telemetry"
-      aria-label="Platform Telemetry"
-    >
-      <span aria-hidden="true"><Activity size={18} style="color:var(--color-accent);" /></span>
-      <span class="nav-item-text">Host Telemetry</span>
-    </a>
-
     <button
       class="nav-item nav-item-logout"
       style="width:100%; color:rgba(234,241,250,0.6); font-size:0.8rem;"

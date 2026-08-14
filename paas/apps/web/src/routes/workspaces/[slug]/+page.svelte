@@ -58,20 +58,21 @@
 </script>
 
 <svelte:head>
-  <title>{workspace?.name || workspace?.Name || slug} — kloudsPanel</title>
+  <title>{workspace?.name || workspace?.Name || slug} - kloudsPanel</title>
 </svelte:head>
 
 {#if loading}
   <div class="empty-state">
     <div class="animate-spin text-muted" style="margin-bottom:1rem"><Loader2 size={48} /></div>
-    <p>Loading…</p>
+    <p>Loading...</p>
   </div>
 {:else}
   <div class="page-header">
     <div>
-      <p class="text-xs text-muted" style="margin-bottom:0.25rem">
+      <div class="page-breadcrumbs">
         <a href="/workspaces">Workspaces</a> /
-      </p>
+        <span>{workspace?.name || workspace?.Name || slug}</span>
+      </div>
       <h1 class="page-title">{workspace?.name || workspace?.Name || slug}</h1>
       <p class="page-subtitle">Manage projects and services in this workspace</p>
     </div>

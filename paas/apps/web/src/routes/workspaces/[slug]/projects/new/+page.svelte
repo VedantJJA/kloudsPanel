@@ -66,7 +66,7 @@
 </script>
 
 <svelte:head>
-  <title>New Project — kloudsPanel</title>
+  <title>New Project - kloudsPanel</title>
 </svelte:head>
 
 <div class="page-header" style="margin-bottom: 2rem;">

@@ -108,12 +108,23 @@
 
       loadDomains();
       
-      // Parse existing env vars if present in resource_json
+      // Parse existing env vars and service settings if present in resource_json
       try {
         if (service.resource_json || service.ResourceJSON) {
           const r = JSON.parse(service.resource_json || service.ResourceJSON);
           if (r.env && typeof r.env === 'object') {
             envVars = Object.entries(r.env).map(([k, v]) => ({ key: k, value: String(v) }));
+          }
+          if (!settingsDirty) {
+            settingsName = service.name || service.Name || '';
+            settingsPreset = r.presetId || service.kind || 'node';
+            settingsBuildCmd = r.buildCommand || '';
+            settingsStartCmd = r.startCommand || '';
+            settingsRootDir = r.rootDirectory || r.rootDir || '.';
+            settingsBranch = r.gitBranch || 'main';
+            settingsRepoUrl = r.gitRepoUrl || '';
+            settingsPort = service.internal_port || service.InternalPort || 80;
+            settingsAutoDeploy = service.auto_deploy !== false;
           }
         }
       } catch {}
@@ -284,19 +295,102 @@
     }
   }
 
+  // Settings Tab State
+  let settingsName = $state('');
+  let settingsBuildCmd = $state('');
+  let settingsStartCmd = $state('');
+  let settingsRootDir = $state('.');
+  let settingsBranch = $state('main');
+  let settingsRepoUrl = $state('');
+  let settingsPort = $state<number>(80);
+  let settingsAutoDeploy = $state(true);
+  let settingsPreset = $state('node');
+  let settingsSaving = $state(false);
+  let settingsSaved = $state(false);
+  let settingsError = $state('');
+  let settingsDirty = $state(false);
+
+  async function saveServiceSettings(e: Event) {
+    e.preventDefault();
+    settingsSaving = true;
+    settingsSaved = false;
+    settingsError = '';
+    bannerNotice = null;
+    try {
+      let currentR: any = {};
+      try {
+        currentR = JSON.parse(service.resource_json || service.ResourceJSON || '{}');
+      } catch {}
+      currentR.buildCommand = settingsBuildCmd;
+      currentR.startCommand = settingsStartCmd;
+      currentR.rootDirectory = settingsRootDir;
+      currentR.gitBranch = settingsBranch;
+      currentR.gitRepoUrl = settingsRepoUrl;
+      currentR.presetId = settingsPreset;
+
+      const targetId = service?.id || id;
+      const res = await fetch(`/api/v1/services/${targetId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          name: settingsName,
+          internalPort: Number(settingsPort),
+          autoDeploy: settingsAutoDeploy,
+          resourceJson: JSON.stringify(currentR)
+        })
+      });
+
+      if (res.ok) {
+        settingsSaved = true;
+        settingsDirty = false;
+        bannerNotice = { type: 'success', message: '✓ Service settings saved successfully' };
+        await loadService();
+        setTimeout(() => settingsSaved = false, 3000);
+      } else {
+        const d = await res.json().catch(() => ({}));
+        settingsError = d.error || 'Failed to update service settings';
+      }
+    } catch (e: any) {
+      settingsError = 'Error: ' + e.message;
+    } finally {
+      settingsSaving = false;
+    }
+  }
+
+  async function restartService() {
+    actionLoading = true;
+    bannerNotice = null;
+    try {
+      const targetId = service?.id || id;
+      const res = await fetch(`/api/v1/services/${targetId}/restart`, { method: 'POST', credentials: 'include' });
+      if (res.ok) {
+        bannerNotice = { type: 'success', message: '✓ Service container restarted successfully' };
+      } else {
+        const d = await res.json().catch(() => ({}));
+        bannerNotice = { type: 'error', message: d.error || 'Failed to restart service' };
+      }
+      await loadService();
+    } catch (e: any) {
+      bannerNotice = { type: 'error', message: 'Error: ' + e.message };
+    } finally {
+      actionLoading = false;
+    }
+  }
+
   const isRunning = $derived((service?.runtime_status || service?.RuntimeStatus) === 'running');
   const statusBadge = $derived(service?.runtime_status || service?.RuntimeStatus || 'draft');
   const endpointUrl = $derived(service?.endpoint_url || (service?.domain ? `https://${service.domain}` : null));
 </script>
 
 <svelte:head>
-  <title>{service?.name || service?.Name || 'Service'} — kloudsPanel</title>
+  <title>{service?.name || service?.Name || 'Service'} - kloudsPanel</title>
 </svelte:head>
 
 {#if loading}
   <div class="empty-state">
     <div class="animate-spin text-muted" style="margin-bottom:1rem"><Loader2 size={48} /></div>
-    <p>Loading service…</p>
+    <p>Loading service...</p>
   </div>
 {:else}
   {#if bannerNotice}
@@ -526,7 +620,7 @@
                 <td><span class="badge badge-{dep.status}">{dep.status}</span></td>
                 <td class="text-sm">{dep.trigger} ({dep.triggered_by || 'user'})</td>
                 <td class="font-mono text-xs">{dep.build_driver}</td>
-                <td class="text-xs text-muted">{(dep.started_at || dep.StartedAt || '—').slice(0, 19).replace('T', ' ')}</td>
+                <td class="text-xs text-muted">{(dep.started_at || dep.StartedAt || '-').slice(0, 19).replace('T', ' ')}</td>
                 <td style="text-align:right;">
                   <a href="/services/{id}/logs" class="btn btn-secondary" style="padding:4px 10px; font-size:0.75rem;">
                     Logs
@@ -716,18 +810,208 @@
     </div>
 
   {:else if tab === 'settings'}
-    <div class="card" style="border-color:#fca5a5;">
-      <div class="card-header" style="border-bottom-color:#fee2e2;">
-        <h3 style="color:var(--color-danger); margin:0;">Danger Zone</h3>
-      </div>
-      <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem; padding:0.5rem 0;">
-        <div>
-          <div style="font-weight:600; color:var(--color-ink);">Delete this Service</div>
-          <div class="text-sm text-muted">Permanently delete this service, its configuration, and all deployment history.</div>
+    <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+      <!-- General & Build Configuration Form -->
+      <form onsubmit={saveServiceSettings} class="card" style="padding: 1.5rem; background: var(--color-surface); border: 1px solid var(--color-border);">
+        <div class="card-header" style="margin-bottom: 1.25rem; display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <h3 style="margin: 0; font-size: 1.05rem;">Build & Deployment Settings</h3>
+            <p class="text-xs text-muted" style="margin: 2px 0 0 0;">Configure build pipeline, start commands, branches, and auto-deploy behavior.</p>
+          </div>
+          <button type="submit" class="btn btn-primary" style="display: flex; align-items: center; gap: 6px; font-size: 0.8125rem;" disabled={settingsSaving}>
+            {#if settingsSaving}<Loader2 size={14} class="animate-spin" /> Saving...{:else}<Save size={14} /> Save Settings{/if}
+          </button>
         </div>
-        <button class="btn btn-danger" onclick={deleteService} disabled={actionLoading}>
-          <Trash2 size={16} /> Delete Service
-        </button>
+
+        {#if settingsSaved}
+          <div style="background:#d1fae5; border:1px solid #6ee7b7; color:#065f46; border-radius:var(--radius-md); padding:0.65rem 1rem; font-size:0.875rem; margin-bottom:1.25rem;">
+            ✓ Service configuration updated successfully. Click "Trigger Deployment" to apply changes.
+          </div>
+        {/if}
+
+        {#if settingsError}
+          <div style="background:#fee2e2; border:1px solid #fca5a5; color:#991b1b; border-radius:var(--radius-md); padding:0.65rem 1rem; font-size:0.875rem; margin-bottom:1.25rem;">
+            {settingsError}
+          </div>
+        {/if}
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem; margin-bottom: 1.25rem;">
+          <div class="form-group" style="margin: 0;">
+            <label class="form-label" for="settings-name">Service Name</label>
+            <input 
+              id="settings-name" 
+              type="text" 
+              class="form-input" 
+              bind:value={settingsName} 
+              oninput={() => settingsDirty = true} 
+              required 
+            />
+          </div>
+
+          <div class="form-group" style="margin: 0;">
+            <label class="form-label" for="settings-preset">Runtime / Framework Preset</label>
+            <select 
+              id="settings-preset" 
+              class="form-select" 
+              bind:value={settingsPreset} 
+              onchange={() => settingsDirty = true}
+            >
+              <option value="node">Node.js (Next.js / Express / Nest / Remix)</option>
+              <option value="python">Python (FastAPI / Flask / Django)</option>
+              <option value="go">Go (Fiber / Gin / Chi)</option>
+              <option value="rust">Rust (Actix / Axum / Cargo)</option>
+              <option value="java">Java (Spring Boot / Maven / Gradle)</option>
+              <option value="php">PHP (Laravel / Apache / Nginx)</option>
+              <option value="ruby">Ruby on Rails</option>
+              <option value="static">Static Site (SPA / React / Vite / HTML)</option>
+              <option value="dockerfile">Custom Dockerfile</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem; margin-bottom: 1.25rem;">
+          <div class="form-group" style="margin: 0;">
+            <label class="form-label" for="settings-build">Build Command</label>
+            <input 
+              id="settings-build" 
+              type="text" 
+              class="form-input font-mono text-sm" 
+              placeholder="e.g. npm install && npm run build" 
+              bind:value={settingsBuildCmd} 
+              oninput={() => settingsDirty = true} 
+            />
+            <p class="text-xs text-muted" style="margin-top: 4px;">Command executed inside the build sandbox to compile assets or install dependencies.</p>
+          </div>
+
+          <div class="form-group" style="margin: 0;">
+            <label class="form-label" for="settings-start">Start / Run Command</label>
+            <input 
+              id="settings-start" 
+              type="text" 
+              class="form-input font-mono text-sm" 
+              placeholder="e.g. npm start or node server.js" 
+              bind:value={settingsStartCmd} 
+              oninput={() => settingsDirty = true} 
+            />
+            <p class="text-xs text-muted" style="margin-top: 4px;">Command executed when starting the runtime production container.</p>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.25rem; margin-bottom: 1.25rem;">
+          <div class="form-group" style="margin: 0;">
+            <label class="form-label" for="settings-root">Root Directory</label>
+            <input 
+              id="settings-root" 
+              type="text" 
+              class="form-input font-mono text-sm" 
+              placeholder="." 
+              bind:value={settingsRootDir} 
+              oninput={() => settingsDirty = true} 
+            />
+            <p class="text-xs text-muted" style="margin-top: 4px;">Subdirectory containing code for monorepos (defaults to repository root <code>.</code>).</p>
+          </div>
+
+          <div class="form-group" style="margin: 0;">
+            <label class="form-label" for="settings-branch">Git Branch</label>
+            <input 
+              id="settings-branch" 
+              type="text" 
+              class="form-input font-mono text-sm" 
+              placeholder="main" 
+              bind:value={settingsBranch} 
+              oninput={() => settingsDirty = true} 
+            />
+            <p class="text-xs text-muted" style="margin-top: 4px;">Branch tracked for deployments.</p>
+          </div>
+
+          <div class="form-group" style="margin: 0;">
+            <label class="form-label" for="settings-port">Internal Container Port</label>
+            <input 
+              id="settings-port" 
+              type="number" 
+              class="form-input font-mono text-sm" 
+              placeholder="80" 
+              bind:value={settingsPort} 
+              oninput={() => settingsDirty = true} 
+            />
+            <p class="text-xs text-muted" style="margin-top: 4px;">Port your application listens on inside the container.</p>
+          </div>
+        </div>
+
+        {#if settingsRepoUrl}
+          <div class="form-group" style="margin-bottom: 1.25rem;">
+            <label class="form-label" for="settings-repo">Git Repository URL</label>
+            <input 
+              id="settings-repo" 
+              type="text" 
+              class="form-input font-mono text-sm" 
+              bind:value={settingsRepoUrl} 
+              oninput={() => settingsDirty = true} 
+            />
+          </div>
+        {/if}
+
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 1rem; background: rgba(0,0,0,0.02); border: 1px solid var(--color-border); border-radius: var(--radius-md);">
+          <div>
+            <div style="font-weight: 600; font-size: 0.875rem;">Auto-Deploy on Git Push</div>
+            <div class="text-xs text-muted">Automatically build and deploy whenever new commits are pushed to the tracked branch.</div>
+          </div>
+          <label style="display: inline-flex; align-items: center; cursor: pointer;">
+            <input 
+              type="checkbox" 
+              bind:checked={settingsAutoDeploy} 
+              onchange={() => settingsDirty = true}
+              style="width: 18px; height: 18px; accent-color: var(--color-accent);"
+            />
+          </label>
+        </div>
+      </form>
+
+      <!-- Container Operations Card -->
+      <div class="card" style="padding: 1.5rem; background: var(--color-surface); border: 1px solid var(--color-border);">
+        <div class="card-header" style="margin-bottom: 1rem;">
+          <h3 style="margin: 0; font-size: 1.05rem;">Service Operations & Lifecycle</h3>
+        </div>
+
+        <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+          <button 
+            type="button" 
+            class="btn btn-secondary" 
+            style="display: flex; align-items: center; gap: 6px; font-size: 0.8125rem;"
+            onclick={restartService}
+            disabled={actionLoading}
+          >
+            <RefreshCw size={14} class={actionLoading ? 'animate-spin' : ''} />
+            Restart Container
+          </button>
+
+          <button 
+            type="button" 
+            class="btn btn-primary" 
+            style="display: flex; align-items: center; gap: 6px; font-size: 0.8125rem;"
+            onclick={triggerDeploy}
+            disabled={actionLoading}
+          >
+            <Rocket size={14} />
+            Trigger Rebuild & Deploy
+          </button>
+        </div>
+      </div>
+
+      <!-- Danger Zone Card -->
+      <div class="card" style="padding: 1.5rem; background: var(--color-surface); border: 1px solid #fca5a5;">
+        <div class="card-header" style="border-bottom-color: #fee2e2; margin-bottom: 1rem;">
+          <h3 style="color: var(--color-danger); margin: 0; font-size: 1.05rem;">Danger Zone</h3>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+          <div>
+            <div style="font-weight: 600; color: var(--color-ink);">Delete this Service</div>
+            <div class="text-sm text-muted">Permanently delete this service, its configuration, SSL certificates, and all deployment history.</div>
+          </div>
+          <button class="btn btn-danger" onclick={deleteService} disabled={actionLoading}>
+            <Trash2 size={16} /> Delete Service
+          </button>
+        </div>
       </div>
     </div>
   {/if}

@@ -1,6 +1,7 @@
 package http
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -127,4 +128,65 @@ func (h *Handler) handleInviteMember(c fiber.Ctx) error {
 		return err
 	}
 	return c.Status(201).JSON(fiber.Map{"status": "ok"})
+}
+
+func (h *Handler) handleListWorkspaceVariables(c fiber.Ctx) error {
+	slugOrID := c.Params("slug")
+	ws, err := h.store.Workspaces().GetBySlug(c.Context(), slugOrID)
+	if err != nil || ws == nil {
+		ws, err = h.store.Workspaces().GetByID(c.Context(), slugOrID)
+	}
+	if err != nil || ws == nil {
+		return c.Status(404).JSON(fiber.Map{"error": "workspace not found"})
+	}
+
+	var data struct {
+		SharedEnv []fiber.Map `json:"shared_env"`
+	}
+	if ws.QuotaJSON != "" {
+		_ = json.Unmarshal([]byte(ws.QuotaJSON), &data)
+	}
+	if data.SharedEnv == nil {
+		data.SharedEnv = []fiber.Map{}
+	}
+
+	return c.JSON(fiber.Map{"variables": data.SharedEnv})
+}
+
+func (h *Handler) handleSaveWorkspaceVariables(c fiber.Ctx) error {
+	slugOrID := c.Params("slug")
+	ws, err := h.store.Workspaces().GetBySlug(c.Context(), slugOrID)
+	if err != nil || ws == nil {
+		ws, err = h.store.Workspaces().GetByID(c.Context(), slugOrID)
+	}
+	if err != nil || ws == nil {
+		return c.Status(404).JSON(fiber.Map{"error": "workspace not found"})
+	}
+
+	var req struct {
+		Variables []struct {
+			Key   string `json:"key"`
+			Value string `json:"value"`
+		} `json:"variables"`
+	}
+	if err := c.Bind().JSON(&req); err != nil {
+		return err
+	}
+
+	var data map[string]any
+	if ws.QuotaJSON != "" {
+		_ = json.Unmarshal([]byte(ws.QuotaJSON), &data)
+	}
+	if data == nil {
+		data = make(map[string]any)
+	}
+	data["shared_env"] = req.Variables
+
+	b, _ := json.Marshal(data)
+	ws.QuotaJSON = string(b)
+	if err := h.store.Workspaces().Update(c.Context(), ws); err != nil {
+		return err
+	}
+
+	return c.JSON(fiber.Map{"status": "ok", "variables": req.Variables})
 }

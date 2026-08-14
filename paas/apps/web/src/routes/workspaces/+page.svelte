@@ -49,7 +49,7 @@
 </script>
 
 <svelte:head>
-  <title>Workspaces — kloudsPanel</title>
+  <title>Workspaces - kloudsPanel</title>
 </svelte:head>
 
 <div class="page-header">

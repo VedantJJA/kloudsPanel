@@ -157,6 +157,8 @@
     image: string;
     port: number;
     badge: string;
+    iconColor: string;
+    iconText: string;
     defaultBuild?: string;
     defaultStart?: string;
   };
@@ -164,52 +166,46 @@
   const presets: ServicePreset[] = [
     // Web / Dynamic Runtimes
     {
-      id: 'python',
-      title: 'Python (Flask / FastAPI / Django)',
-      description: 'WSGI / ASGI apps with requirements.txt or Pipfile',
-      category: 'web',
-      kind: 'web',
-      image: 'python:3.11-slim',
-      port: 5000,
-      badge: 'Dynamic Web',
-      defaultBuild: 'pip install -r requirements.txt',
-      defaultStart: 'gunicorn app:app --bind 0.0.0.0:5000 --workers 2'
-    },
-    {
       id: 'node',
-      title: 'Node.js (Express / Nest / Next / Remix)',
-      description: 'Fullstack or API server powered by Node.js 20 & npm/pnpm/yarn',
+      title: 'Node.js (Next.js / Express / Nest)',
+      description: 'Fullstack JavaScript/TypeScript apps with Node 20 & npm/pnpm/yarn',
       category: 'web',
       kind: 'web',
       image: 'node:20-alpine',
       port: 3000,
-      badge: 'Dynamic Web',
+      badge: 'JavaScript/TS',
+      iconColor: '#22c55e',
+      iconText: 'Node',
       defaultBuild: 'npm install && npm run build',
       defaultStart: 'npm start'
     },
     {
+      id: 'python',
+      title: 'Python (FastAPI / Flask / Django)',
+      description: 'WSGI / ASGI applications with requirements.txt or Pipfile',
+      category: 'web',
+      kind: 'web',
+      image: 'python:3.11-slim',
+      port: 5000,
+      badge: 'Python 3.11',
+      iconColor: '#3b82f6',
+      iconText: 'Py',
+      defaultBuild: 'pip install -r requirements.txt',
+      defaultStart: 'gunicorn app:app --bind 0.0.0.0:5000 --workers 2'
+    },
+    {
       id: 'go',
-      title: 'Go (Gin / Fiber / Echo / Chi)',
+      title: 'Go (Fiber / Gin / Chi / Echo)',
       description: 'Ultra-fast compiled Go binary web services',
       category: 'web',
       kind: 'web',
       image: 'golang:1.22-alpine',
       port: 8080,
-      badge: 'Dynamic Web',
+      badge: 'Go 1.22',
+      iconColor: '#06b6d4',
+      iconText: 'Go',
       defaultBuild: 'go build -o server .',
       defaultStart: './server'
-    },
-    {
-      id: 'java',
-      title: 'Java / Spring Boot / Quarkus',
-      description: 'JVM application with Maven or Gradle wrapper',
-      category: 'web',
-      kind: 'web',
-      image: 'eclipse-temurin:21-jdk-alpine',
-      port: 8080,
-      badge: 'Dynamic Web',
-      defaultBuild: './mvnw clean package -DskipTests',
-      defaultStart: 'java -jar target/*.jar'
     },
     {
       id: 'rust',
@@ -219,19 +215,37 @@
       kind: 'web',
       image: 'rust:1.77-alpine',
       port: 8080,
-      badge: 'Dynamic Web',
+      badge: 'Rust Cargo',
+      iconColor: '#f97316',
+      iconText: 'Rust',
       defaultBuild: 'cargo build --release',
       defaultStart: './target/release/app'
     },
     {
+      id: 'java',
+      title: 'Java (Spring Boot / Quarkus)',
+      description: 'JVM application built with Maven or Gradle wrapper',
+      category: 'web',
+      kind: 'web',
+      image: 'eclipse-temurin:21-jdk-alpine',
+      port: 8080,
+      badge: 'Java 21',
+      iconColor: '#ef4444',
+      iconText: 'Java',
+      defaultBuild: './mvnw clean package -DskipTests',
+      defaultStart: 'java -jar target/*.jar'
+    },
+    {
       id: 'php',
-      title: 'PHP (Laravel / Symfony / WordPress)',
+      title: 'PHP (Laravel / Symfony)',
       description: 'PHP 8.3 Apache runtime with composer package management',
       category: 'web',
       kind: 'web',
       image: 'php:8.3-apache',
       port: 80,
-      badge: 'Dynamic Web',
+      badge: 'PHP 8.3',
+      iconColor: '#8b5cf6',
+      iconText: 'PHP',
       defaultBuild: 'composer install --no-dev --optimize-autoloader',
       defaultStart: 'apache2-foreground'
     },
@@ -243,19 +257,23 @@
       kind: 'web',
       image: 'ruby:3.3-alpine',
       port: 3000,
-      badge: 'Dynamic Web',
+      badge: 'Ruby 3.3',
+      iconColor: '#e11d48',
+      iconText: 'Ruby',
       defaultBuild: 'bundle install && rails assets:precompile',
       defaultStart: 'bundle exec puma -C config/puma.rb'
     },
     {
       id: 'dockerfile',
-      title: 'Repo Dockerfile (Custom)',
-      description: 'Use the Dockerfile located at the root of the repository',
+      title: 'Custom Dockerfile',
+      description: 'Use the Dockerfile located in your repository directory',
       category: 'web',
       kind: 'web',
       image: 'custom',
       port: 80,
-      badge: 'Custom Container',
+      badge: 'Docker',
+      iconColor: '#0284c7',
+      iconText: 'Docker',
       defaultBuild: 'docker build -t app .',
       defaultStart: 'docker run app'
     },
@@ -263,25 +281,29 @@
     // Static Sites
     {
       id: 'static-spa',
-      title: 'Static SPA / Jamstack',
-      description: 'Vite, React, Vue, SvelteKit (static adapter), HTML/CSS/JS',
+      title: 'Static SPA (React / Vite / Vue / Svelte)',
+      description: 'Single page applications compiled to static HTML/CSS/JS',
       category: 'static',
       kind: 'static',
       image: 'nginx:alpine',
       port: 80,
-      badge: 'Static Site',
+      badge: 'Static / SPA',
+      iconColor: '#0ea5e9',
+      iconText: 'SPA',
       defaultBuild: 'npm install && npm run build',
       defaultStart: 'nginx -g "daemon off;"'
     },
     {
       id: 'nginx',
-      title: 'Nginx Web Server',
-      description: 'High performance static file serving and reverse proxying',
+      title: 'Nginx Static Server',
+      description: 'High-performance static file serving and reverse proxying',
       category: 'static',
       kind: 'static',
       image: 'nginx:alpine',
       port: 80,
-      badge: 'Static Site',
+      badge: 'Web Server',
+      iconColor: '#10b981',
+      iconText: 'Nginx',
       defaultBuild: '',
       defaultStart: 'nginx -g "daemon off;"'
     },
@@ -290,24 +312,28 @@
     {
       id: 'worker',
       title: 'Background Worker',
-      description: 'Continuous queue consumer, event listener, or polling script',
+      description: 'Continuous queue consumer, event listener, or background task',
       category: 'worker',
       kind: 'worker',
       image: 'node:20-alpine',
       port: 0,
-      badge: 'Background Worker',
+      badge: 'Worker',
+      iconColor: '#6366f1',
+      iconText: 'Worker',
       defaultBuild: 'npm install',
       defaultStart: 'npm run worker'
     },
     {
       id: 'cron-job',
       title: 'Scheduled Cron Job',
-      description: 'Periodic background task executed on a recurring cron schedule',
+      description: 'Periodic task executed on a recurring cron schedule',
       category: 'worker',
       kind: 'cron',
       image: 'alpine:latest',
       port: 0,
-      badge: 'Scheduled Task',
+      badge: 'Cron',
+      iconColor: '#d97706',
+      iconText: 'Cron',
       defaultStart: 'echo "Running scheduled job"'
     }
   ];
@@ -1262,7 +1288,7 @@
     </div>
 
     <!-- Presets Grid -->
-    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.85rem;">
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem;">
       {#each filteredPresets as preset}
         <button
           type="button"
@@ -1270,24 +1296,31 @@
           style="
             cursor: pointer; 
             text-align: left; 
-            padding: 1rem; 
+            padding: 1.15rem; 
             border: 2px solid {selectedPreset?.id === preset.id ? 'var(--color-accent)' : 'var(--color-border)'}; 
             background: {selectedPreset?.id === preset.id ? 'rgba(0,166,166,0.06)' : 'var(--color-surface)'};
+            border-radius: var(--radius-lg);
             display: flex; 
             flex-direction: column; 
             justify-content: space-between;
+            transition: all 0.15s ease;
           "
           onclick={() => choosePreset(preset)}
         >
           <div>
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
-              <span class="badge" style="background: rgba(0,0,0,0.05); font-size: 0.65rem;">{preset.badge}</span>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+              <div style="display: flex; align-items: center; gap: 0.6rem;">
+                <div style="width: 32px; height: 32px; border-radius: var(--radius-sm); background: {preset.iconColor}; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.75rem; letter-spacing: -0.02em; box-shadow: 0 2px 4px rgba(0,0,0,0.15);">
+                  {preset.iconText}
+                </div>
+                <span class="badge" style="background: rgba(0,0,0,0.04); font-size: 0.7rem; font-weight: 600;">{preset.badge}</span>
+              </div>
               {#if selectedPreset?.id === preset.id}
-                <span class="badge badge-running" style="padding: 2px 6px;"><Check size={10} /> Selected</span>
+                <span class="badge badge-running" style="padding: 2px 8px; font-size: 0.7rem;"><Check size={11} /> Selected</span>
               {/if}
             </div>
-            <div style="font-weight: 700; font-size: 0.9375rem; margin-bottom: 0.25rem;">{preset.title}</div>
-            <p class="text-xs text-muted" style="margin: 0; line-height: 1.4;">{preset.description}</p>
+            <div style="font-weight: 700; font-size: 0.9375rem; color: var(--color-ink); margin-bottom: 0.35rem;">{preset.title}</div>
+            <p class="text-xs text-muted" style="margin: 0; line-height: 1.45;">{preset.description}</p>
           </div>
         </button>
       {/each}

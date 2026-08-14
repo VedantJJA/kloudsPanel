@@ -360,6 +360,27 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 		}
 	}
 
+	// Inherit Workspace Shared Environment Variables
+	if proj, err := h.store.Projects().GetByID(context.Background(), service.ProjectID); err == nil && proj != nil {
+		if ws, err := h.store.Workspaces().GetByID(context.Background(), proj.WorkspaceID); err == nil && ws != nil && ws.QuotaJSON != "" {
+			var wsData struct {
+				SharedEnv []struct {
+					Key   string `json:"key"`
+					Value string `json:"value"`
+				} `json:"shared_env"`
+			}
+			if json.Unmarshal([]byte(ws.QuotaJSON), &wsData) == nil {
+				for _, item := range wsData.SharedEnv {
+					if item.Key != "" {
+						if _, exists := envMap[item.Key]; !exists {
+							envMap[item.Key] = item.Value
+						}
+					}
+				}
+			}
+		}
+	}
+
 	if presetId == "" {
 		presetId = string(service.Kind)
 	}

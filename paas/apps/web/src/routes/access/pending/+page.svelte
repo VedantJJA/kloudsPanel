@@ -3,7 +3,7 @@
 </script>
 
 <svelte:head>
-  <title>Pending Approval — kloudsPanel</title>
+  <title>Pending Approval - kloudsPanel</title>
 </svelte:head>
 
 <div style="

@@ -47,7 +47,7 @@
 </script>
 
 <svelte:head>
-  <title>New Workspace — kloudsPanel</title>
+  <title>New Workspace - kloudsPanel</title>
 </svelte:head>
 
 <div class="page-header" style="margin-bottom: 2rem;">
