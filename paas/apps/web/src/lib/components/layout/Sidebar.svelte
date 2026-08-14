@@ -41,21 +41,30 @@
   const pathname = $derived($page.url.pathname);
   const isServiceContext = $derived(pathname.startsWith('/services/') && !pathname.endsWith('/services/new'));
   const isDatabaseContext = $derived(pathname.startsWith('/databases/') && pathname !== '/databases/new');
+  const isProjectContext = $derived(
+    pathname.startsWith('/projects/') && 
+    !pathname.includes('/projects/new') && 
+    !isServiceContext && 
+    !isDatabaseContext
+  );
   const isWorkspaceContext = $derived(
     pathname.startsWith('/workspaces/') && 
     pathname !== '/workspaces/new' && 
     !pathname.includes('/projects/new') && 
     !isServiceContext && 
-    !isDatabaseContext
+    !isDatabaseContext &&
+    !isProjectContext
   );
 
   // Extract entity ID from route params
   const currentServiceId = $derived(isServiceContext ? pathname.split('/')[2] : null);
   const currentDatabaseId = $derived(isDatabaseContext ? pathname.split('/')[2] : null);
+  const currentProjectSlug = $derived(isProjectContext ? pathname.split('/')[2] : null);
   const currentWorkspaceSlug = $derived(isWorkspaceContext ? pathname.split('/')[2] : null);
 
   let currentService = $state<any>(null);
   let currentDatabase = $state<any>(null);
+  let currentProject = $state<any>(null);
   let currentWorkspace = $state<any>(null);
 
   onMount(() => {
@@ -103,6 +112,17 @@
   });
 
   $effect(() => {
+    if (currentProjectSlug) {
+      fetch(`/api/v1/projects/${currentProjectSlug}`, { credentials: 'include' })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => { if (data) currentProject = data; })
+        .catch(() => {});
+    } else {
+      currentProject = null;
+    }
+  });
+
+  $effect(() => {
     if (currentWorkspaceSlug) {
       fetch(`/api/v1/workspaces/${currentWorkspaceSlug}`, { credentials: 'include' })
         .then(r => r.ok ? r.json() : null)
@@ -146,6 +166,14 @@
     { label: 'Metrics', href: `/databases/${currentDatabaseId}/metrics`, icon: Activity },
     { label: 'Logs & Queries', href: `/databases/${currentDatabaseId}/logs`, icon: Terminal },
     { label: 'Settings', href: `/databases/${currentDatabaseId}/settings`, icon: Settings },
+  ]);
+
+  const projectTabs = $derived([
+    { label: 'Services & Overview', href: `/projects/${currentProjectSlug}`, icon: LayoutDashboard },
+    { label: 'New Web / Static Service', href: `/projects/${currentProjectSlug}/services/new`, icon: Rocket },
+    { section: 'Resources', label: '', href: '', icon: null },
+    { label: 'Databases', href: `/databases?projectId=${currentProject?.id || currentProject?.ID || currentProjectSlug}`, icon: Database },
+    { label: 'Workspace Home', href: currentProject?.workspace_slug ? `/workspaces/${currentProject.workspace_slug}` : currentProject?.workspace_id ? `/workspaces/${currentProject.workspace_id}` : '/workspaces', icon: Home },
   ]);
 
   const workspaceTabs = $derived([
@@ -366,6 +394,61 @@
           <span class="nav-item-icon" aria-hidden="true"><Icon size={18} /></span>
           <span class="nav-item-text">{item.label}</span>
         </a>
+      {/each}
+    </div>
+
+  {:else if isProjectContext && currentProjectSlug}
+    <!-- Project Context Header -->
+    <div style="padding: 0 var(--sp-2); margin-bottom: 1.25rem;">
+      <a 
+        href={currentProject?.workspace_slug ? `/workspaces/${currentProject.workspace_slug}` : currentProject?.workspace_id ? `/workspaces/${currentProject.workspace_id}` : '/workspaces'} 
+        class="nav-item" 
+        style="padding: 6px var(--sp-2); min-height: 32px; font-size: 0.8125rem; color: rgba(234,241,250,0.6);"
+        title="Back to Workspace"
+        onclick={closeMobileNav}
+      >
+        <ArrowLeft size={14} style="margin-right: 4px; flex-shrink:0;" /> 
+        <span class="nav-item-text">Back to Workspace</span>
+      </a>
+      <div class="context-header-details" style="margin-top: 0.75rem; padding: 0.75rem; background: rgba(234,241,250,0.06); border-radius: var(--radius-md); border: 1px solid rgba(234,241,250,0.1);">
+        <div style="font-size: 0.875rem; font-weight: 600; color: #fff; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
+          {currentProject?.name || currentProject?.Name || currentProjectSlug}
+        </div>
+        <div style="display: flex; gap: 0.4rem; align-items: center; margin-top: 0.25rem;">
+          <span style="font-size: 0.6875rem; text-transform: uppercase; background: rgba(0,166,166,0.3); color: #00e5e5; padding: 2px 6px; border-radius: 4px; font-weight: 600;">
+            Project
+          </span>
+          <span style="font-size: 0.6875rem; color: rgba(234,241,250,0.5); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
+            {currentProject?.slug || currentProjectSlug}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Project Specific Nav Tabs -->
+    <div class="sidebar-nav" role="list">
+      <div class="nav-section" style="font-size: 0.6875rem; color: rgba(234,241,250,0.4); text-transform: uppercase; letter-spacing: 0.05em; padding: 0 var(--sp-2); margin-bottom: 0.5rem;">
+        Project Management
+      </div>
+      {#each projectTabs as item}
+        {@const Icon = item.icon}
+        {#if item.section}
+          <div class="nav-section" style="font-size: 0.6875rem; color: rgba(234,241,250,0.4); text-transform: uppercase; letter-spacing: 0.05em; padding: 0 var(--sp-2); margin: 1rem 0 0.5rem 0;">
+            {item.section}
+          </div>
+        {:else}
+          <a
+            href={item.href}
+            class="nav-item"
+            class:active={pathname === item.href || (item.href.endsWith('/services/new') && pathname.includes('/services/new'))}
+            aria-current={pathname === item.href ? 'page' : undefined}
+            title={item.label}
+            onclick={closeMobileNav}
+          >
+            <span class="nav-item-icon" aria-hidden="true"><Icon size={18} /></span>
+            <span class="nav-item-text">{item.label}</span>
+          </a>
+        {/if}
       {/each}
     </div>
 
