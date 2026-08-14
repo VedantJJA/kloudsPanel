@@ -381,15 +381,21 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 			parts := strings.SplitN(trimmed, ":", 2)
 			if len(parts) > 1 && strings.TrimSpace(parts[1]) != "" && currentEnvKey != "" {
 				svcRef := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
-				currentSvc.EnvVars[currentEnvKey] = fmt.Sprintf("${services.%s.url}/api", svcRef)
+				currentSvc.EnvVars[currentEnvKey] = fmt.Sprintf("${services.%s.url}", svcRef)
 			}
 		} else if inEnvVars && strings.HasPrefix(trimmed, "name:") {
 			parts := strings.SplitN(trimmed, ":", 2)
 			if len(parts) > 1 && currentEnvKey != "" {
 				ref := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
 				if currentSvc.EnvVars[currentEnvKey] == "" {
-					currentSvc.EnvVars[currentEnvKey] = fmt.Sprintf("${services.%s.url}/api", ref)
+					currentSvc.EnvVars[currentEnvKey] = fmt.Sprintf("${services.%s.url}", ref)
 				}
+			}
+		} else if inEnvVars && strings.HasPrefix(trimmed, "envVarKey:") {
+			parts := strings.SplitN(trimmed, ":", 2)
+			if len(parts) > 1 && currentEnvKey != "" {
+				// RENDER_EXTERNAL_URL or similar fromService key
+				_ = strings.Trim(strings.TrimSpace(parts[1]), "\"'")
 			}
 		} else if inEnvVars && strings.HasPrefix(trimmed, "property:") {
 			parts := strings.SplitN(trimmed, ":", 2)
@@ -587,16 +593,11 @@ func (h *Handler) handleParseBlueprint(c fiber.Ctx) error {
 					}
 				}
 
-				// If no blueprint found, check for .env.example
+				// If no blueprint found, check for root .env.example only
 				if strings.TrimSpace(content) == "" {
 					envPaths := []string{
 						"main/.env.example",
-						"main/backend/.env.example",
-						"main/api/.env.example",
-						"main/server/.env.example",
 						"master/.env.example",
-						"master/backend/.env.example",
-						"master/api/.env.example",
 					}
 					for _, p := range envPaths {
 						testURL := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s", parts[1], p)
@@ -619,7 +620,7 @@ func (h *Handler) handleParseBlueprint(c fiber.Ctx) error {
 	}
 
 	if strings.TrimSpace(content) == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "No klouds.yaml, render.yaml, or .env.example found in repository"})
+		return c.Status(400).JSON(fiber.Map{"error": "No klouds.yaml or render.yaml found in repository root directory"})
 	}
 
 	var result ParsedRenderResult
@@ -669,6 +670,10 @@ func (h *Handler) handleDeployBlueprint(c fiber.Ctx) error {
 	createdServices := []any{}
 
 	// 1. Provision Databases declared in blueprint
+	dbUriMap := make(map[string]string)
+	dbHostMap := make(map[string]string)
+	dbPortMap := make(map[string]string)
+
 	for _, dbInfo := range req.Databases {
 		dbName := fmt.Sprintf("%v", dbInfo["name"])
 		engine := fmt.Sprintf("%v", dbInfo["engine"])
@@ -679,6 +684,23 @@ func (h *Handler) handleDeployBlueprint(c fiber.Ctx) error {
 		dbRec, err := h.provisionDatabaseInternal(c.Context(), project.ID, dbName, engine)
 		if err == nil && dbRec != nil {
 			createdDatabases = append(createdDatabases, dbRec)
+			var meta struct {
+				ConnectionURI         string `json:"connectionUri"`
+				InternalConnectionURI string `json:"internalConnectionUri"`
+			}
+			if dbRec.ResourceJSON != "" {
+				_ = json.Unmarshal([]byte(dbRec.ResourceJSON), &meta)
+			}
+			uri := meta.InternalConnectionURI
+			if uri == "" {
+				uri = meta.ConnectionURI
+			}
+			dbUriMap[dbName] = uri
+			dbUriMap[strings.ToLower(dbName)] = uri
+			dbHostMap[dbName] = dbRec.InternalHostname
+			dbHostMap[strings.ToLower(dbName)] = dbRec.InternalHostname
+			dbPortMap[dbName] = fmt.Sprintf("%d", dbRec.InternalPort)
+			dbPortMap[strings.ToLower(dbName)] = fmt.Sprintf("%d", dbRec.InternalPort)
 		}
 	}
 
@@ -754,6 +776,23 @@ func (h *Handler) handleDeployBlueprint(c fiber.Ctx) error {
 			for refName, refIntUrl := range internalUrlMap {
 				val = strings.ReplaceAll(val, fmt.Sprintf("${services.%s.internalUrl}", refName), refIntUrl)
 				val = strings.ReplaceAll(val, fmt.Sprintf("${%s.internalUrl}", refName), refIntUrl)
+			}
+			for dbName, dbUri := range dbUriMap {
+				val = strings.ReplaceAll(val, fmt.Sprintf("paas-db-%s", dbName), dbUri)
+				val = strings.ReplaceAll(val, fmt.Sprintf("${databases.%s.connectionString}", dbName), dbUri)
+				val = strings.ReplaceAll(val, fmt.Sprintf("${databases.%s.url}", dbName), dbUri)
+				val = strings.ReplaceAll(val, fmt.Sprintf("${%s.connectionString}", dbName), dbUri)
+				if strings.EqualFold(k, "DATABASE_URL") && (val == "" || val == dbName || strings.HasPrefix(val, "paas-db-")) {
+					val = dbUri
+				}
+			}
+			for dbName, dbHost := range dbHostMap {
+				val = strings.ReplaceAll(val, fmt.Sprintf("${databases.%s.host}", dbName), dbHost)
+				val = strings.ReplaceAll(val, fmt.Sprintf("${%s.host}", dbName), dbHost)
+			}
+			for dbName, dbPort := range dbPortMap {
+				val = strings.ReplaceAll(val, fmt.Sprintf("${databases.%s.port}", dbName), dbPort)
+				val = strings.ReplaceAll(val, fmt.Sprintf("${%s.port}", dbName), dbPort)
 			}
 			resolvedEnv[k] = val
 		}

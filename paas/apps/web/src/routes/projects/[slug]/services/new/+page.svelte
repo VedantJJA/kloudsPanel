@@ -30,6 +30,7 @@
     KeyRound,
     AlertTriangle,
     Wand2,
+    Sliders,
     Info
   } from 'lucide-svelte';
   import FrameworkIcon from '$lib/components/icons/FrameworkIcon.svelte';
@@ -903,21 +904,31 @@
                 </div>
               </div>
 
-              {#if detectedServices.length > 1 || detectedDatabases.length > 0}
-                <button 
-                  type="button" 
-                  class="btn btn-primary" 
-                  style="font-size: 0.8125rem; padding: 7px 16px; background: #059669; border-color: #059669; display: flex; align-items: center; gap: 6px;"
-                  onclick={requestDeployBlueprint}
-                  disabled={deployingBlueprint}
+              <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                <button
+                  type="button"
+                  class="btn btn-secondary"
+                  style="font-size: 0.8125rem; padding: 7px 12px; display: flex; align-items: center; gap: 5px; color: #065f46; border-color: #10b981; background: var(--color-surface);"
+                  onclick={() => { pendingAction = 'blueprint'; showEnvPromptModal = true; }}
                 >
-                  {#if deployingBlueprint}
-                    <Loader2 size={14} class="animate-spin" /> Deploying All Services...
-                  {:else}
-                    <Rocket size={14} /> Deploy All {detectedServices.length + detectedDatabases.length} Stack Services
-                  {/if}
+                  <Sliders size={14} /> Configure Env Vars
                 </button>
-              {/if}
+                {#if detectedServices.length > 1 || detectedDatabases.length > 0}
+                  <button 
+                    type="button" 
+                    class="btn btn-primary" 
+                    style="font-size: 0.8125rem; padding: 7px 16px; background: #059669; border-color: #059669; display: flex; align-items: center; gap: 6px;"
+                    onclick={requestDeployBlueprint}
+                    disabled={deployingBlueprint}
+                  >
+                    {#if deployingBlueprint}
+                      <Loader2 size={14} class="animate-spin" /> Deploying All Services...
+                    {:else}
+                      <Rocket size={14} /> Deploy All {detectedServices.length + detectedDatabases.length} Stack Services
+                    {/if}
+                  </button>
+                {/if}
+              </div>
             </div>
 
             <!-- Required Environment Variables Setup Prompt Card -->
