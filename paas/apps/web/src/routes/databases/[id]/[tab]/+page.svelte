@@ -190,11 +190,40 @@
   }
 
   function zoomIn() {
-    zoomLevel = Math.min(2.0, Number((zoomLevel + 0.15).toFixed(2)));
+    zoomLevel = Math.min(2.5, Number((zoomLevel + 0.15).toFixed(2)));
   }
 
   function zoomOut() {
-    zoomLevel = Math.max(0.4, Number((zoomLevel - 0.15).toFixed(2)));
+    zoomLevel = Math.max(0.3, Number((zoomLevel - 0.15).toFixed(2)));
+  }
+
+  function handleCanvasWheel(e: WheelEvent) {
+    e.preventDefault();
+    const zoomFactor = e.deltaY < 0 ? 1.08 : 0.92;
+    const newZoom = Math.min(2.5, Math.max(0.3, Number((zoomLevel * zoomFactor).toFixed(3))));
+    
+    // Zoom towards cursor location
+    const container = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const mouseX = e.clientX - container.left;
+    const mouseY = e.clientY - container.top;
+
+    panOffset = {
+      x: mouseX - (mouseX - panOffset.x) * (newZoom / zoomLevel),
+      y: mouseY - (mouseY - panOffset.y) * (newZoom / zoomLevel)
+    };
+    zoomLevel = newZoom;
+  }
+
+  function handleTableDblClick(tableName: string) {
+    if (database?.engine === 'mongodb') {
+      queryText = `db.${tableName}.find().limit(50);`;
+    } else {
+      queryText = `SELECT * FROM ${tableName} LIMIT 50;`;
+    }
+    goto(`/databases/${id}/query`);
+    setTimeout(() => {
+      runQuery();
+    }, 150);
   }
 
   function resetView() {
@@ -356,10 +385,12 @@
     }, 2500);
   });
 
+  let prevActiveTab = $state<string | undefined>(undefined);
   $effect(() => {
-    if (tab === 'visualizer' && !schemaData && !schemaLoading) {
+    if (tab === 'visualizer' && prevActiveTab !== 'visualizer') {
       loadSchema();
     }
+    prevActiveTab = tab;
   });
 
   onDestroy(() => {
@@ -884,10 +915,11 @@
         onmousedown={handleCanvasMouseDown}
         onmousemove={handleCanvasMouseMove}
         onmouseup={handleCanvasMouseUp}
+        onwheel={handleCanvasWheel}
       >
         <!-- Canvas Instructions overlay -->
         <div style="position: absolute; bottom: 12px; left: 12px; z-index: 10; pointer-events: none; background: rgba(15,23,42,0.85); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 4px 10px; font-size: 0.75rem; color: #94a3b8; display: flex; align-items: center; gap: 8px;">
-          <Move size={12} /> Drag canvas to pan • Drag table headers to reposition • Click tables to inspect
+          <Move size={12} /> Scroll to zoom • Drag canvas to pan • Drag headers to move • Double-click table to view data in SQL Studio
         </div>
 
         {#if schemaLoading}
@@ -987,8 +1019,11 @@
                   overflow: hidden;
                   z-index: {selectedTable === table.name ? 5 : 2};
                   transition: border-color 0.15s, box-shadow 0.15s;
+                  cursor: pointer;
                 "
                 onclick={() => selectedTable = table.name}
+                ondblclick={() => handleTableDblClick(table.name)}
+                title="Double-click to query and inspect table rows"
               >
                 <!-- Table Header (Draggable) -->
                 <!-- svelte-ignore a11y_no_static_element_interactions -->
