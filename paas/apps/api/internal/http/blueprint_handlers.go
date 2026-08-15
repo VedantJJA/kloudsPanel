@@ -447,7 +447,7 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 				dest := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
 				currentSvc.Routes[len(currentSvc.Routes)-1].Destination = dest
 
-				// If destination points to a backend URL (like https://vtopcc-backend.onrender.com/api/* or ${services.vtopcc-backend.url}/*)
+				// If destination points to a backend URL (like https://backend.example.com/api/* or ${services.backend.url}/*)
 				// automatically extract the target service name and wire VITE_API_URL
 				lowerDest := strings.ToLower(dest)
 				if strings.Contains(lowerDest, "render.com") || strings.Contains(lowerDest, "${services.") {
