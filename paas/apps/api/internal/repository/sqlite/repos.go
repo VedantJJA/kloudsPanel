@@ -105,6 +105,15 @@ func (r *projectRepo) Delete(ctx context.Context, id string) error {
 	return err
 }
 
+func (r *projectRepo) SlugExists(ctx context.Context, slug string) (bool, error) {
+	if slug == "" {
+		return false, nil
+	}
+	var count int
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM projects WHERE lower(slug)=lower(?) AND status != 'deleting'`, slug).Scan(&count)
+	return count > 0, err
+}
+
 func scanProject(row *sql.Row) (*domain.Project, error) {
 	p := &domain.Project{}
 	var createdAt, updatedAt string
@@ -207,6 +216,15 @@ func (r *serviceRepo) Delete(ctx context.Context, id string) error {
 	_, _ = r.db.ExecContext(ctx, `DELETE FROM deployments WHERE service_id=? OR service_id IN (SELECT id FROM services WHERE slug=?)`, id, id)
 	_, err := r.db.ExecContext(ctx, `DELETE FROM services WHERE id=? OR slug=?`, id, id)
 	return err
+}
+
+func (r *serviceRepo) SlugExists(ctx context.Context, slug string) (bool, error) {
+	if slug == "" {
+		return false, nil
+	}
+	var count int
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM services WHERE lower(slug)=lower(?) AND runtime_status != 'deleting'`, slug).Scan(&count)
+	return count > 0, err
 }
 
 func scanService(row *sql.Row) (*domain.Service, error) {

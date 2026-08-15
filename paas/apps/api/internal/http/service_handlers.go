@@ -70,10 +70,11 @@ func (h *Handler) handleCreateService(c fiber.Ctx) error {
 		}
 		req.InternalPort = &p
 	}
+	sSlug := generateUniqueServiceSlug(c.Context(), h.store, req.Name, req.Slug)
 	s := &domain.Service{
 		ProjectID:     req.ProjectID,
 		Name:          req.Name,
-		Slug:          req.Slug,
+		Slug:          sSlug,
 		Kind:          req.Kind,
 		CreatedBy:     u.ID,
 		InternalPort:  req.InternalPort,

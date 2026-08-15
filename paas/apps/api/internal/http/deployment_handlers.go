@@ -185,34 +185,57 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 							break
 						}
 					}
-					if matchingSvc == nil {
-						matchingSvc = &parsed.Services[0]
-					}
-					svc := *matchingSvc
-					appendLog(serviceID, depID, "system", fmt.Sprintf("[blueprint] Applied config for '%s' (preset: %s, rootDir: %s, port: %d)", svc.Name, svc.Preset, svc.RootDir, svc.InternalPort))
-					if svc.RootDir != "" && rootDirectory == "" {
-						rootDirectory = svc.RootDir
-						subDir := filepath.Join(workspaceDir, rootDirectory)
-						if info, err := os.Stat(subDir); err == nil && info.IsDir() {
-							contextDir = subDir
-							appendLog(serviceID, depID, "system", fmt.Sprintf("[builder] Switched build context to: %s", rootDirectory))
+					if matchingSvc == nil && rootDirectory != "" && rootDirectory != "." {
+						for _, s := range parsed.Services {
+							if s.RootDir != "" && (strings.EqualFold(s.RootDir, rootDirectory) || strings.EqualFold(filepath.Clean(s.RootDir), filepath.Clean(rootDirectory))) {
+								matchingSvc = &s
+								break
+							}
 						}
 					}
-					if buildCommand == "" && svc.BuildCommand != "" {
-						buildCommand = svc.BuildCommand
+					if matchingSvc == nil {
+						cleanSvcSlug := slugify(service.Slug)
+						cleanSvcName := slugify(service.Name)
+						for _, s := range parsed.Services {
+							cleanBlueSlug := slugify(s.Slug)
+							cleanBlueName := slugify(s.Name)
+							if (cleanBlueSlug != "" && cleanBlueSlug != "app" && (strings.Contains(cleanSvcSlug, cleanBlueSlug) || strings.Contains(cleanBlueSlug, cleanSvcSlug))) ||
+								(cleanBlueName != "" && cleanBlueName != "app" && (strings.Contains(cleanSvcName, cleanBlueName) || strings.Contains(cleanBlueName, cleanSvcName))) {
+								matchingSvc = &s
+								break
+							}
+						}
 					}
-					if startCommand == "" && svc.StartCommand != "" {
-						startCommand = svc.StartCommand
+					if matchingSvc == nil && len(parsed.Services) == 1 {
+						matchingSvc = &parsed.Services[0]
 					}
-					if svc.InternalPort > 0 && (service.InternalPort == nil || *service.InternalPort == 80) {
-						port = svc.InternalPort
-					}
-					if svc.Preset != "" && (presetId == "" || presetId == "web" || presetId == "custom") {
-						presetId = svc.Preset
-					}
-					for k, v := range svc.EnvVars {
-						if _, exists := envMap[k]; !exists {
-							envMap[k] = v
+					if matchingSvc != nil {
+						svc := *matchingSvc
+						appendLog(serviceID, depID, "system", fmt.Sprintf("[blueprint] Applied config for '%s' (preset: %s, rootDir: %s, port: %d)", svc.Name, svc.Preset, svc.RootDir, svc.InternalPort))
+						if svc.RootDir != "" && (rootDirectory == "" || rootDirectory == ".") {
+							rootDirectory = svc.RootDir
+							subDir := filepath.Join(workspaceDir, rootDirectory)
+							if info, err := os.Stat(subDir); err == nil && info.IsDir() {
+								contextDir = subDir
+								appendLog(serviceID, depID, "system", fmt.Sprintf("[builder] Switched build context to: %s", rootDirectory))
+							}
+						}
+						if buildCommand == "" && svc.BuildCommand != "" {
+							buildCommand = svc.BuildCommand
+						}
+						if startCommand == "" && svc.StartCommand != "" {
+							startCommand = svc.StartCommand
+						}
+						if svc.InternalPort > 0 && (service.InternalPort == nil || *service.InternalPort == 80) {
+							port = svc.InternalPort
+						}
+						if svc.Preset != "" && (presetId == "" || presetId == "web" || presetId == "custom") {
+							presetId = svc.Preset
+						}
+						for k, v := range svc.EnvVars {
+							if _, exists := envMap[k]; !exists {
+								envMap[k] = v
+							}
 						}
 					}
 				}

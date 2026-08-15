@@ -75,6 +75,7 @@ type ProjectRepository interface {
 	ListForWorkspace(ctx context.Context, workspaceID string, limit, offset int) ([]*domain.Project, error)
 	Update(ctx context.Context, p *domain.Project) error
 	Delete(ctx context.Context, id string) error
+	SlugExists(ctx context.Context, slug string) (bool, error)
 }
 
 // ServiceRepository manages service persistence.
@@ -84,6 +85,7 @@ type ServiceRepository interface {
 	ListForProject(ctx context.Context, projectID string) ([]*domain.Service, error)
 	Update(ctx context.Context, s *domain.Service) error
 	Delete(ctx context.Context, id string) error
+	SlugExists(ctx context.Context, slug string) (bool, error)
 }
 
 // DeploymentRepository manages deployment persistence.

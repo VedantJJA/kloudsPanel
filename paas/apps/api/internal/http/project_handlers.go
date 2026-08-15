@@ -59,10 +59,7 @@ func (h *Handler) handleCreateProject(c fiber.Ctx) error {
 	if u, ok := c.Locals("user").(*domain.User); ok && u != nil {
 		createdBy = u.ID
 	}
-	pSlug := req.Slug
-	if pSlug == "" {
-		pSlug = strings.ToLower(strings.ReplaceAll(req.Name, " ", "-"))
-	}
+	pSlug := generateUniqueProjectSlug(c.Context(), h.store, req.Name, req.Slug)
 	p := &domain.Project{
 		WorkspaceID:   wsID,
 		Name:          req.Name,

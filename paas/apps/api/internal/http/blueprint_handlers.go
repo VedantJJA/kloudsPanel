@@ -825,15 +825,36 @@ func (h *Handler) handleDeployBlueprint(c fiber.Ctx) error {
 		if svcName == "" {
 			continue
 		}
-		baseSlug := svcInfo.Slug
+		baseSlug := slugify(svcInfo.Slug)
+		if baseSlug == "" || baseSlug == "app" {
+			baseSlug = slugify(svcName)
+		}
 		if baseSlug == "" {
-			baseSlug = strings.ToLower(strings.ReplaceAll(svcName, "_", "-"))
+			baseSlug = "app"
 		}
 		
 		actualSlug := baseSlug
+		counter := 1
+		for {
+			exists, err := h.store.Services().SlugExists(c.Context(), actualSlug)
+			_, inBatch := slugMap[actualSlug]
+			if (err != nil || !exists) && !inBatch {
+				break
+			}
+			counter++
+			actualSlug = fmt.Sprintf("%s-%d", baseSlug, counter)
+		}
+		
 		port := svcInfo.InternalPort
 		if port <= 0 {
 			port = 8080
+			if svcInfo.Kind == "static" {
+				port = 80
+			} else if svcInfo.Preset == "python" {
+				port = 5000
+			} else if svcInfo.Preset == "node" {
+				port = 3000
+			}
 		}
 
 		s := &domain.Service{
@@ -852,10 +873,13 @@ func (h *Handler) handleDeployBlueprint(c fiber.Ctx) error {
 		entries = append(entries, serviceEntry{info: svcInfo, svc: s, port: port})
 		slugMap[svcName] = actualSlug
 		slugMap[baseSlug] = actualSlug
+		slugMap[actualSlug] = actualSlug
 		urlMap[svcName] = fmt.Sprintf("https://%s.%s", actualSlug, rootDomain)
 		urlMap[baseSlug] = fmt.Sprintf("https://%s.%s", actualSlug, rootDomain)
+		urlMap[actualSlug] = fmt.Sprintf("https://%s.%s", actualSlug, rootDomain)
 		internalUrlMap[svcName] = fmt.Sprintf("http://paas-svc-%s:%d", actualSlug, port)
 		internalUrlMap[baseSlug] = fmt.Sprintf("http://paas-svc-%s:%d", actualSlug, port)
+		internalUrlMap[actualSlug] = fmt.Sprintf("http://paas-svc-%s:%d", actualSlug, port)
 	}
 
 	// 3. Resolve dynamic template tags & create services in database
