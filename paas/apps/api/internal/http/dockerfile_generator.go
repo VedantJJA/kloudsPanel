@@ -36,7 +36,7 @@ RUN %s
 ENV PORT=%d HOST=0.0.0.0 FLASK_RUN_HOST=0.0.0.0 FLASK_RUN_PORT=%d UVICORN_HOST=0.0.0.0 UVICORN_PORT=%d FASTAPI_HOST=0.0.0.0 FASTAPI_PORT=%d GUNICORN_CMD_ARGS="--bind=0.0.0.0:%d" PYTHONUNBUFFERED=1
 EXPOSE %d
 CMD ["sh", "-c", "%s"]
-`, bCmd, port, port, port, port, port, port, port, sCmd)
+`, bCmd, port, port, port, port, port, port, sCmd)
 
 	case "node", "nodejs":
 		sCmd := startCmd
