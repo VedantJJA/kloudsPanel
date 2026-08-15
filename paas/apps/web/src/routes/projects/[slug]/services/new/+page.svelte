@@ -478,7 +478,8 @@
           detectedServices = data.services;
           detectedBlueprint = data.services[0];
           detectedDatabases = data.databases || [];
-          detectedBlueprintSource = data.blueprintType || 'klouds.yaml';
+          detectedBlueprintSource = data.blueprintType || 'auto-detected';
+          applyDetectedService(data.services[0], 0);
         }
       }
     } catch {} finally {
@@ -868,25 +869,30 @@
 
         {#if detectedServices.length > 0}
           {@const unfilledEnvList = getBlueprintUnfilledEnvVars()}
-          <div style="background: rgba(16,185,129,0.06); border: 1.5px solid #10b981; border-radius: var(--radius-md); padding: 1rem 1.25rem; margin-top: 1rem; overflow: hidden; width: 100%; box-sizing: border-box;">
+          <div style="background: {detectedBlueprintSource === 'auto-detected' ? 'rgba(37,99,235,0.06)' : 'rgba(16,185,129,0.06)'}; border: 1.5px solid {detectedBlueprintSource === 'auto-detected' ? 'var(--color-accent)' : '#10b981'}; border-radius: var(--radius-md); padding: 1rem 1.25rem; margin-top: 1rem; overflow: hidden; width: 100%; box-sizing: border-box;">
             <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.85rem;">
               <div style="display: flex; align-items: center; gap: 0.75rem; min-width: 0;">
-                <Sparkles size={22} style="color: #059669; flex-shrink: 0;" />
+                <Sparkles size={22} style="color: {detectedBlueprintSource === 'auto-detected' ? 'var(--color-accent)' : '#059669'}; flex-shrink: 0;" />
                 <div style="min-width: 0;">
-                  <div style="font-weight: 700; color: #065f46; font-size: 0.9375rem; overflow: hidden; text-overflow: ellipsis;">
-                    {#if detectedBlueprintSource === 'both'}
-                      klouds.yaml detected (render.yaml also found)
+                  <div style="font-weight: 700; color: {detectedBlueprintSource === 'auto-detected' ? 'var(--color-ink)' : '#065f46'}; font-size: 0.9375rem; overflow: hidden; text-overflow: ellipsis;">
+                    {#if detectedBlueprintSource === 'auto-detected'}
+                      Smart Framework & Runtime Detected ({detectedServices.length} Component{detectedServices.length > 1 ? 's' : ''})
+                    {:else if detectedBlueprintSource === 'both'}
+                      klouds.yaml detected (render.yaml also found) ({detectedServices.length} Service{detectedServices.length > 1 ? 's' : ''})
                     {:else if detectedBlueprintSource === 'klouds.yaml'}
-                      klouds.yaml detected
+                      klouds.yaml blueprint detected ({detectedServices.length} Service{detectedServices.length > 1 ? 's' : ''})
                     {:else if detectedBlueprintSource === 'render.yaml'}
-                      render.yaml detected (Fallback)
+                      render.yaml blueprint detected ({detectedServices.length} Service{detectedServices.length > 1 ? 's' : ''})
                     {:else}
-                      Blueprint detected
+                      Blueprint detected ({detectedServices.length} Service{detectedServices.length > 1 ? 's' : ''})
                     {/if}
-                    ({detectedServices.length} Service{detectedServices.length > 1 ? 's' : ''}{detectedDatabases.length > 0 ? `, ${detectedDatabases.length} Database` : ''})
                   </div>
-                  <div class="text-xs" style="color: #047857; margin-top: 2px;">
-                    This repository defines a multi-service stack. Review required environment variables below, or deploy all services together.
+                  <div class="text-xs" style="color: {detectedBlueprintSource === 'auto-detected' ? 'var(--color-ink-muted)' : '#047857'}; margin-top: 2px;">
+                    {#if detectedBlueprintSource === 'auto-detected'}
+                      Analyzed repository structure and auto-configured runtime, build, and start parameters.
+                    {:else}
+                      This repository defines a multi-service stack. Review required environment variables below, or deploy all services together.
+                    {/if}
                   </div>
                 </div>
               </div>
@@ -1148,16 +1154,24 @@
         {/if}
 
         {#if detectedServices.length > 0}
-          <div style="background: rgba(16,185,129,0.06); border: 1.5px solid #10b981; border-radius: var(--radius-md); padding: 1rem 1.25rem; margin-top: 1rem;">
+          <div style="background: {detectedBlueprintSource === 'auto-detected' ? 'rgba(37,99,235,0.06)' : 'rgba(16,185,129,0.06)'}; border: 1.5px solid {detectedBlueprintSource === 'auto-detected' ? 'var(--color-accent)' : '#10b981'}; border-radius: var(--radius-md); padding: 1rem 1.25rem; margin-top: 1rem;">
             <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.85rem;">
               <div style="display: flex; align-items: center; gap: 0.75rem;">
-                <Sparkles size={22} style="color: #059669; flex-shrink: 0;" />
+                <Sparkles size={22} style="color: {detectedBlueprintSource === 'auto-detected' ? 'var(--color-accent)' : '#059669'}; flex-shrink: 0;" />
                 <div>
-                  <div style="font-weight: 700; color: #065f46; font-size: 0.9375rem;">
-                    render.yaml / Blueprint detected ({detectedServices.length} Service{detectedServices.length > 1 ? 's' : ''}{detectedDatabases.length > 0 ? `, ${detectedDatabases.length} Database` : ''})
+                  <div style="font-weight: 700; color: {detectedBlueprintSource === 'auto-detected' ? 'var(--color-ink)' : '#065f46'}; font-size: 0.9375rem;">
+                    {#if detectedBlueprintSource === 'auto-detected'}
+                      Smart Framework & Runtime Detected ({detectedServices.length} Component{detectedServices.length > 1 ? 's' : ''})
+                    {:else}
+                      render.yaml / Blueprint detected ({detectedServices.length} Service{detectedServices.length > 1 ? 's' : ''}{detectedDatabases.length > 0 ? `, ${detectedDatabases.length} Database` : ''})
+                    {/if}
                   </div>
-                  <div class="text-xs" style="color: #047857; margin-top: 2px;">
-                    This repository defines a multi-service stack. Deploy all services together or customize individually.
+                  <div class="text-xs" style="color: {detectedBlueprintSource === 'auto-detected' ? 'var(--color-ink-muted)' : '#047857'}; margin-top: 2px;">
+                    {#if detectedBlueprintSource === 'auto-detected'}
+                      Analyzed repository structure and auto-configured runtime, build, and start parameters.
+                    {:else}
+                      This repository defines a multi-service stack. Deploy all services together or customize individually.
+                    {/if}
                   </div>
                 </div>
               </div>

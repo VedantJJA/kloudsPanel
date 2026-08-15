@@ -597,17 +597,23 @@ func (h *Handler) handleParseBlueprint(c fiber.Ctx) error {
 	}
 
 	content := req.Content
-	isDotEnv := false
 	repoBase := "app"
 	detectedSource := "klouds.yaml"
+	var detectedResult ParsedRenderResult
+	hasResult := false
 
-	if strings.TrimSpace(content) == "" && req.RepoURL != "" {
+	if strings.TrimSpace(content) != "" {
+		detectedResult = parseRenderYAMLString(content)
+		hasResult = len(detectedResult.Services) > 0 || len(detectedResult.Databases) > 0
+		detectedSource = "custom-content"
+	} else if req.RepoURL != "" {
 		rawURL := req.RepoURL
 		if strings.Contains(rawURL, "github.com") {
 			clean := strings.TrimSuffix(strings.TrimSuffix(rawURL, "/"), ".git")
 			parts := strings.Split(clean, "github.com/")
 			if len(parts) == 2 {
-				subparts := strings.Split(parts[1], "/")
+				repoPath := parts[1]
+				subparts := strings.Split(repoPath, "/")
 				if len(subparts) > 1 {
 					repoBase = subparts[1]
 				}
@@ -624,34 +630,32 @@ func (h *Handler) handleParseBlueprint(c fiber.Ctx) error {
 					}
 				}
 
-				branches := []string{"main", "master", "HEAD", "dev", "develop"}
-				kloudsFilenames := []string{"klouds.yaml", "klouds.yml", ".klouds.yaml", ".klouds.yml"}
-				renderFilenames := []string{"render.yaml", "render.yml", ".render.yaml", ".render.yml"}
-
-				client := &nethttp.Client{Timeout: 8 * time.Second}
-				fetchRaw := func(repoPath, branch, filename string) string {
+				client := &nethttp.Client{Timeout: 10 * time.Second}
+				fetchRaw := func(filename string) string {
 					// 1. Try raw.githubusercontent.com
-					testURL := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s", repoPath, branch, filename)
-					r, err := nethttp.NewRequest("GET", testURL, nil)
-					if err == nil {
-						r.Header.Set("User-Agent", "kloudsPanel-App/1.0")
-						if userToken != "" {
-							r.Header.Set("Authorization", "token "+userToken)
-						}
-						resp, err := client.Do(r)
-						if err == nil && resp.StatusCode == 200 {
-							var b strings.Builder
-							_, _ = io.Copy(&b, resp.Body)
-							resp.Body.Close()
-							return b.String()
-						}
-						if resp != nil {
-							resp.Body.Close()
+					for _, br := range []string{"main", "master", "HEAD"} {
+						testURL := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s", repoPath, br, filename)
+						r, err := nethttp.NewRequest("GET", testURL, nil)
+						if err == nil {
+							r.Header.Set("User-Agent", "kloudsPanel-App/1.0")
+							if userToken != "" {
+								r.Header.Set("Authorization", "token "+userToken)
+							}
+							resp, err := client.Do(r)
+							if err == nil && resp.StatusCode == 200 {
+								var b strings.Builder
+								_, _ = io.Copy(&b, resp.Body)
+								resp.Body.Close()
+								return b.String()
+							}
+							if resp != nil {
+								resp.Body.Close()
+							}
 						}
 					}
 
-					// 2. Try api.github.com (works for private repositories with token!)
-					apiURL := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s?ref=%s", repoPath, filename, branch)
+					// 2. Try api.github.com
+					apiURL := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s", repoPath, filename)
 					apiReq, err := nethttp.NewRequest("GET", apiURL, nil)
 					if err == nil {
 						apiReq.Header.Set("User-Agent", "kloudsPanel-App/1.0")
@@ -673,69 +677,430 @@ func (h *Handler) handleParseBlueprint(c fiber.Ctx) error {
 					return ""
 				}
 
-				var kloudsContent, renderContent string
-				for _, br := range branches {
-					if kloudsContent == "" {
-						for _, fn := range kloudsFilenames {
-							if res := fetchRaw(parts[1], br, fn); res != "" {
-								kloudsContent = res
+				// Efficient Single-Request Repository Tree Scan
+				treeFiles := make(map[string]bool)
+				for _, br := range []string{"HEAD", "main", "master"} {
+					treeURL := fmt.Sprintf("https://api.github.com/repos/%s/git/trees/%s?recursive=1", repoPath, br)
+					tReq, err := nethttp.NewRequest("GET", treeURL, nil)
+					if err == nil {
+						tReq.Header.Set("User-Agent", "kloudsPanel-App/1.0")
+						if userToken != "" {
+							tReq.Header.Set("Authorization", "Bearer "+userToken)
+						}
+						tResp, err := client.Do(tReq)
+						if err == nil && tResp.StatusCode == 200 {
+							var tData struct {
+								Tree []struct {
+									Path string `json:"path"`
+									Type string `json:"type"`
+								} `json:"tree"`
+							}
+							if json.NewDecoder(tResp.Body).Decode(&tData) == nil && len(tData.Tree) > 0 {
+								for _, item := range tData.Tree {
+									treeFiles[item.Path] = true
+								}
+								tResp.Body.Close()
 								break
 							}
+							tResp.Body.Close()
+						} else if tResp != nil {
+							tResp.Body.Close()
 						}
 					}
-					if renderContent == "" {
-						for _, fn := range renderFilenames {
-							if res := fetchRaw(parts[1], br, fn); res != "" {
-								renderContent = res
+				}
+
+				// Check for Blueprint files in tree
+				blueprintCandidates := []string{"klouds.yaml", "klouds.yml", ".klouds.yaml", ".klouds.yml", "render.yaml", "render.yml", ".render.yaml", ".render.yml"}
+				for _, bf := range blueprintCandidates {
+					if len(treeFiles) == 0 || treeFiles[bf] {
+						if cStr := fetchRaw(bf); strings.TrimSpace(cStr) != "" {
+							parsed := parseRenderYAMLString(cStr)
+							if len(parsed.Services) > 0 || len(parsed.Databases) > 0 {
+								detectedResult = parsed
+								hasResult = true
+								detectedSource = bf
 								break
 							}
 						}
 					}
 				}
 
-				if kloudsContent != "" && renderContent != "" {
-					content = kloudsContent
-					detectedSource = "both"
-				} else if kloudsContent != "" {
-					content = kloudsContent
-					detectedSource = "klouds.yaml"
-				} else if renderContent != "" {
-					content = renderContent
-					detectedSource = "render.yaml"
-				}
-
-				// If no blueprint found, check for root .env.example only
-				if strings.TrimSpace(content) == "" {
-					for _, br := range branches {
-						if res := fetchRaw(parts[1], br, ".env.example"); res != "" {
-							content = res
-							isDotEnv = true
-							detectedSource = ".env.example"
-							break
-						}
+				// If no blueprint found, run the Intelligent Framework & Runtime Analyzer
+				if !hasResult {
+					detectedResult = detectFrameworkFromTree(repoPath, treeFiles, fetchRaw, repoBase)
+					if len(detectedResult.Services) > 0 {
+						hasResult = true
+						detectedSource = "auto-detected"
 					}
 				}
 			}
 		}
 	}
 
-	if strings.TrimSpace(content) == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "No klouds.yaml or render.yaml found in repository root directory"})
-	}
-
-	var result ParsedRenderResult
-	if isDotEnv {
-		result = parseDotEnvExample(content, repoBase)
-	} else {
-		result = parseRenderYAMLString(content)
+	if !hasResult || len(detectedResult.Services) == 0 {
+		return c.Status(400).JSON(fiber.Map{"error": "No blueprint or recognizable framework configuration found in repository"})
 	}
 
 	return c.JSON(fiber.Map{
-		"success":        true,
-		"blueprintType":  detectedSource,
-		"services":       result.Services,
-		"databases":      result.Databases,
+		"success":       true,
+		"blueprintType": detectedSource,
+		"services":      detectedResult.Services,
+		"databases":     detectedResult.Databases,
 	})
+}
+
+// detectFrameworkFromTree analyzes repository files and structure to automatically suggest runtime, build/start commands, and ports
+func detectFrameworkFromTree(repoPath string, treeFiles map[string]bool, fetchRaw func(filename string) string, repoBase string) ParsedRenderResult {
+	var result ParsedRenderResult
+
+	// Helper to check file existence
+	hasFile := func(path string) bool {
+		if len(treeFiles) > 0 {
+			return treeFiles[path]
+		}
+		return fetchRaw(path) != ""
+	}
+
+	// Helper to extract env vars from .env.example
+	extractEnv := func(envPath string) (map[string]string, []string) {
+		envMap := make(map[string]string)
+		var reqKeys []string
+		if content := fetchRaw(envPath); content != "" {
+			for _, line := range strings.Split(content, "\n") {
+				line = strings.TrimSpace(line)
+				if line == "" || strings.HasPrefix(line, "#") {
+					continue
+				}
+				parts := strings.SplitN(line, "=", 2)
+				if len(parts) >= 1 {
+					k := strings.TrimSpace(parts[0])
+					if k != "" {
+						v := ""
+						if len(parts) == 2 {
+							v = strings.Trim(strings.TrimSpace(parts[1]), `"'`)
+						}
+						envMap[k] = v
+						reqKeys = append(reqKeys, k)
+					}
+				}
+			}
+		}
+		return envMap, reqKeys
+	}
+
+	// Component analyzer for a given root directory
+	analyzeComponent := func(rootDir string, defaultName string) *ParsedRenderService {
+		prefix := ""
+		if rootDir != "" && rootDir != "." {
+			prefix = rootDir + "/"
+		}
+
+		envMap, reqKeys := extractEnv(prefix + ".env.example")
+		if len(envMap) == 0 {
+			envMap, reqKeys = extractEnv(".env.example")
+		}
+
+		// 1. Node.js / JavaScript / TypeScript Ecosystem
+		if hasFile(prefix + "package.json") {
+			pkgContent := fetchRaw(prefix + "package.json")
+			var pkg struct {
+				Name         string            `json:"name"`
+				Dependencies map[string]string `json:"dependencies"`
+				DevDeps      map[string]string `json:"devDependencies"`
+				Scripts      map[string]string `json:"scripts"`
+			}
+			_ = json.Unmarshal([]byte(pkgContent), &pkg)
+			svcName := defaultName
+			if pkg.Name != "" {
+				svcName = slugify(pkg.Name)
+			}
+
+			deps := make(map[string]bool)
+			for k := range pkg.Dependencies {
+				deps[k] = true
+			}
+			for k := range pkg.DevDeps {
+				deps[k] = true
+			}
+
+			buildCommand := ""
+			startCommand := ""
+			internalPort := 3000
+			preset := "nodejs"
+			kind := "web"
+
+			if pkg.Scripts["build"] != "" {
+				buildCommand = "npm run build"
+			}
+			if pkg.Scripts["start"] != "" {
+				startCommand = "npm start"
+			}
+
+			// Framework specific rules
+			if deps["next"] {
+				preset = "nodejs"
+				kind = "web"
+				if buildCommand == "" {
+					buildCommand = "npm run build"
+				}
+				if startCommand == "" {
+					startCommand = "npm start"
+				}
+				internalPort = 3000
+			} else if deps["nuxt"] || deps["@nuxt/kit"] {
+				preset = "nodejs"
+				kind = "web"
+				if buildCommand == "" {
+					buildCommand = "npm run build"
+				}
+				startCommand = "node .output/server/index.mjs"
+				internalPort = 3000
+			} else if deps["@sveltejs/kit"] {
+				preset = "nodejs"
+				kind = "web"
+				if buildCommand == "" {
+					buildCommand = "npm run build"
+				}
+				startCommand = "node build/index.js"
+				internalPort = 3000
+			} else if deps["astro"] {
+				preset = "static-spa"
+				kind = "static"
+				if buildCommand == "" {
+					buildCommand = "npm run build"
+				}
+				internalPort = 80
+			} else if deps["vite"] {
+				preset = "static-spa"
+				kind = "static"
+				if buildCommand == "" {
+					buildCommand = "npm run build"
+				}
+				internalPort = 80
+			} else if deps["react-scripts"] {
+				preset = "static-spa"
+				kind = "static"
+				if buildCommand == "" {
+					buildCommand = "npm run build"
+				}
+				internalPort = 80
+			} else if deps["express"] || deps["fastify"] || deps["@nestjs/core"] || deps["koa"] {
+				preset = "nodejs"
+				kind = "web"
+				internalPort = 3000
+				if startCommand == "" {
+					startCommand = "node index.js || node server.js || node dist/main.js"
+				}
+			} else {
+				if kind == "web" && startCommand == "" {
+					startCommand = "node index.js || node server.js"
+				}
+			}
+
+			return &ParsedRenderService{
+				Name:            svcName,
+				Kind:            kind,
+				Preset:          preset,
+				RootDir:         rootDir,
+				BuildCommand:    buildCommand,
+				StartCommand:    startCommand,
+				InternalPort:    internalPort,
+				AutoDeploy:      true,
+				EnvVars:         envMap,
+				RequiredEnvVars: reqKeys,
+			}
+		}
+
+		// 2. Python Ecosystem
+		if hasFile(prefix+"requirements.txt") || hasFile(prefix+"pyproject.toml") || hasFile(prefix+"Pipfile") {
+			reqContent := fetchRaw(prefix + "requirements.txt")
+			pyprojectContent := fetchRaw(prefix + "pyproject.toml")
+			combined := strings.ToLower(reqContent + "\n" + pyprojectContent)
+
+			internalPort := 8000
+			startCommand := "python app.py || python main.py || python server.py"
+			buildCommand := ""
+
+			if strings.Contains(combined, "fastapi") || strings.Contains(combined, "uvicorn") {
+				startCommand = "uvicorn main:app --host 0.0.0.0 --port $PORT || python main.py"
+				internalPort = 8000
+			} else if strings.Contains(combined, "flask") {
+				startCommand = "flask run --host=0.0.0.0 --port=$PORT || python app.py"
+				internalPort = 5000
+			} else if strings.Contains(combined, "django") {
+				buildCommand = "python manage.py collectstatic --noinput || true"
+				startCommand = "gunicorn config.wsgi:application --bind 0.0.0.0:$PORT || python manage.py runserver 0.0.0.0:$PORT"
+				internalPort = 8000
+			}
+
+			return &ParsedRenderService{
+				Name:            defaultName,
+				Kind:            "web",
+				Preset:          "python",
+				RootDir:         rootDir,
+				BuildCommand:    buildCommand,
+				StartCommand:    startCommand,
+				InternalPort:    internalPort,
+				AutoDeploy:      true,
+				EnvVars:         envMap,
+				RequiredEnvVars: reqKeys,
+			}
+		}
+
+		// 3. Go Ecosystem
+		if hasFile(prefix + "go.mod") {
+			return &ParsedRenderService{
+				Name:            defaultName,
+				Kind:            "web",
+				Preset:          "go",
+				RootDir:         rootDir,
+				BuildCommand:    "go build -o server .",
+				StartCommand:    "./server",
+				InternalPort:    8080,
+				AutoDeploy:      true,
+				EnvVars:         envMap,
+				RequiredEnvVars: reqKeys,
+			}
+		}
+
+		// 4. Rust Ecosystem
+		if hasFile(prefix + "Cargo.toml") {
+			return &ParsedRenderService{
+				Name:            defaultName,
+				Kind:            "web",
+				Preset:          "rust",
+				RootDir:         rootDir,
+				BuildCommand:    "cargo build --release",
+				StartCommand:    "./target/release/app",
+				InternalPort:    8080,
+				AutoDeploy:      true,
+				EnvVars:         envMap,
+				RequiredEnvVars: reqKeys,
+			}
+		}
+
+		// 5. Java Ecosystem (Maven / Gradle)
+		if hasFile(prefix+"pom.xml") || hasFile(prefix+"build.gradle") {
+			buildCmd := "mvn clean package -DskipTests || ./gradlew build"
+			return &ParsedRenderService{
+				Name:            defaultName,
+				Kind:            "web",
+				Preset:          "java",
+				RootDir:         rootDir,
+				BuildCommand:    buildCmd,
+				StartCommand:    "java -jar target/*.jar || java -jar build/libs/*.jar",
+				InternalPort:    8080,
+				AutoDeploy:      true,
+				EnvVars:         envMap,
+				RequiredEnvVars: reqKeys,
+			}
+		}
+
+		// 6. PHP Ecosystem
+		if hasFile(prefix + "composer.json") {
+			return &ParsedRenderService{
+				Name:            defaultName,
+				Kind:            "web",
+				Preset:          "php",
+				RootDir:         rootDir,
+				InternalPort:    80,
+				AutoDeploy:      true,
+				EnvVars:         envMap,
+				RequiredEnvVars: reqKeys,
+			}
+		}
+
+		// 7. Ruby Ecosystem
+		if hasFile(prefix + "Gemfile") {
+			return &ParsedRenderService{
+				Name:            defaultName,
+				Kind:            "web",
+				Preset:          "ruby",
+				RootDir:         rootDir,
+				StartCommand:    "bundle exec rackup -p $PORT -o 0.0.0.0 || ruby app.rb",
+				InternalPort:    3000,
+				AutoDeploy:      true,
+				EnvVars:         envMap,
+				RequiredEnvVars: reqKeys,
+			}
+		}
+
+		// 8. Dockerfile
+		if hasFile(prefix + "Dockerfile") {
+			return &ParsedRenderService{
+				Name:            defaultName,
+				Kind:            "web",
+				Preset:          "dockerfile",
+				RootDir:         rootDir,
+				InternalPort:    8080,
+				AutoDeploy:      true,
+				EnvVars:         envMap,
+				RequiredEnvVars: reqKeys,
+			}
+		}
+
+		// 9. Plain Static HTML
+		if hasFile(prefix + "index.html") {
+			return &ParsedRenderService{
+				Name:            defaultName,
+				Kind:            "static",
+				Preset:          "static",
+				RootDir:         rootDir,
+				InternalPort:    80,
+				AutoDeploy:      true,
+				EnvVars:         envMap,
+				RequiredEnvVars: reqKeys,
+			}
+		}
+
+		return nil
+	}
+
+	// 1. Check Root Directory
+	if rootSvc := analyzeComponent(".", repoBase); rootSvc != nil {
+		result.Services = append(result.Services, *rootSvc)
+	}
+
+	// 2. Check Monorepo Subdirectories if root is empty or has standard monorepo folders
+	commonDirs := []string{"frontend", "backend", "client", "server", "web", "api", "app", "apps/web", "apps/api", "packages/client", "packages/server"}
+	for _, dir := range commonDirs {
+		if hasFile(dir+"/package.json") || hasFile(dir+"/requirements.txt") || hasFile(dir+"/go.mod") || hasFile(dir+"/Dockerfile") {
+			// Avoid adding duplicate if root already captured this directory
+			alreadyAdded := false
+			for _, s := range result.Services {
+				if s.RootDir == dir {
+					alreadyAdded = true
+					break
+				}
+			}
+			if !alreadyAdded {
+				subName := strings.ReplaceAll(dir, "/", "-")
+				if subSvc := analyzeComponent(dir, subName); subSvc != nil {
+					// If root was just a generic wrapper, replace with specific monorepo services
+					if len(result.Services) == 1 && result.Services[0].RootDir == "." && len(commonDirs) > 1 {
+						// Keep root if it wasn't just monorepo root
+					}
+					result.Services = append(result.Services, *subSvc)
+				}
+			}
+		}
+	}
+
+	// If monorepo components were found and root was generic node/empty, favor the components
+	if len(result.Services) > 1 && result.Services[0].RootDir == "." {
+		hasSubServices := false
+		for _, s := range result.Services[1:] {
+			if s.RootDir != "." {
+				hasSubServices = true
+				break
+			}
+		}
+		if hasSubServices {
+			result.Services = result.Services[1:]
+		}
+	}
+
+	return result
 }
 
 // Alias for backward compatibility
