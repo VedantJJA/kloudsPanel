@@ -273,12 +273,25 @@ func (h *Handler) handleGitOAuthAuthorize(c fiber.Ctx) error {
 
 	if clientID == "" {
 		return c.Status(400).JSON(fiber.Map{
-			"error": fmt.Sprintf("%s OAuth is not configured on this server. Set %s_CLIENT_ID and %s_CLIENT_SECRET in .env or connect using a Personal Access Token / App Password.", strings.ToUpper(provider), strings.ToUpper(provider), strings.ToUpper(provider)),
+			"error": fmt.Sprintf("%s OAuth is not configured on this server. The administrator must set the %s Client ID and Client Secret in Administration > Git Providers.", strings.ToUpper(provider), strings.ToUpper(provider)),
 		})
 	}
 
-	rootDomain := getRootDomain()
-	redirectURI := fmt.Sprintf("https://%s/api/v1/integrations/git/%s/callback", rootDomain, provider)
+	host := c.Hostname()
+	if fHost := c.Get("X-Forwarded-Host"); fHost != "" {
+		host = fHost
+	}
+	proto := c.Protocol()
+	if fProto := c.Get("X-Forwarded-Proto"); fProto != "" {
+		proto = fProto
+	}
+	if host == "" || host == "127.0.0.1" || host == "localhost" {
+		rootDomain := getRootDomain()
+		if rootDomain != "" {
+			host = rootDomain
+		}
+	}
+	redirectURI := fmt.Sprintf("%s://%s/api/v1/integrations/git/%s/callback", proto, host, provider)
 	returnTo := c.Query("return_to", "/workspaces")
 
 	state := fmt.Sprintf("%s:%s", u.ID, url.QueryEscape(returnTo))
@@ -286,11 +299,8 @@ func (h *Handler) handleGitOAuthAuthorize(c fiber.Ctx) error {
 	var authURL string
 	switch provider {
 	case "github":
-		authURL = fmt.Sprintf("https://github.com/login/oauth/authorize?client_id=%s&scope=repo,read:user,user:email&state=%s",
-			url.QueryEscape(clientID), url.QueryEscape(state))
-		if rURI := c.Query("redirect_uri"); rURI != "" {
-			authURL += fmt.Sprintf("&redirect_uri=%s", url.QueryEscape(rURI))
-		}
+		authURL = fmt.Sprintf("https://github.com/login/oauth/authorize?client_id=%s&redirect_uri=%s&scope=repo,read:user,user:email&state=%s",
+			url.QueryEscape(clientID), url.QueryEscape(redirectURI), url.QueryEscape(state))
 	case "gitlab":
 		authURL = fmt.Sprintf("https://gitlab.com/oauth/authorize?client_id=%s&redirect_uri=%s&response_type=code&state=%s&scope=read_user+read_api+read_repository",
 			url.QueryEscape(clientID), url.QueryEscape(redirectURI), url.QueryEscape(state))
@@ -330,8 +340,21 @@ func (h *Handler) handleGitOAuthCallback(c fiber.Ctx) error {
 		return c.Redirect().To(returnTo + "?error=oauth_not_configured")
 	}
 
-	rootDomain := getRootDomain()
-	redirectURI := fmt.Sprintf("https://%s/api/v1/integrations/git/%s/callback", rootDomain, provider)
+	host := c.Hostname()
+	if fHost := c.Get("X-Forwarded-Host"); fHost != "" {
+		host = fHost
+	}
+	proto := c.Protocol()
+	if fProto := c.Get("X-Forwarded-Proto"); fProto != "" {
+		proto = fProto
+	}
+	if host == "" || host == "127.0.0.1" || host == "localhost" {
+		rootDomain := getRootDomain()
+		if rootDomain != "" {
+			host = rootDomain
+		}
+	}
+	redirectURI := fmt.Sprintf("%s://%s/api/v1/integrations/git/%s/callback", proto, host, provider)
 
 	var accessToken, username string
 	var avatarURL *string
