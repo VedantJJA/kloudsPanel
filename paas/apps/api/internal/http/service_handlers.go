@@ -348,7 +348,7 @@ func (h *Handler) syncServiceTraefikConfig(ctx context.Context, s *domain.Servic
 	if s == nil {
 		return
 	}
-	if resMap == nil && s.ResourceJSON != "" {
+	if (resMap == nil || len(resMap) == 0) && s.ResourceJSON != "" {
 		_ = json.Unmarshal([]byte(s.ResourceJSON), &resMap)
 	}
 	if resMap == nil {
@@ -365,6 +365,12 @@ func (h *Handler) syncServiceTraefikConfig(ctx context.Context, s *domain.Servic
 	if cds, ok := resMap["customDomains"].([]any); ok {
 		for _, cd := range cds {
 			if str, ok := cd.(string); ok && str != "" {
+				customDomains = append(customDomains, str)
+			}
+		}
+	} else if cdsStr, ok := resMap["customDomains"].([]string); ok {
+		for _, str := range cdsStr {
+			if str != "" {
 				customDomains = append(customDomains, str)
 			}
 		}
@@ -386,6 +392,8 @@ func (h *Handler) syncServiceTraefikConfig(ctx context.Context, s *domain.Servic
 				}
 			}
 		}
+	} else if rtsItems, ok := resMap["routes"].([]ServiceRouteItem); ok {
+		routes = append(routes, rtsItems...)
 	}
 
 	var siblingStaticSlugs []string
@@ -451,7 +459,7 @@ func (h *Handler) handleAddServiceDomain(c fiber.Ctx) error {
 	s.ResourceJSON = string(updatedJSON)
 	_ = h.store.Services().Update(c.Context(), s)
 
-	h.syncServiceTraefikConfig(c.Context(), s, resMap)
+	h.syncServiceTraefikConfig(c.Context(), s, nil)
 
 	return h.handleListServiceDomains(c)
 }
@@ -484,7 +492,7 @@ func (h *Handler) handleDeleteServiceDomain(c fiber.Ctx) error {
 	s.ResourceJSON = string(updatedJSON)
 	_ = h.store.Services().Update(c.Context(), s)
 
-	h.syncServiceTraefikConfig(c.Context(), s, resMap)
+	h.syncServiceTraefikConfig(c.Context(), s, nil)
 
 	return h.handleListServiceDomains(c)
 }
@@ -542,7 +550,7 @@ func (h *Handler) handleUpdateServiceRoutes(c fiber.Ctx) error {
 		return err
 	}
 
-	h.syncServiceTraefikConfig(c.Context(), s, resMap)
+	h.syncServiceTraefikConfig(c.Context(), s, nil)
 
 	return c.JSON(fiber.Map{
 		"message": "Redirect and rewrite rules saved successfully",
