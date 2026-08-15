@@ -178,15 +178,48 @@ func writeTraefikDynamicConfigWithDomainsRoutesAndSiblings(slug string, port int
 					targetRouterKey := fmt.Sprintf("svc-%s-rewrite-%d", slug, idx)
 					priority := 1000 - (i * 10)
 
+					var mwList []string
+					destPath := strings.TrimSuffix(parsedDest.Path, "/*")
+					srcPrefix := strings.TrimSuffix(src, "/*")
+
+					// If destination path differs from source prefix, add a replacePathRegex middleware
+					if destPath != srcPrefix && (srcPrefix != "" || destPath != "") {
+						pathMwKey := fmt.Sprintf("svc-%s-rewrite-path-%d", slug, idx)
+						var mwRegex, mwReplacement string
+						if strings.HasSuffix(src, "/*") {
+							mwRegex = fmt.Sprintf("^%s/(.*)", srcPrefix)
+							if destPath == "" || destPath == "/" {
+								mwReplacement = "/${1}"
+							} else {
+								mwReplacement = fmt.Sprintf("%s/${1}", destPath)
+							}
+						} else {
+							mwRegex = fmt.Sprintf("^%s$", src)
+							mwReplacement = destPath
+						}
+						middlewaresYAML.WriteString(fmt.Sprintf(`    %s:
+      replacePathRegex:
+        regex: "%s"
+        replacement: "%s"
+`, pathMwKey, mwRegex, mwReplacement))
+						mwList = append(mwList, pathMwKey)
+					}
+
+					var mwSection string
+					if len(mwList) > 0 {
+						mwSection = fmt.Sprintf("      middlewares:\n        - \"%s\"\n", strings.Join(mwList, "\"\n        - \""))
+					}
+
 					routersYAML.WriteString(fmt.Sprintf(`    %s:
       rule: "(%s)%s"
       priority: %d
-      entryPoints:
+%s      entryPoints:
+        - "web"
         - "websecure"
       tls:
         certResolver: "letsencrypt"
       service: "%s"
-`, targetRouterKey, baseHostRule, pathRule, priority, targetServiceKey))
+`, targetRouterKey, baseHostRule, pathRule, priority, mwSection, targetServiceKey))
 
 					servicesYAML.WriteString(fmt.Sprintf(`    %s:
       loadBalancer:
@@ -195,6 +228,46 @@ func writeTraefikDynamicConfigWithDomainsRoutesAndSiblings(slug string, port int
           - url: "%s"
 `, targetServiceKey, targetBaseUrl))
 				}
+			} else {
+				// Internal rewrite (e.g. /* -> /index.html)
+				internalRouterKey := fmt.Sprintf("svc-%s-internal-rtr-%d", slug, idx)
+				internalMwKey := fmt.Sprintf("svc-%s-internal-mw-%d", slug, idx)
+				priority := 1000 - (i * 10)
+
+				var mwRegex, mwReplacement string
+				if cleanSrc == "/*" || cleanSrc == "*" || cleanSrc == "/" {
+					mwRegex = ".*"
+					mwReplacement = dest
+				} else if strings.HasSuffix(src, "/*") {
+					mwRegex = fmt.Sprintf("^%s/(.*)", strings.TrimSuffix(src, "/*"))
+					if strings.HasSuffix(dest, "/*") {
+						mwReplacement = fmt.Sprintf("%s/${1}", strings.TrimSuffix(dest, "/*"))
+					} else {
+						mwReplacement = dest
+					}
+				} else {
+					mwRegex = fmt.Sprintf("^%s$", src)
+					mwReplacement = dest
+				}
+
+				middlewaresYAML.WriteString(fmt.Sprintf(`    %s:
+      replacePathRegex:
+        regex: "%s"
+        replacement: "%s"
+`, internalMwKey, mwRegex, mwReplacement))
+
+				routersYAML.WriteString(fmt.Sprintf(`    %s:
+      rule: "(%s)%s"
+      priority: %d
+      middlewares:
+        - "%s"
+      entryPoints:
+        - "web"
+        - "websecure"
+      tls:
+        certResolver: "letsencrypt"
+      service: "svc-%s"
+`, internalRouterKey, baseHostRule, pathRule, priority, internalMwKey, slug))
 			}
 		} else {
 			// Redirect action (301, 302, 307, 308)
@@ -231,6 +304,7 @@ func writeTraefikDynamicConfigWithDomainsRoutesAndSiblings(slug string, port int
       middlewares:
         - "%s"
       entryPoints:
+        - "web"
         - "websecure"
       tls:
         certResolver: "letsencrypt"
@@ -243,7 +317,7 @@ func writeTraefikDynamicConfigWithDomainsRoutesAndSiblings(slug string, port int
 	for _, fSlug := range siblingStaticSlugs {
 		fSlug = strings.TrimSpace(fSlug)
 		if fSlug != "" {
-			routersYAML.WriteString(fmt.Sprintf("    svc-%s-api-proxy-%s:\n      rule: \"Host(`%s.%s`) && PathPrefix(`/api`)\"\n      priority: 100\n      entryPoints:\n        - \"websecure\"\n      tls:\n        certResolver: \"letsencrypt\"\n      service: \"svc-%s\"\n", slug, fSlug, fSlug, rootDomain, slug))
+			routersYAML.WriteString(fmt.Sprintf("    svc-%s-api-proxy-%s:\n      rule: \"Host(`%s.%s`) && PathPrefix(`/api`)\"\n      priority: 100\n      entryPoints:\n        - \"web\"\n        - \"websecure\"\n      tls:\n        certResolver: \"letsencrypt\"\n      service: \"svc-%s\"\n", slug, fSlug, fSlug, rootDomain, slug))
 		}
 	}
 
@@ -252,6 +326,7 @@ func writeTraefikDynamicConfigWithDomainsRoutesAndSiblings(slug string, port int
       rule: "%s"
       priority: 10
       entryPoints:
+        - "web"
         - "websecure"
       tls:
         certResolver: "letsencrypt"
@@ -811,11 +886,16 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 							}
 							u, _ := url.Parse(targetUrl)
 							hostHeader := "$host"
+							sslNameDirective := ""
 							if u != nil && u.Host != "" {
 								hostHeader = u.Host
+								sslNameDirective = fmt.Sprintf("        proxy_ssl_name %s;\n        proxy_ssl_protocols TLSv1.2 TLSv1.3;\n", u.Host)
 							}
-							proxyDirectives.WriteString(fmt.Sprintf("    location %s {\n        resolver 127.0.0.11 8.8.8.8 valid=30s ipv6=off;\n        proxy_pass %s;\n        proxy_ssl_server_name on;\n        proxy_http_version 1.1;\n        proxy_set_header Upgrade $http_upgrade;\n        proxy_set_header Connection 'upgrade';\n        proxy_set_header Host %s;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n    }\n", locPath, targetUrl, hostHeader))
+							proxyDirectives.WriteString(fmt.Sprintf("    location %s {\n        resolver 127.0.0.11 8.8.8.8 1.1.1.1 valid=30s ipv6=off;\n        proxy_pass %s;\n        proxy_ssl_server_name on;\n%s        proxy_http_version 1.1;\n        proxy_set_header Upgrade $http_upgrade;\n        proxy_set_header Connection 'upgrade';\n        proxy_set_header Host %s;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n    }\n", locPath, targetUrl, sslNameDirective, hostHeader))
 							appendLog(serviceID, depID, "build", fmt.Sprintf("[router] Configured rewrite rule %s -> %s", src, targetUrl))
+						} else {
+							proxyDirectives.WriteString(fmt.Sprintf("    location %s {\n        try_files $uri $uri/ %s;\n    }\n", locPath, dest))
+							appendLog(serviceID, depID, "build", fmt.Sprintf("[router] Configured internal rewrite rule %s -> %s", src, dest))
 						}
 					} else {
 						redirCode := 301
@@ -841,7 +921,7 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 					if primaryBackend.InternalPort != nil && *primaryBackend.InternalPort > 0 {
 						otherPort = *primaryBackend.InternalPort
 					}
-					proxyDirectives.WriteString(fmt.Sprintf("    location /api/ {\n        resolver 127.0.0.11 valid=30s ipv6=off;\n        proxy_pass http://paas-svc-%s:%d;\n        proxy_http_version 1.1;\n        proxy_set_header Upgrade $http_upgrade;\n        proxy_set_header Connection 'upgrade';\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n    }\n", primaryBackend.Slug, otherPort))
+					proxyDirectives.WriteString(fmt.Sprintf("    location /api/ {\n        resolver 127.0.0.11 8.8.8.8 valid=30s ipv6=off;\n        proxy_pass http://paas-svc-%s:%d;\n        proxy_http_version 1.1;\n        proxy_set_header Upgrade $http_upgrade;\n        proxy_set_header Connection 'upgrade';\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n    }\n", primaryBackend.Slug, otherPort))
 					appendLog(serviceID, depID, "build", fmt.Sprintf("[router] Auto-wired /api/ reverse proxy -> http://paas-svc-%s:%d", primaryBackend.Slug, otherPort))
 				}
 				nginxConf := fmt.Sprintf("server {\n    listen 80;\n    server_name _;\n    root /usr/share/nginx/html;\n    index index.html;\n%s    location / {\n        try_files $uri $uri/ /index.html;\n    }\n}\n", proxyDirectives.String())

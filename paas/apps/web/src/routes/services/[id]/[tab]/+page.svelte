@@ -31,7 +31,6 @@
   } from 'lucide-svelte';
 
   const { id, tab } = $derived($page.params);
-  const tabs = ['overview', 'deployments', 'logs', 'variables', 'domains', 'routes', 'scale', 'settings'];
 
   let service = $state<any>(null);
   let deployments = $state<any[]>([]);
@@ -40,6 +39,25 @@
   let copiedUrl = $state(false);
   let bannerNotice = $state<{ type: 'success' | 'error'; message: string } | null>(null);
   let pollTimer: any = null;
+
+  // Derive visible tabs based on service kind:
+  // - 'routes' (Redirect & Rewrite Rules) only applies to static sites (like Render)
+  // - 'domains' and 'scale' don't apply to workers/crons (no public endpoint)
+  const serviceKind = $derived(service?.kind || service?.Kind || 'web');
+  const tabs = $derived.by(() => {
+    const base = ['overview', 'deployments', 'logs', 'variables'];
+    if (serviceKind === 'web' || serviceKind === 'static') {
+      base.push('domains');
+    }
+    if (serviceKind === 'static') {
+      base.push('routes');
+    }
+    if (serviceKind === 'web' || serviceKind === 'static') {
+      base.push('scale');
+    }
+    base.push('settings');
+    return base;
+  });
 
   // Variables state
   let envVars = $state<Array<{ key: string; value: string }>>([]);
@@ -132,72 +150,201 @@
   }
 
   let testSimPath = $state('');
+  let liveTestLoading = $state(false);
+  let liveTestResult = $state<{ status: number; statusText: string; ok: boolean; timeMs: number; finalUrl: string } | null>(null);
 
-  function simulateRuleMatch(path: string, rules: Array<{ type: string; source: string; destination: string }>) {
-    const urlParts = path.split('?');
-    const pathname = urlParts[0];
-    const query = urlParts[1] ? `?${urlParts[1]}` : '';
+  function simulateRuleMatch(rawInput: string, rules: Array<{ type: string; source: string; destination: string }>) {
+    let input = rawInput.trim();
+    if (!input) {
+      return { matched: false, ruleIndex: 0, action: '', actionLabel: '', destination: '', explanation: '' };
+    }
 
-    for (const rule of rules) {
+    let pathname = input;
+    let query = '';
+
+    // Handle full URL inputs (e.g. https://my-app.onrender.com/api/v1/auth?token=123)
+    if (input.startsWith('http://') || input.startsWith('https://')) {
+      try {
+        const u = new URL(input);
+        pathname = u.pathname || '/';
+        query = u.search || '';
+      } catch {
+        const qIdx = input.indexOf('?');
+        if (qIdx !== -1) {
+          pathname = input.slice(0, qIdx);
+          query = input.slice(qIdx);
+        }
+      }
+    } else {
+      const qIdx = input.indexOf('?');
+      if (qIdx !== -1) {
+        pathname = input.slice(0, qIdx);
+        query = input.slice(qIdx);
+      }
+      if (!pathname.startsWith('/')) {
+        pathname = '/' + pathname;
+      }
+    }
+
+    const getLabel = (t: string) => {
+      if (t === 'redirect_302' || t === 'redirect_temporary') return '302 Found';
+      if (t === 'redirect_307') return '307 Temporary';
+      if (t === 'redirect_308') return '308 Permanent';
+      if (t === 'redirect' || t === 'redirect_301' || t.startsWith('redirect')) return '301 Moved Permanently';
+      return '200 Rewrite';
+    };
+
+    for (let i = 0; i < rules.length; i++) {
+      const rule = rules[i];
       const src = (rule.source || '').trim();
       const dest = (rule.destination || '').trim();
       if (!src || !dest) continue;
 
-      const getLabel = (t: string) => {
-        if (t === 'redirect_302' || t === 'redirect_temporary') return '302 Found';
-        if (t === 'redirect_307') return '307 Temporary';
-        if (t === 'redirect_308') return '308 Permanent';
-        if (t.startsWith('redirect')) return '301 Moved Permanently';
-        return '200 Rewrite';
-      };
-
+      // 1. Root wildcard: /* or * or /
       if (src === '/*' || src === '*' || src === '/') {
         let finalDest = dest;
         if (dest.endsWith('/*')) {
-          finalDest = dest.replace('/*', pathname);
+          const rest = pathname.startsWith('/') ? pathname.slice(1) : pathname;
+          finalDest = dest.slice(0, -2) + (rest ? '/' + rest : '');
         } else if (dest.includes('$1')) {
-          finalDest = dest.replace('$1', pathname.slice(1));
+          finalDest = dest.replace('$1', pathname.startsWith('/') ? pathname.slice(1) : pathname);
         }
         return {
           matched: true,
+          ruleIndex: i + 1,
           action: rule.type,
           actionLabel: getLabel(rule.type),
-          destination: finalDest + query
+          destination: finalDest + query,
+          explanation: `Matched rule #${i + 1} (${src} -> ${dest})`
         };
       }
 
+      // 2. Prefix wildcard: e.g. /api/* or /api*
       if (src.endsWith('/*')) {
         const prefix = src.slice(0, -2);
-        if (pathname.startsWith(prefix)) {
+        if (pathname === prefix || pathname.startsWith(prefix + '/') || pathname.startsWith(prefix)) {
           const rest = pathname.slice(prefix.length);
           let finalDest = dest;
           if (dest.endsWith('/*')) {
-            finalDest = dest.slice(0, -2) + rest;
+            const baseDest = dest.slice(0, -2);
+            finalDest = baseDest + (rest.startsWith('/') ? rest : (rest ? '/' + rest : ''));
           } else if (dest.includes('$1')) {
-            finalDest = dest.replace('$1', rest.startsWith('/') ? rest.slice(1) : rest);
+            const cleanRest = rest.startsWith('/') ? rest.slice(1) : rest;
+            finalDest = dest.replace('$1', cleanRest);
           } else if (dest.startsWith('http://') || dest.startsWith('https://')) {
-            finalDest = dest + (rest.startsWith('/') ? rest : `/${rest}`);
+            finalDest = dest + (rest.startsWith('/') ? rest : (rest ? '/' + rest : ''));
+          } else {
+            finalDest = dest + (rest.startsWith('/') ? rest : (rest ? '/' + rest : ''));
           }
           return {
             matched: true,
+            ruleIndex: i + 1,
             action: rule.type,
             actionLabel: getLabel(rule.type),
-            destination: finalDest + query
+            destination: finalDest + query,
+            explanation: `Matched prefix wildcard #${i + 1} (${src} -> ${dest})`
           };
         }
       }
 
-      if (pathname === src) {
+      // 3. Parameterized pattern matching (e.g. /users/:id or /posts/:cat/:id)
+      if (src.includes(':')) {
+        const srcSegments = src.split('/').filter(Boolean);
+        const pathSegments = pathname.split('/').filter(Boolean);
+        if (srcSegments.length === pathSegments.length) {
+          let paramMatch = true;
+          const params: Record<string, string> = {};
+          const capturedVals: string[] = [];
+
+          for (let s = 0; s < srcSegments.length; s++) {
+            if (srcSegments[s].startsWith(':')) {
+              const paramName = srcSegments[s].slice(1);
+              params[paramName] = pathSegments[s];
+              capturedVals.push(pathSegments[s]);
+            } else if (srcSegments[s] !== pathSegments[s]) {
+              paramMatch = false;
+              break;
+            }
+          }
+
+          if (paramMatch) {
+            let finalDest = dest;
+            for (let c = 0; c < capturedVals.length; c++) {
+              finalDest = finalDest.replace(new RegExp(`\\$${c + 1}`, 'g'), capturedVals[c]);
+            }
+            for (const [pName, pVal] of Object.entries(params)) {
+              finalDest = finalDest.replace(new RegExp(`:${pName}`, 'g'), pVal);
+            }
+            return {
+              matched: true,
+              ruleIndex: i + 1,
+              action: rule.type,
+              actionLabel: getLabel(rule.type),
+              destination: finalDest + query,
+              explanation: `Matched parameterized pattern #${i + 1} (${src} -> ${dest})`
+            };
+          }
+        }
+      }
+
+      // 4. Exact path match: e.g. /old-page -> /new-page
+      if (pathname === src || pathname === src + '/') {
         return {
           matched: true,
+          ruleIndex: i + 1,
           action: rule.type,
           actionLabel: getLabel(rule.type),
-          destination: dest + query
+          destination: dest + query,
+          explanation: `Matched exact rule #${i + 1} (${src} -> ${dest})`
         };
       }
     }
 
-    return { matched: false, action: '', actionLabel: '', destination: '' };
+    return {
+      matched: false,
+      ruleIndex: 0,
+      action: '',
+      actionLabel: '',
+      destination: '',
+      explanation: 'No matching redirect/rewrite rule. Request is handled by standard static asset routing / SPA fallback.'
+    };
+  }
+
+  async function testLiveRequest(targetPath: string) {
+    if (!targetPath.trim()) return;
+    liveTestLoading = true;
+    liveTestResult = null;
+    const startTime = performance.now();
+    try {
+      const match = simulateRuleMatch(targetPath.trim(), serviceRoutes);
+      let fetchUrl = targetPath.trim();
+      if (match.matched && match.destination.startsWith('http')) {
+        fetchUrl = match.destination;
+      } else if (endpointUrl) {
+        const p = targetPath.trim().startsWith('/') ? targetPath.trim() : '/' + targetPath.trim();
+        fetchUrl = `${endpointUrl}${p}`;
+      }
+      const res = await fetch(fetchUrl, { method: 'GET', mode: 'no-cors' });
+      const elapsed = Math.round(performance.now() - startTime);
+      liveTestResult = {
+        status: res.status || 200,
+        statusText: res.statusText || 'OK',
+        ok: res.ok !== false,
+        timeMs: elapsed,
+        finalUrl: fetchUrl
+      };
+    } catch (e: any) {
+      const elapsed = Math.round(performance.now() - startTime);
+      liveTestResult = {
+        status: 0,
+        statusText: e.message || 'Request Failed',
+        ok: false,
+        timeMs: elapsed,
+        finalUrl: targetPath.trim()
+      };
+    } finally {
+      liveTestLoading = false;
+    }
   }
 
   async function loadDomains() {
@@ -260,6 +407,17 @@
       const res = await fetch(`/api/v1/services/${id}`, { credentials: 'include' });
       if (!res.ok) { goto('/workspaces'); return; }
       service = await res.json();
+
+      // Redirect to overview if user is on a tab that doesn't apply to this service kind
+      const kind = service.kind || service.Kind || 'web';
+      const inapplicable =
+        (tab === 'routes' && kind !== 'static') ||
+        (tab === 'domains' && kind !== 'web' && kind !== 'static') ||
+        (tab === 'scale' && kind !== 'web' && kind !== 'static');
+      if (inapplicable) {
+        goto(`/services/${id}/overview`, { replaceState: true });
+        return;
+      }
 
       loadDomains();
       loadRoutes();
@@ -1413,43 +1571,106 @@
 
         <!-- Interactive Test Path Simulator -->
         <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--color-border);">
-          <h4 style="font-size: 0.875rem; font-weight: 700; color: var(--color-ink); margin-bottom: 0.35rem;">
-            Test Path Simulator
-          </h4>
-          <p class="text-xs text-muted" style="margin-bottom: 0.75rem; line-height: 1.5;">
-            Type a test request path or URL to preview how your redirect and rewrite rules will execute in real-time.
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem; flex-wrap: wrap; gap: 0.5rem;">
+            <h4 style="font-size: 0.925rem; font-weight: 700; color: var(--color-ink); margin: 0;">
+              Test Path Simulator
+            </h4>
+            <div style="display: flex; gap: 0.35rem; align-items: center; flex-wrap: wrap;">
+              <span class="text-xs text-muted" style="font-size: 0.72rem;">Quick Test:</span>
+              <button 
+                type="button" 
+                class="btn btn-secondary" 
+                style="padding: 2px 8px; font-size: 0.72rem; height: auto; min-height: 0;"
+                onclick={() => { testSimPath = '/api/login?ref=dashboard'; }}
+              >
+                /api/login
+              </button>
+              <button 
+                type="button" 
+                class="btn btn-secondary" 
+                style="padding: 2px 8px; font-size: 0.72rem; height: auto; min-height: 0;"
+                onclick={() => { testSimPath = '/api/v1/users?page=1'; }}
+              >
+                /api/v1/users
+              </button>
+              <button 
+                type="button" 
+                class="btn btn-secondary" 
+                style="padding: 2px 8px; font-size: 0.72rem; height: auto; min-height: 0;"
+                onclick={() => { testSimPath = '/dashboard/settings'; }}
+              >
+                /dashboard/settings
+              </button>
+            </div>
+          </div>
+          <p class="text-xs text-muted" style="margin-bottom: 0.85rem; line-height: 1.5;">
+            Type any relative path (e.g. <code>/api/login</code>) or full URL (e.g. <code>https://vtopcc.klouds.online/api/login?ref=1</code>) to preview how your redirect and rewrite rules will execute in real-time.
           </p>
           <div style="display: flex; gap: 0.5rem; align-items: center;">
             <input
               type="text"
               class="form-input font-mono text-xs"
-              placeholder="/api/login?ref=test"
+              placeholder="/api/login?ref=test or https://example.com/api/users"
               bind:value={testSimPath}
-              style="width: 100%; height: 36px;"
+              style="width: 100%; height: 38px;"
             />
+            {#if testSimPath.trim()}
+              <button
+                type="button"
+                class="btn btn-secondary"
+                style="padding: 0 12px; height: 38px; font-size: 0.75rem; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px;"
+                onclick={() => testLiveRequest(testSimPath)}
+                disabled={liveTestLoading}
+                title="Send a live test request to verify the route response"
+              >
+                {#if liveTestLoading}
+                  <Loader2 size={13} class="animate-spin" /> Testing...
+                {:else}
+                  <Rocket size={13} /> Test Live
+                {/if}
+              </button>
+            {/if}
           </div>
 
           {#if testSimPath.trim()}
             {@const simResult = simulateRuleMatch(testSimPath.trim(), serviceRoutes)}
-            <div style="margin-top: 0.75rem; padding: 0.75rem 1rem; border-radius: var(--radius-sm); font-size: 0.8125rem; background: var(--color-canvas); border: 1px solid var(--color-border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
-              <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
-                <span style="font-weight: 600; color: var(--color-ink);">Simulator Result:</span>
-                {#if simResult.matched}
-                  <span class="badge" style="background: {simResult.action.startsWith('redirect') ? 'rgba(245,158,11,0.18)' : 'rgba(16,185,129,0.18)'}; color: {simResult.action.startsWith('redirect') ? '#b45309' : '#047857'}; font-size: 0.75rem; font-weight: 600;">
-                    {simResult.actionLabel}
-                  </span>
-                  <span class="font-mono text-xs" style="color: var(--color-accent); font-weight: 600; word-break: break-all;">
-                    {simResult.destination}
-                  </span>
-                {:else}
-                  <span class="badge" style="background: rgba(148,163,184,0.18); color: #64748b; font-size: 0.75rem;">
-                    No Rule Match
-                  </span>
-                  <span class="text-xs text-muted">
-                    Serves physical static file or SPA fallback
-                  </span>
-                {/if}
+            <div style="margin-top: 0.85rem; padding: 1rem; border-radius: var(--radius-md); font-size: 0.8125rem; background: var(--color-canvas); border: 1px solid var(--color-border); display: flex; flex-direction: column; gap: 0.65rem;">
+              <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                  <span style="font-weight: 700; color: var(--color-ink);">Simulation Result:</span>
+                  {#if simResult.matched}
+                    <span class="badge" style="background: {simResult.action.startsWith('redirect') ? 'rgba(245,158,11,0.18)' : 'rgba(16,185,129,0.18)'}; color: {simResult.action.startsWith('redirect') ? '#b45309' : '#047857'}; font-size: 0.75rem; font-weight: 700; padding: 3px 8px;">
+                      {simResult.actionLabel}
+                    </span>
+                    <span class="font-mono text-xs" style="color: var(--color-accent); font-weight: 600; word-break: break-all;">
+                      {simResult.destination}
+                    </span>
+                  {:else}
+                    <span class="badge" style="background: rgba(148,163,184,0.18); color: #64748b; font-size: 0.75rem; font-weight: 600;">
+                      No Rule Match
+                    </span>
+                    <span class="text-xs text-muted">
+                      Serves physical static file or SPA fallback
+                    </span>
+                  {/if}
+                </div>
               </div>
+
+              <div class="text-xs text-muted" style="font-size: 0.75rem; border-top: 1px dashed var(--color-border); padding-top: 0.5rem;">
+                💡 {simResult.explanation}
+              </div>
+
+              {#if liveTestResult}
+                <div style="background: var(--color-surface); border: 1px solid {liveTestResult.ok ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}; border-radius: var(--radius-sm); padding: 0.6rem 0.85rem; font-size: 0.75rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
+                  <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <span class="badge" style="background: {liveTestResult.ok ? 'rgba(16,185,129,0.18)' : 'rgba(239,68,68,0.18)'}; color: {liveTestResult.ok ? '#047857' : '#b91c1c'}; font-weight: 700;">
+                      HTTP {liveTestResult.status} {liveTestResult.statusText}
+                    </span>
+                    <span class="text-muted">Target: <code class="font-mono text-xs">{liveTestResult.finalUrl}</code></span>
+                  </div>
+                  <span class="text-muted font-mono text-xs">Latency: {liveTestResult.timeMs}ms</span>
+                </div>
+              {/if}
             </div>
           {/if}
         </div>
