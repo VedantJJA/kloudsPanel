@@ -721,24 +721,6 @@
     }
   }
 
-  function syncRewriteTargetToEnv(targetUrl: string) {
-    let cleanTarget = targetUrl.replace(/\/\*$/, '').replace(/\/api$/, '').replace(/\/$/, '');
-    if (!cleanTarget) cleanTarget = targetUrl;
-
-    const existingIdx = envVars.findIndex(e => e.key === 'VITE_API_URL' || e.key === 'REACT_APP_API_URL');
-    if (existingIdx >= 0) {
-      envVars[existingIdx].value = cleanTarget;
-    } else {
-      envVars.push({ key: 'VITE_API_URL', value: cleanTarget });
-    }
-    envDirty = true;
-    syncEnvToRaw();
-    bannerNotice = {
-      type: 'success',
-      message: `Updated VITE_API_URL = "${cleanTarget}". Go to Environment Variables tab to review or save and redeploy.`
-    };
-  }
-
   async function saveEnvVars(redeploy: boolean = true) {
     if (envMode === 'raw') {
       syncRawToEnv();
@@ -1414,7 +1396,7 @@
             Redirect and Rewrite Rules
           </h2>
           <p class="text-xs text-muted" style="line-height: 1.5; margin: 0;">
-            Add <span style="color: var(--color-accent); font-weight: 600;">Redirect or Rewrite Rules</span> to modify requests to your site. Use URL parameters to capture path segments and wildcards to redirect everything under a given path.
+            Add <span style="color: var(--color-accent); font-weight: 600;">Redirect or Rewrite Rules</span> to modify requests to your site. Rules are processed at the network edge with zero downtime and take effect instantly without changing environment variables or rebuilding.
           </p>
         </div>
 
@@ -1495,20 +1477,6 @@
                       oninput={() => { routesDirty = true; }}
                       style="width: 100%; height: 34px;"
                     />
-                    {#if rule.destination && (rule.destination.startsWith('http://') || rule.destination.startsWith('https://'))}
-                      <div style="margin-top: 5px; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap;">
-                        <span class="text-xs text-muted" style="font-size: 0.7rem;">External backend target</span>
-                        <button
-                          type="button"
-                          class="btn btn-secondary"
-                          style="font-size: 0.72rem; padding: 2px 8px; height: auto; min-height: 0; display: inline-flex; align-items: center; gap: 4px; color: var(--color-accent);"
-                          onclick={() => syncRewriteTargetToEnv(rule.destination)}
-                          title="Auto-populate VITE_API_URL environment variable with this destination"
-                        >
-                          <Sparkles size={11} /> Sync to VITE_API_URL env var
-                        </button>
-                      </div>
-                    {/if}
                   </div>
 
                   <div>

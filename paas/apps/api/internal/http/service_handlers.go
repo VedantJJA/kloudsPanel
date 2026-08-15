@@ -536,41 +536,6 @@ func (h *Handler) handleUpdateServiceRoutes(c fiber.Ctx) error {
 	}
 	resMap["routes"] = req.Routes
 
-	// Auto-wire VITE_API_URL or REACT_APP_API_URL from rewrite rule if target is an external/hosted API
-	var envMap map[string]string
-	if rawEnv, ok := resMap["env"].(map[string]any); ok {
-		envMap = make(map[string]string)
-		for k, v := range rawEnv {
-			envMap[k] = fmt.Sprint(v)
-		}
-	} else if rawEnvStr, ok := resMap["env"].(map[string]string); ok {
-		envMap = rawEnvStr
-	} else {
-		envMap = make(map[string]string)
-	}
-
-	for _, r := range req.Routes {
-		rType := strings.ToLower(strings.TrimSpace(r.Type))
-		rSrc := strings.TrimSpace(r.Source)
-		rDst := strings.TrimSpace(r.Destination)
-		if (rType == "rewrite" || rType == "rewrite_200") && (strings.HasPrefix(rSrc, "/api") || rSrc == "/*") {
-			if strings.HasPrefix(rDst, "http://") || strings.HasPrefix(rDst, "https://") {
-				targetUrl := strings.TrimSuffix(rDst, "/*")
-				targetUrl = strings.TrimSuffix(targetUrl, "/api")
-				targetUrl = strings.TrimSuffix(targetUrl, "/")
-				if targetUrl != "" {
-					if cur, ok := envMap["VITE_API_URL"]; !ok || cur == "" || strings.HasPrefix(cur, "${") {
-						envMap["VITE_API_URL"] = targetUrl
-					}
-					if cur, ok := envMap["REACT_APP_API_URL"]; !ok || cur == "" || strings.HasPrefix(cur, "${") {
-						envMap["REACT_APP_API_URL"] = targetUrl
-					}
-				}
-			}
-		}
-	}
-	resMap["env"] = envMap
-
 	updatedJSON, _ := json.Marshal(resMap)
 	s.ResourceJSON = string(updatedJSON)
 	if err := h.store.Services().Update(c.Context(), s); err != nil {

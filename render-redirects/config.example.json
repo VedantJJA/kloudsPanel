@@ -1,0 +1,10 @@
+{
+  "rules": [
+    { "source": "/home", "destination": "/", "action": "redirect" },
+    { "source": "/blog/index.html", "destination": "/blog", "action": "redirect" },
+    { "source": "/web-host", "destination": "https://render.com", "action": "redirect" },
+    { "source": "/blog/posts/:postid", "destination": "/blog/:postid", "action": "redirect" },
+    { "source": "/updates/:month/:year", "destination": "/changelog/:year/:month", "action": "redirect" },
+    { "source": "/*", "destination": "/index.html", "action": "rewrite" }
+  ]
+}
