@@ -390,38 +390,6 @@
     } catch {}
   }
 
-  async function handleLinkGitProvider(e: Event) {
-    e.preventDefault();
-    if (!providerToken) return;
-    connecting = true;
-    try {
-      const res = await fetch('/api/v1/integrations/git', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          provider: selectedProvider,
-          username: providerUsername,
-          token: providerToken
-        })
-      });
-      if (res.ok) {
-        showConnectModal = false;
-        providerToken = '';
-        providerUsername = '';
-        await loadIntegrations();
-        await loadProviderRepos(selectedProvider);
-      } else {
-        const d = await res.json().catch(() => ({}));
-        alert(d.error || 'Failed to connect Git provider');
-      }
-    } catch (e: any) {
-      alert('Error connecting: ' + e.message);
-    } finally {
-      connecting = false;
-    }
-  }
-
   async function disconnectProvider(provider: string) {
     if (!confirm(`Are you sure you want to disconnect ${provider}?`)) return;
     try {
@@ -1578,75 +1546,6 @@
       </div>
     </div>
   </form>
-{/if}
-
-<!-- Modal: Link Git Provider -->
-{#if showConnectModal}
-  <div style="position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 999; padding: 1rem;">
-    <div class="card" style="width: 100%; max-width: 480px; box-shadow: var(--shadow-lg); background: var(--color-surface);">
-      <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-        <h3 style="margin:0; text-transform: capitalize;">Link {selectedProvider} Account</h3>
-        <button class="btn btn-secondary" style="padding: 4px; min-height: 28px;" onclick={() => showConnectModal = false} aria-label="Close">
-          <X size={16} />
-        </button>
-      </div>
-
-      <div style="padding: 1rem 0 0 0;">
-        {#if oauthEnabledMap[selectedProvider]}
-          <div style="margin-bottom: 1.25rem;">
-            <button 
-              type="button" 
-              class="btn btn-primary" 
-              style="width: 100%; padding: 0.65rem; background: {selectedProvider === 'github' ? '#24292f' : selectedProvider === 'gitlab' ? '#fc6d26' : '#0052cc'}; border-color: transparent; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 600;" 
-              onclick={() => authorizeGitOAuth(selectedProvider)}
-            >
-              <FolderGit2 size={16} /> Authorize Directly with {selectedProvider.charAt(0).toUpperCase() + selectedProvider.slice(1)} (1-Click)
-            </button>
-            <div style="text-align: center; margin: 1.15rem 0 0.85rem 0; position: relative;">
-              <span style="background: var(--color-surface); padding: 0 8px; color: var(--color-ink-muted); font-size: 0.75rem; position: relative; z-index: 1;">OR USE PERSONAL ACCESS TOKEN / PASSWORD</span>
-              <div style="position: absolute; left: 0; top: 50%; width: 100%; border-top: 1px solid var(--color-border); z-index: 0;"></div>
-            </div>
-          </div>
-        {/if}
-
-        <form onsubmit={handleLinkGitProvider}>
-          <div class="form-group">
-            <label for="modal-git-user" class="form-label">Username / Organization (optional for GitHub/GitLab)</label>
-            <input 
-              id="modal-git-user" 
-              type="text" 
-              class="form-input" 
-              placeholder="e.g. your-username" 
-              bind:value={providerUsername} 
-            />
-          </div>
-
-          <div class="form-group">
-            <label for="modal-git-token" class="form-label">
-              {selectedProvider === 'bitbucket' ? 'Bitbucket App Password' : 'Personal Access Token (PAT)'}
-            </label>
-            <input 
-              id="modal-git-token" 
-              type="password" 
-              class="form-input font-mono" 
-              placeholder={selectedProvider === 'github' ? 'ghp_...' : selectedProvider === 'gitlab' ? 'glpat-...' : 'App password'} 
-              bind:value={providerToken} 
-              required 
-            />
-          </div>
-
-          <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.5rem;">
-            <button type="button" class="btn btn-secondary" onclick={() => showConnectModal = false}>
-              Cancel
-            </button>
-            <button type="submit" class="btn btn-primary" disabled={connecting || !providerToken}>
-              {#if connecting}<Loader2 size={14} class="animate-spin" /> Connecting...{:else}Save & Connect {selectedProvider}{/if}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  </div>
 {/if}
 
 <!-- Modal: Required Environment Variables Setup Prompt -->

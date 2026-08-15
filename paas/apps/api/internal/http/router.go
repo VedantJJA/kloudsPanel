@@ -146,6 +146,7 @@ func NewServer(log *slog.Logger, store repository.Store, addr string) *fiber.App
 	admin.Get("/users", h.handleAdminListUsers)
 	admin.Post("/users/:id/approve", h.handleApproveUser)
 	admin.Post("/users/:id/suspend", h.handleSuspendUser)
+	admin.Delete("/users/:id", h.handleAdminDeleteUser)
 	admin.Get("/audit", h.handleListAuditEvents)
 	admin.Get("/settings", h.handleGetPlatformSettings)
 	admin.Patch("/settings", h.handleUpdatePlatformSettings)

@@ -1,7 +1,10 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
+  import { Eye, EyeOff } from 'lucide-svelte';
+
   let email = $state('');
   let password = $state('');
+  let showPassword = $state(false);
   let error = $state('');
   let loading = $state(false);
 
@@ -18,7 +21,7 @@
       });
       if (!res.ok) {
         const data = await res.json();
-        error = data.detail ?? 'Invalid credentials';
+        error = data.detail ?? data.error ?? 'Invalid credentials';
         return;
       }
       goto('/workspaces');
@@ -78,7 +81,7 @@
           type="email"
           class="form-input"
           bind:value={email}
-          placeholder="name"
+          placeholder="name@example.com"
           required
           autocomplete="email"
         />
@@ -86,19 +89,46 @@
 
       <div class="form-group">
         <label class="form-label" for="password">Password</label>
-        <input
-          id="password"
-          type="password"
-          class="form-input"
-          bind:value={password}
-          placeholder="••••••••"
-          required
-          autocomplete="current-password"
-        />
+        <div style="position: relative; display: flex; align-items: center;">
+          <input
+            id="password"
+            type={showPassword ? 'text' : 'password'}
+            class="form-input"
+            bind:value={password}
+            placeholder="••••••••"
+            required
+            autocomplete="current-password"
+            style="padding-right: 2.5rem;"
+          />
+          <button
+            type="button"
+            onclick={() => showPassword = !showPassword}
+            style="
+              position: absolute;
+              right: 0.5rem;
+              background: transparent;
+              border: none;
+              color: var(--color-ink-muted);
+              cursor: pointer;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              padding: 0.25rem;
+            "
+            title={showPassword ? 'Hide password' : 'Show password'}
+            aria-label={showPassword ? 'Hide password' : 'Show password'}
+          >
+            {#if showPassword}
+              <EyeOff size={18} />
+            {:else}
+              <Eye size={18} />
+            {/if}
+          </button>
+        </div>
       </div>
 
-      <button type="submit" class="btn btn-primary w-full" disabled={loading}>
-        {#if loading}Signing in…{:else}Sign In{/if}
+      <button type="submit" class="btn btn-primary w-full" disabled={loading} style="margin-top: 0.5rem;">
+        {#if loading}Signing in...{:else}Sign In{/if}
       </button>
     </form>
 

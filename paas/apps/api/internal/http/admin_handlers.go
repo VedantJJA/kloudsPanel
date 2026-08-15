@@ -105,6 +105,59 @@ func (h *Handler) handleSuspendUser(c fiber.Ctx) error {
 	return c.JSON(fiber.Map{"status": "ok", "user": user})
 }
 
+func (h *Handler) handleAdminDeleteUser(c fiber.Ctx) error {
+	userID := c.Params("id")
+	user, err := h.store.Users().GetByID(c.Context(), userID)
+	if err != nil || user == nil {
+		return c.Status(404).JSON(fiber.Map{"error": "user not found"})
+	}
+	if user.PlatformRole == domain.PlatformRoleMainAdmin {
+		return c.Status(400).JSON(fiber.Map{"error": "cannot delete main admin account"})
+	}
+
+	// Clean up user workspaces, projects, services, containers, and databases
+	if workspaces, err := h.store.Workspaces().ListForUser(c.Context(), user.ID); err == nil {
+		for _, ws := range workspaces {
+			if ws.CreatedBy == user.ID {
+				if projects, err := h.store.Projects().ListForWorkspace(c.Context(), ws.ID, 1000, 0); err == nil {
+					for _, p := range projects {
+						// Remove all services & containers
+						if services, err := h.store.Services().ListForProject(c.Context(), p.ID); err == nil {
+							for _, s := range services {
+								_ = exec.Command("docker", "rm", "-f", fmt.Sprintf("paas-svc-%s", s.Slug)).Run()
+								removeTraefikDynamicConfig(s.Slug)
+								_ = h.store.Services().Delete(c.Context(), s.ID)
+							}
+						}
+						// Remove all databases & containers
+						if dbs, err := h.store.Databases().ListForProject(c.Context(), p.ID); err == nil {
+							for _, db := range dbs {
+								_ = exec.Command("docker", "rm", "-f", fmt.Sprintf("paas-db-%s", db.Name)).Run()
+								_ = exec.Command("docker", "rm", "-f", fmt.Sprintf("paas-db-%s", strings.ToLower(db.Name))).Run()
+								_ = h.store.Databases().Delete(c.Context(), db.ID)
+							}
+						}
+						_ = h.store.Projects().Delete(c.Context(), p.ID)
+					}
+				}
+				_ = h.store.Workspaces().Delete(c.Context(), ws.ID)
+			}
+		}
+	}
+
+	// Delete git integration tokens
+	_ = h.store.GitIntegrations().Delete(c.Context(), user.ID, "github")
+	_ = h.store.GitIntegrations().Delete(c.Context(), user.ID, "gitlab")
+	_ = h.store.GitIntegrations().Delete(c.Context(), user.ID, "bitbucket")
+
+	// Delete user record
+	if err := h.store.Users().Delete(c.Context(), user.ID); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to delete user: %v", err)})
+	}
+
+	return c.JSON(fiber.Map{"status": "ok", "message": "User and associated projects deleted successfully"})
+}
+
 func (h *Handler) handleListAuditEvents(c fiber.Ctx) error {
 	events, err := h.store.AuditEvents().List(c.Context(), nil, 100, nil)
 	if err != nil {

@@ -1,12 +1,25 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { Loader2, Clock, Check, X, Shield, UserCheck, ShieldAlert, UserPlus, RefreshCw, ToggleLeft, ToggleRight } from 'lucide-svelte';
+  import { 
+    Loader2, 
+    Clock, 
+    Check, 
+    X, 
+    Shield, 
+    UserCheck, 
+    ShieldAlert, 
+    UserPlus, 
+    RefreshCw, 
+    Trash2, 
+    UserX 
+  } from 'lucide-svelte';
 
   let users = $state<any[]>([]);
   let pending = $state<any[]>([]);
   let loading = $state(true);
   let autoApprove = $state(true);
   let settingSaving = $state(false);
+  let deletingId = $state<string | null>(null);
 
   async function load() {
     try {
@@ -43,7 +56,6 @@
   }
 
   async function approve(id: string) {
-    // Optimistic UI update
     pending = pending.filter(u => u.id !== id);
     users = users.map(u => u.id === id ? { ...u, status: 'active' } : u);
 
@@ -54,7 +66,6 @@
   }
 
   async function suspend(id: string) {
-    // Optimistic UI update
     pending = pending.filter(u => u.id !== id);
     users = users.map(u => u.id === id ? { ...u, status: 'suspended' } : u);
 
@@ -62,6 +73,38 @@
       await fetch(`/api/v1/admin/users/${id}/suspend`, { method: 'POST', credentials: 'include' });
     } catch {}
     await load();
+  }
+
+  async function deleteUser(u: any) {
+    const isMain = u.isMainAdmin || u.platformRole === 'main_admin' || u.platform_role === 'main_admin';
+    if (isMain) {
+      alert('The Main Admin account cannot be deleted.');
+      return;
+    }
+    const name = u.displayName || u.display_name || u.email;
+    if (!confirm(`Are you sure you want to permanently remove user "${name}"?\n\nThis will immediately delete all their projects, databases, services, and running containers.`)) {
+      return;
+    }
+
+    deletingId = u.id;
+    try {
+      const res = await fetch(`/api/v1/admin/users/${u.id}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+      if (res.ok) {
+        users = users.filter(item => item.id !== u.id);
+        pending = pending.filter(item => item.id !== u.id);
+      } else {
+        const d = await res.json().catch(() => ({}));
+        alert(d.error || 'Failed to delete user');
+      }
+    } catch (e: any) {
+      alert('Error deleting user: ' + e.message);
+    } finally {
+      deletingId = null;
+      await load();
+    }
   }
 
   onMount(load);
@@ -173,10 +216,12 @@
           <th>Role</th>
           <th>Status</th>
           <th>Last Login</th>
+          <th style="text-align:right;">Actions</th>
         </tr>
       </thead>
       <tbody>
         {#each users as u}
+          {@const isMain = u.isMainAdmin || u.platformRole === 'main_admin' || u.platform_role === 'main_admin'}
           <tr>
             <td style="font-weight:600">{u.displayName || u.display_name || 'User'}</td>
             <td class="font-mono text-sm">{u.email}</td>
@@ -189,10 +234,30 @@
               </span>
             </td>
             <td class="text-xs text-muted">{u.lastLoginAt?.slice(0,10) || u.last_login_at?.slice(0,10) || 'Never'}</td>
+            <td style="text-align:right;">
+              {#if !isMain}
+                <button 
+                  type="button" 
+                  class="btn btn-secondary" 
+                  style="padding:0.25rem 0.5rem; font-size:0.75rem; color:var(--color-error); border-color:rgba(239,68,68,0.3); display:inline-flex; align-items:center; gap:4px;"
+                  onclick={() => deleteUser(u)}
+                  disabled={deletingId === u.id}
+                  title="Permanently remove user and delete their projects"
+                >
+                  {#if deletingId === u.id}
+                    <Loader2 size={12} class="animate-spin" /> Deleting...
+                  {:else}
+                    <Trash2 size={12} /> Remove User
+                  {/if}
+                </button>
+              {:else}
+                <span class="text-xs text-muted" style="font-style:italic;">Protected (Admin)</span>
+              {/if}
+            </td>
           </tr>
         {/each}
         {#if users.length === 0}
-          <tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--color-ink-secondary)">No users found</td></tr>
+          <tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--color-ink-secondary)">No users found</td></tr>
         {/if}
       </tbody>
     </table>

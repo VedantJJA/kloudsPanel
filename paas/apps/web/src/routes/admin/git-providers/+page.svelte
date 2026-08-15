@@ -38,12 +38,6 @@
   let gitIntegrations = $state<any[]>([]);
   let oauthEnabledMap = $state<Record<string, boolean>>({});
 
-  // Manual Token Fallback
-  let showManualToken = $state(false);
-  let manualUsername = $state('');
-  let manualToken = $state('');
-  let savingManual = $state(false);
-  let manualSaved = $state(false);
   let hostDomain = $derived(
     rootDomain || (typeof window !== 'undefined' ? window.location.host : 'yourdomain.com')
   );
@@ -170,32 +164,6 @@
     navigator.clipboard.writeText(currentCallbackUrl);
     copiedCallback = true;
     setTimeout(() => copiedCallback = false, 2000);
-  }
-
-  async function saveManualToken(e: Event) {
-    e.preventDefault();
-    savingManual = true;
-    manualSaved = false;
-    try {
-      const res = await fetch('/api/v1/integrations/git', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          provider: activeTab,
-          username: manualUsername,
-          token: manualToken
-        })
-      });
-      if (res.ok) {
-        manualSaved = true;
-        manualToken = '';
-        await loadData();
-        setTimeout(() => manualSaved = false, 3000);
-      }
-    } finally {
-      savingManual = false;
-    }
   }
 </script>
 
@@ -343,43 +311,5 @@
         {#if savingOAuth}<Loader2 size={14} class="animate-spin" /> Saving...{:else}<Key size={14} /> Save {current.name} Keys{/if}
       </button>
     </form>
-  </div>
-
-  <!-- Manual Personal Access Token Fallback Accordion -->
-  <div style="border-top:1px solid var(--color-border); padding-top:1.25rem;">
-    <button 
-      type="button" 
-      class="btn btn-secondary" 
-      style="border:none; padding:4px 0; font-size:0.8125rem; color:var(--color-ink-secondary); text-decoration:underline;"
-      onclick={() => showManualToken = !showManualToken}
-    >
-      {showManualToken ? 'Hide' : 'Alternative'}: Connect via Personal Access Token / App Password
-    </button>
-
-    {#if showManualToken}
-      <div style="margin-top:1rem; padding:1.25rem; background:var(--color-canvas); border-radius:var(--radius-md); border:1px solid var(--color-border);">
-        {#if manualSaved}
-          <div style="background:#d1fae5;border:1px solid #6ee7b7;color:#065f46;border-radius:var(--radius-md);padding:0.5rem 1rem;font-size:0.8125rem;margin-bottom:1rem">
-            {current.name} token connected successfully.
-          </div>
-        {/if}
-
-        <form onsubmit={saveManualToken} style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:0.75rem; align-items:flex-end;">
-          <div class="form-group" style="margin:0;">
-            <label class="form-label" for="manual-username" style="font-size:0.8125rem;">Username</label>
-            <input id="manual-username" type="text" class="form-input" placeholder="e.g. your-git-username" bind:value={manualUsername} required />
-          </div>
-
-          <div class="form-group" style="margin:0;">
-            <label class="form-label" for="manual-token" style="font-size:0.8125rem;">Personal Access Token</label>
-            <input id="manual-token" type="password" class="form-input font-mono" placeholder="ghp_..., glpat-..., or App Password" bind:value={manualToken} required />
-          </div>
-
-          <button type="submit" class="btn btn-secondary" style="height:38px; font-size:0.8125rem;" disabled={savingManual || !manualUsername || !manualToken}>
-            {#if savingManual}<Loader2 size={14} class="animate-spin" /> Saving...{:else}<Plus size={14} /> Link Token{/if}
-          </button>
-        </form>
-      </div>
-    {/if}
   </div>
 </div>

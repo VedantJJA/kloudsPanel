@@ -87,6 +87,11 @@ func (r *userRepo) CountByRole(ctx context.Context, role domain.PlatformRole) (i
 	return n, row.Scan(&n)
 }
 
+func (r *userRepo) Delete(ctx context.Context, id string) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM users WHERE id=?`, id)
+	return err
+}
+
 func scanUser(row *sql.Row) (*domain.User, error) {
 	u := &domain.User{}
 	var evAt, appBy, appAt, llAt sql.NullString

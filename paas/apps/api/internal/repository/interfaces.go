@@ -49,6 +49,7 @@ type UserRepository interface {
 	ListPending(ctx context.Context) ([]*domain.User, error)
 	ListAll(ctx context.Context, limit, offset int) ([]*domain.User, error)
 	CountByRole(ctx context.Context, role domain.PlatformRole) (int, error)
+	Delete(ctx context.Context, id string) error
 }
 
 // WorkspaceRepository manages workspace and membership persistence.

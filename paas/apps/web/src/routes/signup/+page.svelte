@@ -1,12 +1,22 @@
 <script lang="ts">
-  import { Check } from 'lucide-svelte';
+  import { Check, Eye, EyeOff } from 'lucide-svelte';
   let email = $state('');
   let displayName = $state('');
   let password = $state('');
   let password2 = $state('');
+  let showPassword = $state(false);
+  let showPassword2 = $state(false);
   let error = $state('');
   let success = $state(false);
   let loading = $state(false);
+
+  function handlePasswordInput() {
+    if (error === 'Passwords do not match' && password === password2) {
+      error = '';
+    } else if (error && error !== 'Passwords do not match') {
+      error = '';
+    }
+  }
 
   async function handleSignup(e: Event) {
     e.preventDefault();
@@ -24,7 +34,7 @@
       });
       if (!res.ok) {
         const data = await res.json();
-        error = data.detail ?? 'Signup failed';
+        error = data.detail ?? data.error ?? 'Signup failed';
         return;
       }
       success = true;
@@ -85,26 +95,114 @@
       <form onsubmit={handleSignup}>
         <div class="form-group">
           <label class="form-label" for="name">Name</label>
-          <input id="name" type="text" class="form-input" bind:value={displayName}
-            placeholder="name" required autocomplete="name"/>
+          <input 
+            id="name" 
+            type="text" 
+            class="form-input" 
+            bind:value={displayName}
+            placeholder="Your name" 
+            required 
+            autocomplete="name"
+          />
         </div>
+
         <div class="form-group">
           <label class="form-label" for="email">Email</label>
-          <input id="email" type="email" class="form-input" bind:value={email}
-            placeholder="name" required autocomplete="email"/>
+          <input 
+            id="email" 
+            type="email" 
+            class="form-input" 
+            bind:value={email}
+            placeholder="name@example.com" 
+            required 
+            autocomplete="email"
+          />
         </div>
+
         <div class="form-group">
           <label class="form-label" for="password">Password</label>
-          <input id="password" type="password" class="form-input" bind:value={password}
-            placeholder="Minimum 8 characters" required minlength="8"/>
+          <div style="position: relative; display: flex; align-items: center;">
+            <input 
+              id="password" 
+              type={showPassword ? 'text' : 'password'} 
+              class="form-input" 
+              bind:value={password}
+              oninput={handlePasswordInput}
+              placeholder="Minimum 8 characters" 
+              required 
+              minlength="8"
+              style="padding-right: 2.5rem;"
+            />
+            <button
+              type="button"
+              onclick={() => showPassword = !showPassword}
+              style="
+                position: absolute;
+                right: 0.5rem;
+                background: transparent;
+                border: none;
+                color: var(--color-ink-muted);
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 0.25rem;
+              "
+              title={showPassword ? 'Hide password' : 'Show password'}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+            >
+              {#if showPassword}
+                <EyeOff size={18} />
+              {:else}
+                <Eye size={18} />
+              {/if}
+            </button>
+          </div>
         </div>
+
         <div class="form-group">
           <label class="form-label" for="password2">Confirm Password</label>
-          <input id="password2" type="password" class="form-input" bind:value={password2}
-            placeholder="••••••••" required minlength="8"/>
+          <div style="position: relative; display: flex; align-items: center;">
+            <input 
+              id="password2" 
+              type={showPassword2 ? 'text' : 'password'} 
+              class="form-input" 
+              bind:value={password2}
+              oninput={handlePasswordInput}
+              placeholder="Re-enter password" 
+              required 
+              minlength="8"
+              style="padding-right: 2.5rem;"
+            />
+            <button
+              type="button"
+              onclick={() => showPassword2 = !showPassword2}
+              style="
+                position: absolute;
+                right: 0.5rem;
+                background: transparent;
+                border: none;
+                color: var(--color-ink-muted);
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 0.25rem;
+              "
+              title={showPassword2 ? 'Hide password' : 'Show password'}
+              aria-label={showPassword2 ? 'Hide password' : 'Show password'}
+            >
+              {#if showPassword2}
+                <EyeOff size={18} />
+              {:else}
+                <Eye size={18} />
+              {/if}
+            </button>
+          </div>
         </div>
-        <button type="submit" class="btn btn-primary w-full" disabled={loading}>
-          {#if loading}Submitting…{:else}Request Access{/if}
+
+        <button type="submit" class="btn btn-primary w-full" disabled={loading} style="margin-top: 0.5rem;">
+          {#if loading}Submitting...{:else}Request Access{/if}
         </button>
       </form>
 

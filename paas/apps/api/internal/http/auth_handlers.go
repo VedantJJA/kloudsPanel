@@ -71,8 +71,8 @@ func (h *Handler) requireSession(c fiber.Ctx) error {
 
 func (h *Handler) requireMainAdmin(c fiber.Ctx) error {
 	u, ok := c.Locals("user").(*domain.User)
-	if !ok || u.PlatformRole != domain.PlatformRoleMainAdmin {
-		return c.Status(403).JSON(fiber.Map{"error": "forbidden: main_admin required"})
+	if !ok || (u.PlatformRole != domain.PlatformRoleMainAdmin && u.PlatformRole != domain.PlatformRoleAdmin) {
+		return c.Status(403).JSON(fiber.Map{"error": "forbidden: administrator privileges required"})
 	}
 	return c.Next()
 }
@@ -181,12 +181,18 @@ func (h *Handler) handleLogin(c fiber.Ctx) error {
 		Secure:   false,
 	})
 
+	isAdmin := user.PlatformRole == domain.PlatformRoleMainAdmin || user.PlatformRole == domain.PlatformRoleAdmin
+
 	return c.JSON(fiber.Map{
 		"user": fiber.Map{
-			"id":          user.ID,
-			"email":       user.Email,
-			"displayName": user.DisplayName,
-			"isMainAdmin": user.PlatformRole == domain.PlatformRoleMainAdmin,
+			"id":            user.ID,
+			"email":         user.Email,
+			"displayName":   user.DisplayName,
+			"display_name":  user.DisplayName,
+			"platformRole":  user.PlatformRole,
+			"platform_role": string(user.PlatformRole),
+			"isMainAdmin":   user.PlatformRole == domain.PlatformRoleMainAdmin,
+			"isAdmin":       isAdmin,
 		},
 		"token": token,
 	})
@@ -226,11 +232,16 @@ func (h *Handler) handleLogout(c fiber.Ctx) error {
 
 func (h *Handler) handleMe(c fiber.Ctx) error {
 	u := c.Locals("user").(*domain.User)
+	isAdmin := u.PlatformRole == domain.PlatformRoleMainAdmin || u.PlatformRole == domain.PlatformRoleAdmin
 	return c.JSON(fiber.Map{
-		"id":          u.ID,
-		"email":       u.Email,
-		"displayName": u.DisplayName,
-		"isMainAdmin": u.PlatformRole == domain.PlatformRoleMainAdmin,
-		"status":      u.Status,
+		"id":            u.ID,
+		"email":         u.Email,
+		"displayName":   u.DisplayName,
+		"display_name":  u.DisplayName,
+		"platformRole":  u.PlatformRole,
+		"platform_role": string(u.PlatformRole),
+		"isMainAdmin":   u.PlatformRole == domain.PlatformRoleMainAdmin,
+		"isAdmin":       isAdmin,
+		"status":        u.Status,
 	})
 }

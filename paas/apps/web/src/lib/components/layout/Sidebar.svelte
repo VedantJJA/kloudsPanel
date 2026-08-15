@@ -66,6 +66,16 @@
   let currentDatabase = $state<any>(null);
   let currentProject = $state<any>(null);
   let currentWorkspace = $state<any>(null);
+  let currentUser = $state<any>(null);
+
+  const isAdmin = $derived(
+    currentUser?.isAdmin === true || 
+    currentUser?.isMainAdmin === true || 
+    currentUser?.platform_role === 'main_admin' || 
+    currentUser?.platform_role === 'admin' || 
+    currentUser?.platformRole === 'main_admin' || 
+    currentUser?.platformRole === 'admin'
+  );
 
   onMount(() => {
     try {
@@ -75,6 +85,11 @@
         document.querySelector('.app-shell')?.classList.add('sidebar-collapsed');
       }
     } catch {}
+
+    fetch('/api/v1/auth/me', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) currentUser = data; })
+      .catch(() => {});
   });
 
   function toggleCollapse() {
@@ -140,16 +155,23 @@
     section?: string;
   };
 
-  const defaultNavItems: NavItem[] = [
-    { label: 'Workspaces', href: '/workspaces', icon: Home },
-    { label: 'Databases', href: '/databases', icon: Database },
-    { section: 'Administration', label: '', href: '', icon: null },
-    { label: 'Settings & Setup', href: '/admin/setup', icon: Settings },
-    { label: 'Git Providers', href: '/admin/git-providers', icon: FolderGit2 },
-    { label: 'Users', href: '/admin/users', icon: Users },
-    { label: 'Telemetry', href: '/admin/telemetry', icon: Activity },
-    { label: 'Audit Log', href: '/admin/audit', icon: ClipboardList },
-  ];
+  const defaultNavItems = $derived.by<NavItem[]>(() => {
+    const items: NavItem[] = [
+      { label: 'Workspaces', href: '/workspaces', icon: Home },
+      { label: 'Databases', href: '/databases', icon: Database },
+    ];
+    if (isAdmin) {
+      items.push(
+        { section: 'Administration', label: '', href: '', icon: null },
+        { label: 'Settings & Setup', href: '/admin/setup', icon: Settings },
+        { label: 'Git Providers', href: '/admin/git-providers', icon: FolderGit2 },
+        { label: 'Users', href: '/admin/users', icon: Users },
+        { label: 'Telemetry', href: '/admin/telemetry', icon: Activity },
+        { label: 'Audit Log', href: '/admin/audit', icon: ClipboardList },
+      );
+    }
+    return items;
+  });
 
   const serviceTabs = $derived([
     { label: 'Overview', href: `/services/${currentServiceId}/overview`, icon: LayoutDashboard },
