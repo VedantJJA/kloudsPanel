@@ -90,7 +90,11 @@
       const res = await fetch(`/api/v1/services/${targetId}/routes`, { credentials: 'include' });
       if (res.ok) {
         const d = await res.json();
-        serviceRoutes = d.routes ?? [];
+        serviceRoutes = (d.routes ?? []).map((r: any) => ({
+          type: (r.type && r.type.startsWith('redirect')) ? 'redirect' : 'rewrite',
+          source: r.source || '',
+          destination: r.destination || ''
+        }));
         routesInitialLoaded = true;
         routesDirty = false;
       }
@@ -153,6 +157,14 @@
   let liveTestLoading = $state(false);
   let liveTestResult = $state<{ status: number; statusText: string; ok: boolean; timeMs: number; finalUrl: string } | null>(null);
 
+  function joinUrlPath(base: string, sub: string): string {
+    if (!sub) return base;
+    const cleanBase = base.replace(/\/+$/, '');
+    const cleanSub = sub.replace(/^\/+/, '');
+    if (!cleanSub) return cleanBase;
+    return `${cleanBase}/${cleanSub}`;
+  }
+
   function simulateRuleMatch(rawInput: string, rules: Array<{ type: string; source: string; destination: string }>) {
     let input = rawInput.trim();
     if (!input) {
@@ -187,11 +199,8 @@
     }
 
     const getLabel = (t: string) => {
-      if (t === 'redirect_302' || t === 'redirect_temporary') return '302 Found';
-      if (t === 'redirect_307') return '307 Temporary';
-      if (t === 'redirect_308') return '308 Permanent';
-      if (t === 'redirect' || t === 'redirect_301' || t.startsWith('redirect')) return '301 Moved Permanently';
-      return '200 Rewrite';
+      if (t === 'redirect' || t.startsWith('redirect')) return 'Redirect';
+      return 'Rewrite';
     };
 
     for (let i = 0; i < rules.length; i++) {
@@ -205,9 +214,9 @@
         let finalDest = dest;
         if (dest.endsWith('/*')) {
           const rest = pathname.startsWith('/') ? pathname.slice(1) : pathname;
-          finalDest = dest.slice(0, -2) + (rest ? '/' + rest : '');
+          finalDest = joinUrlPath(dest.slice(0, -2), rest);
         } else if (dest.includes('$1')) {
-          finalDest = dest.replace('$1', pathname.startsWith('/') ? pathname.slice(1) : pathname);
+          finalDest = dest.replace('$1', pathname.replace(/^\/+/, ''));
         }
         return {
           matched: true,
@@ -227,14 +236,11 @@
           let finalDest = dest;
           if (dest.endsWith('/*')) {
             const baseDest = dest.slice(0, -2);
-            finalDest = baseDest + (rest.startsWith('/') ? rest : (rest ? '/' + rest : ''));
+            finalDest = joinUrlPath(baseDest, rest);
           } else if (dest.includes('$1')) {
-            const cleanRest = rest.startsWith('/') ? rest.slice(1) : rest;
-            finalDest = dest.replace('$1', cleanRest);
-          } else if (dest.startsWith('http://') || dest.startsWith('https://')) {
-            finalDest = dest + (rest.startsWith('/') ? rest : (rest ? '/' + rest : ''));
+            finalDest = dest.replace('$1', rest.replace(/^\/+/, ''));
           } else {
-            finalDest = dest + (rest.startsWith('/') ? rest : (rest ? '/' + rest : ''));
+            finalDest = joinUrlPath(dest, rest);
           }
           return {
             matched: true,
@@ -692,7 +698,7 @@
         const d = await res.json();
         if (d.routes && d.routes.length > 0) {
           serviceRoutes = d.routes.map((r: any) => ({
-            type: r.type || 'rewrite',
+            type: (r.type && r.type.startsWith('redirect')) ? 'redirect' : 'rewrite',
             source: r.source || '',
             destination: r.destination || ''
           }));
@@ -1514,11 +1520,8 @@
                       onchange={() => { routesDirty = true; }}
                       style="width: 100%; height: 34px;"
                     >
-                      <option value="rewrite">Rewrite (200 OK)</option>
-                      <option value="redirect_301">Redirect (301 Permanent)</option>
-                      <option value="redirect_302">Redirect (302 Temporary)</option>
-                      <option value="redirect_307">Redirect (307 Temporary - Preserves Method)</option>
-                      <option value="redirect_308">Redirect (308 Permanent - Preserves Method)</option>
+                      <option value="rewrite">Rewrite</option>
+                      <option value="redirect">Redirect</option>
                     </select>
                   </div>
                 </div>
