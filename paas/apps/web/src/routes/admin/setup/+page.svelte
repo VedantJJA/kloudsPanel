@@ -23,15 +23,15 @@
     Sparkles
   } from 'lucide-svelte';
 
-  type SettingsTab = 'general' | 'domain' | 'git' | 'security';
+  type SettingsTab = 'initial-setup' | 'general' | 'domain' | 'git' | 'security';
 
-  let activeTab = $state<SettingsTab>('general');
+  let activeTab = $state<SettingsTab>('initial-setup');
 
   // Platform state
   let rootDomain = $state('');
   let acmeEmail = $state('');
   let dnsMode = $state('http-01');
-  let autoApprove = $state(true);
+  let autoApprove = $state(false);
 
   // Storage Maintenance state
   let pruning = $state(false);
@@ -92,7 +92,7 @@
         rootDomain = s.root_domain ?? '';
         acmeEmail = s.acme_email ?? '';
         dnsMode = s.dns_mode ?? 'http-01';
-        autoApprove = s.auto_approve_users ?? true;
+        autoApprove = s.auto_approve_users ?? false;
         githubClientId = s.github_client_id ?? '';
         githubClientSecret = s.github_client_secret ?? '';
         gitlabClientId = s.gitlab_client_id ?? '';
@@ -178,6 +178,7 @@
   });
 
   const tabs: Array<{ id: SettingsTab; label: string; icon: any; count?: number }> = [
+    { id: 'initial-setup', label: 'Initial Setup Hub', icon: Sparkles },
     { id: 'general', label: 'General & Maintenance', icon: Sliders },
     { id: 'domain', label: 'Domain & SSL/TLS', icon: Globe },
     { id: 'git', label: 'Git Integrations', icon: FolderGit2 },
@@ -235,9 +236,246 @@
   </div>
 {:else}
   <!-- ══════════════════════════════════════════════════════════════════════════ -->
+  <!-- TAB: INITIAL SETUP HUB                                                     -->
+  <!-- ══════════════════════════════════════════════════════════════════════════ -->
+  {#if activeTab === 'initial-setup'}
+    <div style="display:flex; flex-direction:column; gap:1.5rem; max-width:960px;">
+
+      <!-- Platform Welcome Banner -->
+      <div class="card" style="background: linear-gradient(135deg, rgba(37,99,235,0.06) 0%, rgba(14,165,233,0.06) 100%); border: 1px solid var(--color-border); padding: 1.5rem;">
+        <div style="display:flex; align-items:flex-start; gap:1rem; flex-wrap:wrap;">
+          <div style="width:48px; height:48px; border-radius:var(--radius-md); background:var(--color-accent); color:#fff; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+            <Sparkles size={24} />
+          </div>
+          <div style="flex:1; min-width:280px;">
+            <h2 style="margin:0 0 0.25rem 0; font-size:1.25rem; font-weight:700; color:var(--color-ink);">Platform Foundation & Initial Setup</h2>
+            <p class="text-xs text-muted" style="margin:0; line-height:1.6;">
+              Welcome to kloudsPanel! Complete the foundation checklist below to enable automated HTTPS certificates, 1-click Git OAuth for all users, Nginx static site hosting, and database provisioning.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Initial Setup Steps Grid -->
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(440px, 1fr)); gap:1.25rem;">
+
+        <!-- Step 1: Root Domain & Traefik Ingress -->
+        <div class="card" style="padding:1.25rem; border:1px solid var(--color-border); background:var(--color-surface); display:flex; flex-direction:column; justify-content:space-between;">
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+              <div style="display:flex; align-items:center; gap:8px; font-weight:700; font-size:0.9375rem; color:var(--color-ink);">
+                <div style="width:28px; height:28px; border-radius:50%; background:rgba(37,99,235,0.1); color:#2563eb; display:flex; align-items:center; justify-content:center; font-size:0.75rem; font-weight:800;">1</div>
+                Domain & Ingress Gateway
+              </div>
+              {#if rootDomain}
+                <span class="badge badge-running" style="font-size:0.6875rem;">Configured</span>
+              {:else}
+                <span class="badge badge-building" style="font-size:0.6875rem;">Setup Needed</span>
+              {/if}
+            </div>
+            <p class="text-xs text-muted" style="margin:0 0 0.75rem 0; line-height:1.5;">
+              Traefik reverse proxy handles automatic Let's Encrypt TLS certificates and subdomains for all user services.
+            </p>
+            <div style="background:rgba(0,0,0,0.02); border:1px solid var(--color-border); border-radius:var(--radius-sm); padding:0.625rem; font-size:0.8125rem; margin-bottom:0.75rem;">
+              <div style="display:flex; justify-content:space-between; margin-bottom:2px;">
+                <span class="text-muted">Root Domain:</span>
+                <strong class="font-mono">{rootDomain || 'Not set'}</strong>
+              </div>
+              <div style="display:flex; justify-content:space-between;">
+                <span class="text-muted">ACME Email:</span>
+                <span class="font-mono text-xs">{acmeEmail || 'Not set'}</span>
+              </div>
+            </div>
+          </div>
+          <button 
+            type="button" 
+            class="btn btn-secondary" 
+            style="width:100%; font-size:0.8125rem; display:flex; align-items:center; justify-content:center; gap:6px;"
+            onclick={() => activeTab = 'domain'}
+          >
+            <Globe size={14} /> Configure Domain & SSL
+          </button>
+        </div>
+
+        <!-- Step 2: Nginx Static Site Engine -->
+        <div class="card" style="padding:1.25rem; border:1px solid var(--color-border); background:var(--color-surface); display:flex; flex-direction:column; justify-content:space-between;">
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+              <div style="display:flex; align-items:center; gap:8px; font-weight:700; font-size:0.9375rem; color:var(--color-ink);">
+                <div style="width:28px; height:28px; border-radius:50%; background:rgba(16,185,129,0.1); color:#10b981; display:flex; align-items:center; justify-content:center; font-size:0.75rem; font-weight:800;">2</div>
+                Nginx Static Site Engine
+              </div>
+              <span class="badge badge-running" style="font-size:0.6875rem;">Active & Ready</span>
+            </div>
+            <p class="text-xs text-muted" style="margin:0 0 0.75rem 0; line-height:1.5;">
+              Built-in Nginx container engine for hosting React, Vue, Vite, Svelte, Next.js static exports, and HTML/CSS/JS websites on port 80.
+            </p>
+            <div style="background:rgba(0,0,0,0.02); border:1px solid var(--color-border); border-radius:var(--radius-sm); padding:0.625rem; font-size:0.8125rem; margin-bottom:0.75rem; display:flex; flex-direction:column; gap:4px;">
+              <div style="display:flex; align-items:center; gap:6px; color:#10b981; font-size:0.75rem; font-weight:600;">
+                <Check size={13} /> SPA Fallback Routing (<code class="font-mono">try_files $uri /index.html</code>)
+              </div>
+              <div style="display:flex; align-items:center; gap:6px; color:#10b981; font-size:0.75rem; font-weight:600;">
+                <Check size={13} /> Gzip Compression & Static Asset Caching
+              </div>
+              <div style="display:flex; align-items:center; gap:6px; color:#10b981; font-size:0.75rem; font-weight:600;">
+                <Check size={13} /> Automatic <code class="font-mono">/api/</code> Backend Reverse Proxy
+              </div>
+            </div>
+          </div>
+          <div style="font-size:0.75rem; color:var(--color-ink-muted); text-align:center; padding:6px 0;">
+            Automatically configured during static service deployments
+          </div>
+        </div>
+
+        <!-- Step 3: Git 1-Click OAuth Providers -->
+        <div class="card" style="padding:1.25rem; border:1px solid var(--color-border); background:var(--color-surface); display:flex; flex-direction:column; justify-content:space-between;">
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+              <div style="display:flex; align-items:center; gap:8px; font-weight:700; font-size:0.9375rem; color:var(--color-ink);">
+                <div style="width:28px; height:28px; border-radius:50%; background:rgba(139,92,246,0.1); color:#8b5cf6; display:flex; align-items:center; justify-content:center; font-size:0.75rem; font-weight:800;">3</div>
+                Git 1-Click OAuth APIs
+              </div>
+              {#if githubClientId || gitlabClientId || bitbucketClientId}
+                <span class="badge badge-running" style="font-size:0.6875rem;">OAuth Active</span>
+              {:else}
+                <span class="badge badge-building" style="font-size:0.6875rem;">Keys Needed</span>
+              {/if}
+            </div>
+            <p class="text-xs text-muted" style="margin:0 0 0.75rem 0; line-height:1.5;">
+              Provide the GitHub, GitLab, or Bitbucket OAuth app keys once. All users on the platform can then link their accounts with 1-click.
+            </p>
+            <div style="display:flex; gap:0.5rem; margin-bottom:0.75rem; flex-wrap:wrap;">
+              <span class="badge {githubClientId ? 'badge-running' : 'badge-neutral'}" style="font-size:0.6875rem;">
+                GitHub: {githubClientId ? 'Ready' : 'Not Set'}
+              </span>
+              <span class="badge {gitlabClientId ? 'badge-running' : 'badge-neutral'}" style="font-size:0.6875rem;">
+                GitLab: {gitlabClientId ? 'Ready' : 'Not Set'}
+              </span>
+              <span class="badge {bitbucketClientId ? 'badge-running' : 'badge-neutral'}" style="font-size:0.6875rem;">
+                Bitbucket: {bitbucketClientId ? 'Ready' : 'Not Set'}
+              </span>
+            </div>
+          </div>
+          <button 
+            type="button" 
+            class="btn btn-secondary" 
+            style="width:100%; font-size:0.8125rem; display:flex; align-items:center; justify-content:center; gap:6px;"
+            onclick={() => activeTab = 'git'}
+          >
+            <FolderGit2 size={14} /> Setup Git OAuth Providers
+          </button>
+        </div>
+
+        <!-- Step 4: User Registration & Auto-Accept Policy -->
+        <div class="card" style="padding:1.25rem; border:1px solid var(--color-border); background:var(--color-surface); display:flex; flex-direction:column; justify-content:space-between;">
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+              <div style="display:flex; align-items:center; gap:8px; font-weight:700; font-size:0.9375rem; color:var(--color-ink);">
+                <div style="width:28px; height:28px; border-radius:50%; background:rgba(234,88,12,0.1); color:#ea580c; display:flex; align-items:center; justify-content:center; font-size:0.75rem; font-weight:800;">4</div>
+                Registration & Auto-Accept
+              </div>
+              {#if autoApprove}
+                <span class="badge badge-running" style="font-size:0.6875rem;">Instant Access (ON)</span>
+              {:else}
+                <span class="badge badge-building" style="font-size:0.6875rem;">Approval Required (OFF)</span>
+              {/if}
+            </div>
+            <p class="text-xs text-muted" style="margin:0 0 0.75rem 0; line-height:1.5;">
+              Controls whether new signups receive instant platform access or require manual approval in the Admin Users tab.
+            </p>
+            <div style="background:rgba(0,0,0,0.02); border:1px solid var(--color-border); border-radius:var(--radius-sm); padding:0.625rem; font-size:0.8125rem; margin-bottom:0.75rem;">
+              <span class="text-muted">Current Policy:</span> 
+              <strong>{autoApprove ? 'New users gain immediate access upon registration.' : 'New users are placed in Pending status until approved.'}</strong>
+            </div>
+          </div>
+          <button 
+            type="button" 
+            class="btn {autoApprove ? 'btn-secondary' : 'btn-primary'}" 
+            style="width:100%; font-size:0.8125rem; display:flex; align-items:center; justify-content:center; gap:6px;"
+            onclick={toggleAutoApprove}
+            disabled={autoApproveSaving}
+          >
+            {#if autoApproveSaving}
+              <Loader2 size={14} class="animate-spin" /> Updating...
+            {:else if autoApprove}
+              Switch to Require Approval (Recommended)
+            {:else}
+              Switch to Instant Auto-Accept
+            {/if}
+          </button>
+        </div>
+
+        <!-- Step 5: Multi-Engine Database Orchestrator -->
+        <div class="card" style="padding:1.25rem; border:1px solid var(--color-border); background:var(--color-surface); display:flex; flex-direction:column; justify-content:space-between;">
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+              <div style="display:flex; align-items:center; gap:8px; font-weight:700; font-size:0.9375rem; color:var(--color-ink);">
+                <div style="width:28px; height:28px; border-radius:50%; background:rgba(14,165,233,0.1); color:#0ea5e9; display:flex; align-items:center; justify-content:center; font-size:0.75rem; font-weight:800;">5</div>
+                Managed Databases Engine
+              </div>
+              <span class="badge badge-running" style="font-size:0.6875rem;">Ready</span>
+            </div>
+            <p class="text-xs text-muted" style="margin:0 0 0.75rem 0; line-height:1.5;">
+              Deploy persistent database instances with automated credentials, private container networking, and health checks.
+            </p>
+            <div style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:0.75rem;">
+              <span class="badge badge-neutral" style="font-size:0.6875rem;">PostgreSQL</span>
+              <span class="badge badge-neutral" style="font-size:0.6875rem;">MySQL</span>
+              <span class="badge badge-neutral" style="font-size:0.6875rem;">Redis</span>
+              <span class="badge badge-neutral" style="font-size:0.6875rem;">MongoDB</span>
+              <span class="badge badge-neutral" style="font-size:0.6875rem;">ClickHouse</span>
+            </div>
+          </div>
+          <a 
+            href="/databases" 
+            class="btn btn-secondary" 
+            style="width:100%; font-size:0.8125rem; display:flex; align-items:center; justify-content:center; gap:6px;"
+          >
+            <Database size={14} /> Open Databases Manager
+          </a>
+        </div>
+
+        <!-- Step 6: Docker Storage & Cache Maintenance -->
+        <div class="card" style="padding:1.25rem; border:1px solid var(--color-border); background:var(--color-surface); display:flex; flex-direction:column; justify-content:space-between;">
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+              <div style="display:flex; align-items:center; gap:8px; font-weight:700; font-size:0.9375rem; color:var(--color-ink);">
+                <div style="width:28px; height:28px; border-radius:50%; background:rgba(239,68,68,0.1); color:#ef4444; display:flex; align-items:center; justify-content:center; font-size:0.75rem; font-weight:800;">6</div>
+                Storage & Build Cache Maintenance
+              </div>
+              <span class="badge badge-neutral" style="font-size:0.6875rem;">1-Click</span>
+            </div>
+            <p class="text-xs text-muted" style="margin:0 0 0.75rem 0; line-height:1.5;">
+              Safely clean up dangling BuildKit layers, ephemeral build caches, and old logs to reclaim host disk space.
+            </p>
+            {#if pruneResult}
+              <div style="background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.3); border-radius:var(--radius-sm); padding:0.5rem; font-size:0.75rem; color:#16a34a; margin-bottom:0.75rem;">
+                <Check size={12} style="display:inline;" /> {pruneResult.message}
+              </div>
+            {/if}
+          </div>
+          <button 
+            type="button" 
+            class="btn btn-secondary" 
+            style="width:100%; font-size:0.8125rem; display:flex; align-items:center; justify-content:center; gap:6px;"
+            onclick={handleReclaimStorage}
+            disabled={pruning}
+          >
+            {#if pruning}
+              <Loader2 size={14} class="animate-spin" /> Cleaning...
+            {:else}
+              <Sparkles size={14} style="color:var(--color-accent);" /> Reclaim Storage Now
+            {/if}
+          </button>
+        </div>
+
+      </div>
+    </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════════ -->
   <!-- TAB 1: GENERAL & MAINTENANCE                                               -->
   <!-- ══════════════════════════════════════════════════════════════════════════ -->
-  {#if activeTab === 'general'}
+  {:else if activeTab === 'general'}
     <div style="display:flex; flex-direction:column; gap:1.5rem; max-width:840px;">
 
       <!-- User Auto-Approve Policy Card -->

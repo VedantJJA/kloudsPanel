@@ -48,6 +48,26 @@ func generateUniqueProjectSlug(ctx context.Context, store repository.Store, name
 	}
 }
 
+func generateUniqueWorkspaceSlug(ctx context.Context, store repository.Store, name string, requestedSlug string) string {
+	base := slugify(requestedSlug)
+	if base == "" || base == "app" {
+		base = slugify(name)
+	}
+	if base == "" {
+		base = "workspace"
+	}
+	slug := base
+	counter := 1
+	for {
+		exists, err := store.Workspaces().SlugExists(ctx, slug)
+		if err != nil || !exists {
+			return slug
+		}
+		counter++
+		slug = fmt.Sprintf("%s-%d", base, counter)
+	}
+}
+
 func generateUniqueServiceSlug(ctx context.Context, store repository.Store, name string, requestedSlug string) string {
 	base := slugify(requestedSlug)
 	if base == "" || base == "app" {

@@ -16,12 +16,12 @@ import (
 
 var (
 	autoApproveMu    sync.RWMutex
-	autoApproveUsers = true
+	autoApproveUsers = false
 )
 
 func init() {
-	if v := os.Getenv("AUTO_APPROVE_USERS"); v == "false" || v == "0" {
-		autoApproveUsers = false
+	if v := os.Getenv("AUTO_APPROVE_USERS"); v == "true" || v == "1" {
+		autoApproveUsers = true
 	}
 }
 

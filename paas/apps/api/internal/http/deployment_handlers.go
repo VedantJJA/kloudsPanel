@@ -459,7 +459,43 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 			}
 		}
 
-		// Step 4: Check if Dockerfile exists or generate one
+		// Step 4: Ensure Nginx configuration exists for static sites and generate Dockerfile
+		if service.Kind == domain.ServiceKindStatic || presetId == "static" || presetId == "static-spa" || presetId == "nginx" {
+			nginxConfPath := filepath.Join(contextDir, "nginx.default.conf")
+			if _, err := os.Stat(nginxConfPath); os.IsNotExist(err) {
+				nginxConf := `server {
+    listen 80;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html index.htm;
+
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript image/svg+xml;
+
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        expires 1y;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        try_files $uri =404;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    error_page 404 /index.html;
+}
+`
+				_ = os.WriteFile(nginxConfPath, []byte(nginxConf), 0644)
+			}
+		}
+
 		dockerfilePath := filepath.Join(contextDir, "Dockerfile")
 		if _, err := os.Stat(dockerfilePath); os.IsNotExist(err) {
 			appendLog(serviceID, depID, "build", fmt.Sprintf("[builder] Generating runtime Dockerfile (preset: %s, port: %d)", presetId, port))

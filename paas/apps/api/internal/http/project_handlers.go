@@ -59,6 +59,20 @@ func (h *Handler) handleCreateProject(c fiber.Ctx) error {
 	if u, ok := c.Locals("user").(*domain.User); ok && u != nil {
 		createdBy = u.ID
 	}
+	if strings.TrimSpace(req.Name) == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Project name is required"})
+	}
+
+	// Disallow duplicate project names in the SAME workspace
+	existingProjects, err := h.store.Projects().ListForWorkspace(c.Context(), wsID, 100, 0)
+	if err == nil {
+		for _, existing := range existingProjects {
+			if strings.EqualFold(strings.TrimSpace(existing.Name), strings.TrimSpace(req.Name)) {
+				return c.Status(400).JSON(fiber.Map{"error": "A project named \"" + req.Name + "\" already exists in this workspace"})
+			}
+		}
+	}
+
 	pSlug := generateUniqueProjectSlug(c.Context(), h.store, req.Name, req.Slug)
 	p := &domain.Project{
 		WorkspaceID:   wsID,

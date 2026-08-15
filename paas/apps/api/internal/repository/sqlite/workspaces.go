@@ -73,6 +73,15 @@ func (r *workspaceRepo) Delete(ctx context.Context, id string) error {
 	return err
 }
 
+func (r *workspaceRepo) SlugExists(ctx context.Context, slug string) (bool, error) {
+	if slug == "" {
+		return false, nil
+	}
+	var count int
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM workspaces WHERE lower(slug)=lower(?) AND status != 'archived'`, slug).Scan(&count)
+	return count > 0, err
+}
+
 func (r *workspaceRepo) AddMember(ctx context.Context, m *domain.WorkspaceMember) error {
 	_, err := r.db.ExecContext(ctx,
 		`INSERT INTO workspace_members (workspace_id,user_id,role,status,joined_at,invited_by,version)

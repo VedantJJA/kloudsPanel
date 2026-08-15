@@ -2,6 +2,7 @@ package http
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -28,9 +29,24 @@ func (h *Handler) handleCreateWorkspace(c fiber.Ctx) error {
 	if err := c.Bind().JSON(&req); err != nil {
 		return err
 	}
+	if strings.TrimSpace(req.Name) == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Workspace name is required"})
+	}
+
+	// Disallow the SAME user from creating duplicate workspace names
+	existingWorkspaces, err := h.store.Workspaces().ListForUser(c.Context(), u.ID)
+	if err == nil {
+		for _, existing := range existingWorkspaces {
+			if strings.EqualFold(strings.TrimSpace(existing.Name), strings.TrimSpace(req.Name)) {
+				return c.Status(400).JSON(fiber.Map{"error": "You already have a workspace named \"" + req.Name + "\""})
+			}
+		}
+	}
+
+	wsSlug := generateUniqueWorkspaceSlug(c.Context(), h.store, req.Name, req.Slug)
 	ws := &domain.Workspace{
 		Name:      req.Name,
-		Slug:      req.Slug,
+		Slug:      wsSlug,
 		CreatedBy: u.ID,
 		Status:    domain.WorkspaceStatusActive,
 	}
