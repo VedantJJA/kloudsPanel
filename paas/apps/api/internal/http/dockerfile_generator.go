@@ -12,26 +12,36 @@ func generateDockerfileForPreset(preset, buildCmd, startCmd string, port int, pr
 	case "python":
 		sCmd := startCmd
 		if sCmd == "" {
-			sCmd = fmt.Sprintf("python app.py || python main.py || gunicorn app:app --bind 0.0.0.0:%d --workers 2", port)
+			sCmd = fmt.Sprintf("if [ -f main.py ]; then (uvicorn main:app --host 0.0.0.0 --port %d || gunicorn main:app --bind 0.0.0.0:%d --workers 2 || python main.py); elif [ -f app.py ]; then (gunicorn app:app --bind 0.0.0.0:%d --workers 2 || uvicorn app:app --host 0.0.0.0 --port %d || flask run --host=0.0.0.0 --port=%d || python app.py); else (python -m uvicorn app:app --host 0.0.0.0 --port %d || python -m flask run --host=0.0.0.0 --port=%d || python server.py || python main.py || python app.py); fi", port, port, port, port, port, port, port)
+		} else {
+			if strings.Contains(sCmd, "uvicorn") && !strings.Contains(sCmd, "--host") {
+				sCmd = sCmd + " --host 0.0.0.0"
+			}
+			if strings.Contains(sCmd, "gunicorn") && !strings.Contains(sCmd, "--bind") && !strings.Contains(sCmd, "-b") {
+				sCmd = fmt.Sprintf("%s --bind 0.0.0.0:%d", sCmd, port)
+			}
+			if strings.Contains(sCmd, "flask run") && !strings.Contains(sCmd, "--host") {
+				sCmd = sCmd + " --host=0.0.0.0"
+			}
 		}
 		bCmd := buildCmd
 		if bCmd == "" {
-			bCmd = "pip install --no-cache-dir -r requirements.txt"
+			bCmd = "if [ -f requirements.txt ]; then pip install --no-cache-dir -r requirements.txt; elif [ -f Pipfile ]; then pip install pipenv && pipenv install --system --deploy; elif [ -f pyproject.toml ]; then pip install .; fi"
 		}
 		return fmt.Sprintf(`FROM python:3.11-slim
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev curl && rm -rf /var/lib/apt/lists/*
 COPY . /app
-RUN if [ -f requirements.txt ]; then %s; fi
-ENV PORT=%d PYTHONUNBUFFERED=1
+RUN %s
+ENV PORT=%d HOST=0.0.0.0 FLASK_RUN_HOST=0.0.0.0 FLASK_RUN_PORT=%d UVICORN_HOST=0.0.0.0 UVICORN_PORT=%d FASTAPI_HOST=0.0.0.0 FASTAPI_PORT=%d GUNICORN_CMD_ARGS="--bind=0.0.0.0:%d" PYTHONUNBUFFERED=1
 EXPOSE %d
 CMD ["sh", "-c", "%s"]
-`, bCmd, port, port, sCmd)
+`, bCmd, port, port, port, port, port, port, port, sCmd)
 
 	case "node", "nodejs":
 		sCmd := startCmd
 		if sCmd == "" {
-			sCmd = "npm start || node index.js || node server.js || node app.js"
+			sCmd = "npm start || node index.js || node server.js || node app.js || node dist/index.js || node dist/server.js"
 		}
 		bCmd := buildCmd
 		if bCmd == "" {
@@ -43,7 +53,7 @@ CMD ["sh", "-c", "%s"]
 WORKDIR /app
 COPY . /app
 RUN %s
-ENV PORT=%d
+ENV PORT=%d HOST=0.0.0.0 NODE_ENV=production
 EXPOSE %d
 CMD ["sh", "-c", "%s"]
 `, bCmd, port, port, sCmd)

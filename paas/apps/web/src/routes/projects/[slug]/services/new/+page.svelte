@@ -509,11 +509,17 @@
     choosePreset(matchingPreset);
 
     if (svc.build_command) buildCommand = svc.build_command;
+    if (svc.buildCommand) buildCommand = svc.buildCommand;
     if (svc.start_command) startCommand = svc.start_command;
+    if (svc.startCommand) startCommand = svc.startCommand;
     if (svc.internal_port) internalPort = svc.internal_port;
+    if (svc.internalPort) internalPort = svc.internalPort;
     if (svc.cron_schedule) cronSchedule = svc.cron_schedule;
+    if (svc.cronSchedule) cronSchedule = svc.cronSchedule;
     if (svc.env_vars && Object.keys(svc.env_vars).length > 0) {
       envVars = Object.entries(svc.env_vars).map(([k, v]) => ({ key: k, value: String(v) }));
+    } else if (svc.env && Object.keys(svc.env).length > 0) {
+      envVars = Object.entries(svc.env).map(([k, v]) => ({ key: k, value: String(v) }));
     }
     yamlParsedInfo = `✓ Configured "${name}" (${svc.kind.toUpperCase()} • ${svc.env || svc.preset} in ${rootDirectory === '.' ? 'root' : '/' + rootDirectory} on port :${internalPort})`;
   }
