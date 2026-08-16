@@ -106,14 +106,20 @@ CMD ["sh", "-c", "%s"]
 			}
 			if strings.Contains(bCmd, "pnpm") {
 				usesBash = true
-				bCmd = fmt.Sprintf("pnpm config set supportedArchitectures.os '[\"linux\"]' 2>/dev/null || true; pnpm config set supportedArchitectures.cpu '[\"x64\", \"arm64\"]' 2>/dev/null || true; pnpm config set verify-store-integrity false 2>/dev/null || true; %s", bCmd)
+				// Define the shared native binary package list
+				nativePkgs := "@rollup/rollup-linux-arm64-gnu @rollup/rollup-linux-x64-gnu lightningcss-linux-arm64-gnu lightningcss-linux-x64-gnu @esbuild/linux-arm64 @esbuild/linux-x64 sharp"
+				nativeInstall := fmt.Sprintf("{ pnpm add -w -D %s 2>/dev/null || npm install --no-save %s 2>/dev/null || true; }", nativePkgs, nativePkgs)
+				// Write local .npmrc with supported architectures BEFORE install so pnpm
+				// detects the config change and re-resolves optional native dependencies.
+				archSetup := "printf 'supported-architectures.os[]=linux\\nsupported-architectures.cpu[]=x64\\nsupported-architectures.cpu[]=arm64\\n' >> .npmrc 2>/dev/null || true"
+				bCmd = fmt.Sprintf("%s; pnpm config set verify-store-integrity false 2>/dev/null || true; %s", archSetup, bCmd)
 				// Replace --frozen-lockfile variant first with a sentinel to avoid double-matching
 				const pnpmFrozenSentinel = "__PNPM_INSTALL_FROZEN__"
 				bCmd = strings.ReplaceAll(bCmd, "pnpm install --frozen-lockfile", pnpmFrozenSentinel)
-				// Replace plain 'pnpm install' (not already replaced)
-				bCmd = strings.ReplaceAll(bCmd, "pnpm install", "{ pnpm install --no-frozen-lockfile --force 2>/dev/null || pnpm install; } && { pnpm add -w -D @rollup/rollup-linux-arm64-gnu @rollup/rollup-linux-x64-gnu 2>/dev/null || npm install --no-save @rollup/rollup-linux-arm64-gnu @rollup/rollup-linux-x64-gnu 2>/dev/null || true; }")
-				// Restore sentinel to its final form (also includes rollup native binary install)
-				bCmd = strings.ReplaceAll(bCmd, pnpmFrozenSentinel, "{ pnpm install --no-frozen-lockfile --force 2>/dev/null || pnpm install; } && { pnpm add -w -D @rollup/rollup-linux-arm64-gnu @rollup/rollup-linux-x64-gnu 2>/dev/null || npm install --no-save @rollup/rollup-linux-arm64-gnu @rollup/rollup-linux-x64-gnu 2>/dev/null || true; }")
+				// Replace plain 'pnpm install' with resilient install + native binary step
+				bCmd = strings.ReplaceAll(bCmd, "pnpm install", fmt.Sprintf("{ pnpm install --no-frozen-lockfile 2>/dev/null || pnpm install; } && %s", nativeInstall))
+				// Restore sentinel to its final form (also includes native binary install)
+				bCmd = strings.ReplaceAll(bCmd, pnpmFrozenSentinel, fmt.Sprintf("{ pnpm install --no-frozen-lockfile 2>/dev/null || pnpm install; } && %s", nativeInstall))
 			}
 			if strings.Contains(bCmd, "npm") {
 				bCmd = fmt.Sprintf("npm config set audit false 2>/dev/null || true; npm config set fund false 2>/dev/null || true; npm config set progress false 2>/dev/null || true; %s", bCmd)
@@ -564,11 +570,14 @@ CMD ["sh", "-c", "%s"]
 				bCmd = strings.ReplaceAll(bCmd, "npm ci", "{ npm ci || npm install; }")
 			}
 			if strings.Contains(bCmd, "pnpm") {
-				bCmd = fmt.Sprintf("pnpm config set supportedArchitectures.os '[\"linux\"]' 2>/dev/null || true; pnpm config set supportedArchitectures.cpu '[\"x64\", \"arm64\"]' 2>/dev/null || true; pnpm config set verify-store-integrity false 2>/dev/null || true; %s", bCmd)
+				nativePkgs2 := "@rollup/rollup-linux-arm64-gnu @rollup/rollup-linux-x64-gnu lightningcss-linux-arm64-gnu lightningcss-linux-x64-gnu @esbuild/linux-arm64 @esbuild/linux-x64 sharp"
+				nativeInstall2 := fmt.Sprintf("{ pnpm add -w -D %s 2>/dev/null || npm install --no-save %s 2>/dev/null || true; }", nativePkgs2, nativePkgs2)
+				archSetup2 := "printf 'supported-architectures.os[]=linux\\nsupported-architectures.cpu[]=x64\\nsupported-architectures.cpu[]=arm64\\n' >> .npmrc 2>/dev/null || true"
+				bCmd = fmt.Sprintf("%s; pnpm config set verify-store-integrity false 2>/dev/null || true; %s", archSetup2, bCmd)
 				const pnpmFrozenSentinel2 = "__PNPM_INSTALL_FROZEN2__"
 				bCmd = strings.ReplaceAll(bCmd, "pnpm install --frozen-lockfile", pnpmFrozenSentinel2)
-				bCmd = strings.ReplaceAll(bCmd, "pnpm install", "{ pnpm install --no-frozen-lockfile --force 2>/dev/null || pnpm install; } && { pnpm add -w -D @rollup/rollup-linux-arm64-gnu @rollup/rollup-linux-x64-gnu 2>/dev/null || npm install --no-save @rollup/rollup-linux-arm64-gnu @rollup/rollup-linux-x64-gnu 2>/dev/null || true; }")
-				bCmd = strings.ReplaceAll(bCmd, pnpmFrozenSentinel2, "{ pnpm install --no-frozen-lockfile --force 2>/dev/null || pnpm install; } && { pnpm add -w -D @rollup/rollup-linux-arm64-gnu @rollup/rollup-linux-x64-gnu 2>/dev/null || npm install --no-save @rollup/rollup-linux-arm64-gnu @rollup/rollup-linux-x64-gnu 2>/dev/null || true; }")
+				bCmd = strings.ReplaceAll(bCmd, "pnpm install", fmt.Sprintf("{ pnpm install --no-frozen-lockfile 2>/dev/null || pnpm install; } && %s", nativeInstall2))
+				bCmd = strings.ReplaceAll(bCmd, pnpmFrozenSentinel2, fmt.Sprintf("{ pnpm install --no-frozen-lockfile 2>/dev/null || pnpm install; } && %s", nativeInstall2))
 			}
 			if strings.Contains(bCmd, "npm") {
 				bCmd = fmt.Sprintf("npm config set audit false 2>/dev/null || true; npm config set fund false 2>/dev/null || true; npm config set progress false 2>/dev/null || true; %s", bCmd)

@@ -1,14 +1,17 @@
 package http
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -522,9 +525,6 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 					val = strings.ReplaceAll(val, fmt.Sprintf("${services.%s.host}", otherSvc.Slug), otherHost)
 					val = strings.ReplaceAll(val, fmt.Sprintf("${services.%s.internalUrl}", otherSvc.Name), otherIntUrl)
 					val = strings.ReplaceAll(val, fmt.Sprintf("${services.%s.internalUrl}", otherSvc.Slug), otherIntUrl)
-					// Docker Compose-style plain name resolution:
-					// If the env var value exactly equals another service's name or slug,
-					// resolve it to the internal container hostname (paas-svc-{slug}).
 					internalHost := fmt.Sprintf("paas-svc-%s", otherSvc.Slug)
 					if val == otherSvc.Name || val == otherSvc.Slug {
 						val = internalHost
@@ -738,26 +738,59 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 		}
 		buildArgs = append(buildArgs, contextDir)
 
-		// First try with BuildKit
-		buildCmd := exec.Command("docker", buildArgs...)
-		buildCmd.Env = append(os.Environ(), "DOCKER_BUILDKIT=1", "BUILDKIT_PROGRESS=plain")
-		buildOut, err := buildCmd.CombinedOutput()
-
-		// If BuildKit failed because buildx is missing or broken on the host, fallback to standard builder
-		if err != nil && (strings.Contains(string(buildOut), "buildx component is missing") || strings.Contains(string(buildOut), "BuildKit is enabled but the buildx component")) {
-			appendLog(serviceID, depID, "build", "[builder] Docker buildx plugin not found on host. Falling back to standard container builder...")
-			fallbackCmd := exec.Command("docker", buildArgs...)
-			fallbackCmd.Env = append(os.Environ(), "DOCKER_BUILDKIT=0")
-			buildOut, err = fallbackCmd.CombinedOutput()
-		}
-
-		for _, line := range strings.Split(string(buildOut), "\n") {
-			if strings.TrimSpace(line) != "" {
-				appendLog(serviceID, depID, "build", line)
+		// streamDockerBuild runs a docker build command and streams its output
+		// line-by-line to appendLog so the UI gets real-time feedback.
+		streamDockerBuild := func(env []string) error {
+			cmd := exec.Command("docker", buildArgs...)
+			cmd.Env = env
+			stdout, err := cmd.StdoutPipe()
+			if err != nil {
+				return err
 			}
+			stderr, err := cmd.StderrPipe()
+			if err != nil {
+				return err
+			}
+			if err := cmd.Start(); err != nil {
+				return err
+			}
+			var wg sync.WaitGroup
+			scanStream := func(r io.Reader) {
+				defer wg.Done()
+				scanner := bufio.NewScanner(r)
+				scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+				for scanner.Scan() {
+					line := scanner.Text()
+					if strings.TrimSpace(line) != "" {
+						appendLog(serviceID, depID, "build", line)
+					}
+				}
+			}
+			wg.Add(2)
+			go scanStream(stdout)
+			go scanStream(stderr)
+			wg.Wait()
+			return cmd.Wait()
 		}
-		if err != nil {
-			h.failDeployment(service, dep, fmt.Sprintf("[builder] Build failed: %v", err))
+
+		// Quick probe: check if BuildKit/buildx is available (non-streaming, fast)
+		probeArgs := []string{"buildx", "version"}
+		probeOut, probeErr := exec.Command("docker", probeArgs...).CombinedOutput()
+		usesBuildKit := probeErr == nil && !strings.Contains(string(probeOut), "not found")
+
+		var buildErr error
+		if usesBuildKit {
+			buildErr = streamDockerBuild(append(os.Environ(), "DOCKER_BUILDKIT=1", "BUILDKIT_PROGRESS=plain"))
+		}
+		if !usesBuildKit || buildErr != nil {
+			if !usesBuildKit {
+				appendLog(serviceID, depID, "build", "[builder] Docker buildx plugin not found on host. Falling back to standard container builder...")
+			}
+			buildErr = streamDockerBuild(append(os.Environ(), "DOCKER_BUILDKIT=0"))
+		}
+
+		if buildErr != nil {
+			h.failDeployment(service, dep, fmt.Sprintf("[builder] Build failed: %v", buildErr))
 			return
 		}
 		appendLog(serviceID, depID, "build", "Container image built successfully.")
