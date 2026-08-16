@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// ─── Multi-Language Dockerfile Generator ─────────────────────────────────────
+// --- Multi-Language Dockerfile Generator ------------------------------------
 
 // detectNodePackageManager returns the install and build commands based on lockfile presence.
 // order: bun > pnpm > yarn > npm (fallback)
@@ -58,7 +58,7 @@ func generateDockerfileForPreset(preset, buildCmd, startCmd string, port int, ru
 
 	switch p {
 
-	// ─── Python ──────────────────────────────────────────────────────────────
+	// --- Python --------------------------------------------------------------
 	case "python":
 		sCmd := startCmd
 		if sCmd == "" {
@@ -83,15 +83,14 @@ func generateDockerfileForPreset(preset, buildCmd, startCmd string, port int, ru
 		return fmt.Sprintf(`FROM %s
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev curl && rm -rf /var/lib/apt/lists/*
-COPY requirements*.txt Pipfile* pyproject.toml poetry.lock pdm.lock uv.lock setup.py setup.cfg /app/ 2>/dev/null || true
-RUN %s
 COPY . /app
+RUN %s
 ENV PORT=%d HOST=0.0.0.0 FLASK_RUN_HOST=0.0.0.0 FLASK_RUN_PORT=%d UVICORN_HOST=0.0.0.0 UVICORN_PORT=%d FASTAPI_HOST=0.0.0.0 FASTAPI_PORT=%d GUNICORN_CMD_ARGS="--bind=0.0.0.0:%d" PYTHONUNBUFFERED=1
 EXPOSE %d%s%s
 CMD ["sh", "-c", "%s"]
 `, imageTag, bCmd, port, port, port, port, port, port, nonRoot, healthcheck, sCmd)
 
-	// ─── Node.js ─────────────────────────────────────────────────────────────
+	// --- Node.js -------------------------------------------------------------
 	case "node", "nodejs":
 		sCmd := startCmd
 		if sCmd == "" {
@@ -106,21 +105,19 @@ CMD ["sh", "-c", "%s"]
 		return fmt.Sprintf(`FROM %s
 WORKDIR /app
 RUN apk add --no-cache bash curl && corepack enable 2>/dev/null || true
-COPY package*.json yarn.lock pnpm-lock.yaml bun.lockb .npmrc /app/ 2>/dev/null || true
-RUN %s
 COPY . /app
+RUN %s
 ENV PORT=%d HOST=0.0.0.0 NODE_ENV=production
 EXPOSE %d%s%s
 CMD ["sh", "-c", "%s"]
 `, imageTag, bCmd, port, port, nonRoot, healthcheck, sCmd)
 
-	// ─── Go / Golang ─────────────────────────────────────────────────────────
+	// --- Go / Golang ---------------------------------------------------------
 	case "go", "golang":
 		bCmd := buildCmd
 		if bCmd == "" {
 			bCmd = "CGO_ENABLED=0 go build -o server ."
 		}
-		// Extract output binary name from build command
 		outputBinary := "server"
 		if strings.Contains(bCmd, "-o ") {
 			parts := strings.SplitAfter(bCmd, "-o ")
@@ -134,9 +131,8 @@ CMD ["sh", "-c", "%s"]
 		return fmt.Sprintf(`FROM %s AS builder
 WORKDIR /app
 RUN apk add --no-cache git ca-certificates
-COPY go.mod go.sum ./
-RUN go mod download
 COPY . .
+RUN if [ -f go.mod ]; then go mod download; fi
 RUN %s
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates tzdata
@@ -147,7 +143,7 @@ EXPOSE %d%s
 CMD ["/app/%s"]
 `, imageTag, bCmd, outputBinary, outputBinary, port, port, healthcheck, outputBinary)
 
-	// ─── Java (Maven + Gradle) ───────────────────────────────────────────────
+	// --- Java (Maven + Gradle) -----------------------------------------------
 	case "java":
 		sCmd := startCmd
 		if sCmd == "" {
@@ -173,15 +169,13 @@ COPY . .
 RUN %s
 FROM %s
 WORKDIR /app
-COPY --from=builder /app/target/*.jar /app/ 2>/dev/null || true
-COPY --from=builder /app/build/libs/*.jar /app/ 2>/dev/null || true
 COPY --from=builder /app /app
 ENV PORT=%d
 EXPOSE %d%s%s
 CMD ["sh", "-c", "%s"]
 `, builderImage, bCmd, runtimeImage, port, port, nonRoot, healthcheck, sCmd)
 
-	// ─── PHP (Apache + Composer, Laravel/Symfony) ────────────────────────────
+	// --- PHP (Apache + Composer, Laravel/Symfony) ----------------------------
 	case "php":
 		sCmd := startCmd
 		if sCmd == "" {
@@ -209,7 +203,7 @@ EXPOSE %d%s
 CMD ["%s"]
 `, imageTag, bCmd, port, port, port, port, port, healthcheck, sCmd)
 
-	// ─── Ruby (Bundler, Rails, Sinatra, Rack) ────────────────────────────────
+	// --- Ruby (Bundler, Rails, Sinatra, Rack) --------------------------------
 	case "ruby":
 		sCmd := startCmd
 		if sCmd == "" {
@@ -222,15 +216,14 @@ CMD ["%s"]
 		return fmt.Sprintf(`FROM %s
 WORKDIR /app
 RUN apk add --no-cache build-base libpq-dev tzdata nodejs
-COPY Gemfile Gemfile.lock /app/ 2>/dev/null || true
-RUN if [ -f Gemfile ]; then bundle install --without development test; fi
 COPY . /app
+RUN if [ -f Gemfile ]; then bundle install --without development test; fi
 ENV PORT=%d RAILS_ENV=production RACK_ENV=production
 EXPOSE %d%s%s
 CMD ["sh", "-c", "%s"]
 `, imageTag, port, port, nonRoot, healthcheck, sCmd)
 
-	// ─── Rust ────────────────────────────────────────────────────────────────
+	// --- Rust ----------------------------------------------------------------
 	case "rust":
 		bCmd := buildCmd
 		if bCmd == "" {
@@ -239,8 +232,6 @@ CMD ["sh", "-c", "%s"]
 		return fmt.Sprintf(`FROM %s AS builder
 WORKDIR /app
 RUN apk add --no-cache musl-dev pkgconfig openssl-dev
-COPY Cargo.toml Cargo.lock /app/ 2>/dev/null || true
-RUN mkdir src && echo "fn main(){}" > src/main.rs && cargo build --release 2>/dev/null || true && rm -rf src
 COPY . .
 RUN %s && \
     binary=$(find target/release -maxdepth 1 -type f -executable ! -name "*.d" ! -name "*.so" | head -1) && \
@@ -254,7 +245,7 @@ EXPOSE %d%s
 CMD ["/app/server"]
 `, imageTag, bCmd, port, port, healthcheck)
 
-	// ─── Elixir / Phoenix ────────────────────────────────────────────────────
+	// --- Elixir / Phoenix ----------------------------------------------------
 	case "elixir", "phoenix":
 		sCmd := startCmd
 		if sCmd == "" {
@@ -268,9 +259,8 @@ CMD ["/app/server"]
 WORKDIR /app
 RUN apk add --no-cache build-base git
 ENV MIX_ENV=prod
-COPY mix.exs mix.lock ./
-RUN mix local.hex --force && mix local.rebar --force && mix deps.get --only prod
 COPY . .
+RUN mix local.hex --force && mix local.rebar --force && if [ -f mix.exs ]; then mix deps.get --only prod; fi
 RUN %s
 FROM %s
 WORKDIR /app
@@ -281,11 +271,11 @@ EXPOSE %d%s%s
 CMD ["sh", "-c", "%s"]
 `, imageTag, bCmd, imageTag, port, port, nonRoot, healthcheck, sCmd)
 
-	// ─── Deno ────────────────────────────────────────────────────────────────
+	// --- Deno ----------------------------------------------------------------
 	case "deno":
 		sCmd := startCmd
 		if sCmd == "" {
-			sCmd = fmt.Sprintf("deno run --allow-net --allow-env --allow-read main.ts || deno run --allow-net --allow-env --allow-read main.js || deno run --allow-net --allow-env --allow-read mod.ts || deno run --allow-all src/main.ts")
+			sCmd = "deno run --allow-net --allow-env --allow-read main.ts || deno run --allow-net --allow-env --allow-read main.js || deno run --allow-net --allow-env --allow-read mod.ts || deno run --allow-all src/main.ts"
 		}
 		bCmd := buildCmd
 		if bCmd == "" {
@@ -293,7 +283,6 @@ CMD ["sh", "-c", "%s"]
 		}
 		return fmt.Sprintf(`FROM %s
 WORKDIR /app
-COPY deno.json deno.lock /app/ 2>/dev/null || true
 COPY . /app
 RUN %s
 ENV PORT=%d DENO_DIR=/app/.deno
@@ -301,7 +290,7 @@ EXPOSE %d%s%s
 CMD ["sh", "-c", "%s"]
 `, imageTag, bCmd, port, port, nonRoot, healthcheck, sCmd)
 
-	// ─── Bun ─────────────────────────────────────────────────────────────────
+	// --- Bun -----------------------------------------------------------------
 	case "bun":
 		sCmd := startCmd
 		if sCmd == "" {
@@ -314,15 +303,14 @@ CMD ["sh", "-c", "%s"]
 		}
 		return fmt.Sprintf(`FROM %s
 WORKDIR /app
-COPY package*.json bun.lockb bunfig.toml /app/ 2>/dev/null || true
-RUN %s
 COPY . /app
+RUN %s
 ENV PORT=%d NODE_ENV=production
 EXPOSE %d%s%s
 CMD ["sh", "-c", "%s"]
 `, imageTag, bCmd, port, port, nonRoot, healthcheck, sCmd)
 
-	// ─── .NET / C# (ASP.NET Core) ────────────────────────────────────────────
+	// --- .NET / C# (ASP.NET Core) --------------------------------------------
 	case "dotnet", "csharp", "aspnet":
 		sCmd := startCmd
 		if sCmd == "" {
@@ -337,8 +325,6 @@ CMD ["sh", "-c", "%s"]
 		aspImage := getDotnetBaseImage(dotnetVersion, "runtime")
 		return fmt.Sprintf(`FROM %s AS builder
 WORKDIR /app
-COPY *.csproj *.fsproj *.sln /app/ 2>/dev/null || true
-RUN dotnet restore 2>/dev/null || true
 COPY . .
 RUN %s
 FROM %s
@@ -349,7 +335,7 @@ EXPOSE %d%s%s
 CMD ["sh", "-c", "%s"]
 `, sdkImage, bCmd, aspImage, port, port, port, nonRoot, healthcheck, sCmd)
 
-	// ─── Scala / sbt ─────────────────────────────────────────────────────────
+	// --- Scala / sbt ---------------------------------------------------------
 	case "scala", "sbt":
 		sCmd := startCmd
 		if sCmd == "" {
@@ -361,8 +347,6 @@ CMD ["sh", "-c", "%s"]
 		}
 		return fmt.Sprintf(`FROM sbtscala/scala-sbt:eclipse-temurin-jammy-21.0.6_7_1.10.11_3.6.4 AS builder
 WORKDIR /app
-COPY build.sbt project/ /app/ 2>/dev/null || true
-RUN sbt update 2>/dev/null || true
 COPY . .
 RUN %s
 FROM %s
@@ -373,7 +357,7 @@ EXPOSE %d%s%s
 CMD ["sh", "-c", "%s"]
 `, bCmd, getJavaBaseImage(resolved.Version, "runtime"), port, port, nonRoot, healthcheck, sCmd)
 
-	// ─── Kotlin (Ktor / Spring Boot via Gradle) ──────────────────────────────
+	// --- Kotlin (Ktor / Spring Boot via Gradle) ------------------------------
 	case "kotlin", "ktor":
 		sCmd := startCmd
 		if sCmd == "" {
@@ -386,21 +370,17 @@ CMD ["sh", "-c", "%s"]
 		kotlinJavaVer := resolved.Version
 		return fmt.Sprintf(`FROM %s AS builder
 WORKDIR /app
-COPY build.gradle.kts build.gradle settings.gradle.kts settings.gradle gradle.properties gradlew /app/ 2>/dev/null || true
-COPY gradle /app/gradle 2>/dev/null || true
-RUN if [ -f gradlew ]; then chmod +x gradlew && ./gradlew dependencies 2>/dev/null || true; fi
 COPY . .
 RUN %s
 FROM %s
 WORKDIR /app
-COPY --from=builder /app/build/libs/*.jar /app/ 2>/dev/null || true
-COPY --from=builder /app/build /app/build 2>/dev/null || true
+COPY --from=builder /app/build/libs /app/build/libs
 ENV PORT=%d
 EXPOSE %d%s%s
 CMD ["sh", "-c", "%s"]
 `, getJavaBaseImage(kotlinJavaVer, "build"), bCmd, getJavaBaseImage(kotlinJavaVer, "runtime"), port, port, nonRoot, healthcheck, sCmd)
 
-	// ─── Swift / Vapor ───────────────────────────────────────────────────────
+	// --- Swift / Vapor -------------------------------------------------------
 	case "swift", "vapor":
 		sCmd := startCmd
 		if sCmd == "" {
@@ -412,8 +392,6 @@ CMD ["sh", "-c", "%s"]
 		}
 		return fmt.Sprintf(`FROM %s AS builder
 WORKDIR /app
-COPY Package.swift Package.resolved /app/ 2>/dev/null || true
-RUN swift package resolve 2>/dev/null || true
 COPY . .
 RUN %s && \
     binary=$(find .build/release -maxdepth 1 -type f -executable | head -1) && \
@@ -427,7 +405,7 @@ EXPOSE %d%s
 CMD ["sh", "-c", "%s"]
 `, imageTag, bCmd, port, port, healthcheck, sCmd)
 
-	// ─── Haskell (Stack / Cabal) ─────────────────────────────────────────────
+	// --- Haskell (Stack / Cabal) ---------------------------------------------
 	case "haskell":
 		sCmd := startCmd
 		if sCmd == "" {
@@ -439,23 +417,20 @@ CMD ["sh", "-c", "%s"]
 		}
 		return fmt.Sprintf(`FROM %s AS builder
 WORKDIR /app
-COPY *.cabal stack.yaml package.yaml cabal.project /app/ 2>/dev/null || true
-RUN if [ -f stack.yaml ]; then stack setup 2>/dev/null || true; fi
 COPY . .
 RUN %s && \
     binary=$(find . -type f -executable -name "*.exe" -o -type f -executable ! -name "*.so" ! -name "*.a" | grep -v dist-newstyle/tmp | head -1) && \
-    cp "$binary" /app/server 2>/dev/null || true
+    cp "$binary" /app/server
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libgmp10 && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY --from=builder /app/server /app/server 2>/dev/null || true
-COPY --from=builder /app /app
+COPY --from=builder /app/server /app/server
 ENV PORT=%d
 EXPOSE %d%s
 CMD ["sh", "-c", "%s"]
 `, imageTag, bCmd, port, port, healthcheck, sCmd)
 
-	// ─── Clojure (Leiningen / deps.edn) ──────────────────────────────────────
+	// --- Clojure (Leiningen / deps.edn) --------------------------------------
 	case "clojure":
 		sCmd := startCmd
 		if sCmd == "" {
@@ -467,8 +442,6 @@ CMD ["sh", "-c", "%s"]
 		}
 		return fmt.Sprintf(`FROM %s AS builder
 WORKDIR /app
-COPY project.clj deps.edn /app/ 2>/dev/null || true
-RUN lein deps 2>/dev/null || clojure -P 2>/dev/null || true
 COPY . .
 RUN %s
 FROM eclipse-temurin:21-jre-alpine
@@ -480,7 +453,7 @@ EXPOSE %d%s%s
 CMD ["sh", "-c", "%s"]
 `, imageTag, bCmd, port, port, nonRoot, healthcheck, sCmd)
 
-	// ─── Crystal ─────────────────────────────────────────────────────────────
+	// --- Crystal -------------------------------------------------------------
 	case "crystal":
 		sCmd := startCmd
 		if sCmd == "" {
@@ -492,8 +465,6 @@ CMD ["sh", "-c", "%s"]
 		}
 		return fmt.Sprintf(`FROM %s AS builder
 WORKDIR /app
-COPY shard.yml shard.lock /app/ 2>/dev/null || true
-RUN shards install 2>/dev/null || true
 COPY . .
 RUN %s
 FROM ubuntu:22.04
@@ -505,7 +476,7 @@ EXPOSE %d%s
 CMD ["%s"]
 `, imageTag, bCmd, port, port, healthcheck, sCmd)
 
-	// ─── Zig ─────────────────────────────────────────────────────────────────
+	// --- Zig -----------------------------------------------------------------
 	case "zig":
 		sCmd := startCmd
 		if sCmd == "" {
@@ -529,7 +500,7 @@ EXPOSE %d%s
 CMD ["sh", "-c", "%s"]
 `, bCmd, port, port, healthcheck, sCmd)
 
-	// ─── Dart (Shelf / dart_frog) ────────────────────────────────────────────
+	// --- Dart (Shelf / dart_frog) --------------------------------------------
 	case "dart":
 		sCmd := startCmd
 		if sCmd == "" {
@@ -541,21 +512,18 @@ CMD ["sh", "-c", "%s"]
 		}
 		return fmt.Sprintf(`FROM %s AS builder
 WORKDIR /app
-COPY pubspec.yaml pubspec.lock /app/ 2>/dev/null || true
-RUN dart pub get 2>/dev/null || true
 COPY . .
 RUN %s
 FROM alpine:3.21
 RUN apk add --no-cache libgcc gcompat
 WORKDIR /app
-COPY --from=builder /app/server /app/server 2>/dev/null || true
-COPY --from=builder /app /app
+COPY --from=builder /app/server /app/server
 ENV PORT=%d
 EXPOSE %d%s
 CMD ["sh", "-c", "%s"]
 `, imageTag, bCmd, port, port, healthcheck, sCmd)
 
-	// ─── Static / SPA / Nginx ────────────────────────────────────────────────
+	// --- Static / SPA / Nginx ------------------------------------------------
 	case "static", "static-spa", "nginx":
 		bCmd := buildCmd
 		if bCmd != "" {
@@ -600,13 +568,11 @@ EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
 `)
 
-	// ─── Dockerfile (user-provided) ──────────────────────────────────────────
+	// --- Dockerfile (user-provided) ------------------------------------------
 	case "dockerfile":
-		// User has their own Dockerfile — this case is handled upstream
-		// by not generating a Dockerfile at all. If we reach here, fall through.
 		return ""
 
-	// ─── Default fallback ────────────────────────────────────────────────────
+	// --- Default fallback ----------------------------------------------------
 	default:
 		sCmd := startCmd
 		if sCmd == "" {

@@ -15,7 +15,7 @@ import (
 	"github.com/yourorg/klouds/api/internal/domain"
 )
 
-// ─── Deployment Helpers ───────────────────────────────────────────────────────
+// --- Deployment Helpers -----------------------------------------------------
 
 // failDeployment marks both the deployment and service as failed and logs the reason.
 func (h *Handler) failDeployment(service *domain.Service, dep *domain.Deployment, reason string) {
@@ -26,7 +26,99 @@ func (h *Handler) failDeployment(service *domain.Service, dep *domain.Deployment
 	_ = h.store.Services().Update(context.Background(), service)
 }
 
-// ─── Real Deployment Execution Engine ─────────────────────────────────────────
+func (h *Handler) findGitAuthToken(repoUrl, projectID string) string {
+	lowerUrl := strings.ToLower(repoUrl)
+	var provider string
+	if strings.Contains(lowerUrl, "github.com") {
+		provider = "github"
+	} else if strings.Contains(lowerUrl, "gitlab.com") {
+		provider = "gitlab"
+	} else if strings.Contains(lowerUrl, "bitbucket.org") {
+		provider = "bitbucket"
+	}
+
+	// 1. Check environment variables
+	if provider == "github" {
+		if t := os.Getenv("GITHUB_TOKEN"); t != "" {
+			return t
+		}
+		if t := os.Getenv("GH_TOKEN"); t != "" {
+			return t
+		}
+	} else if provider == "gitlab" {
+		if t := os.Getenv("GITLAB_TOKEN"); t != "" {
+			return t
+		}
+	} else if provider == "bitbucket" {
+		if t := os.Getenv("BITBUCKET_TOKEN"); t != "" {
+			return t
+		}
+	}
+
+	if provider == "" || projectID == "" {
+		return ""
+	}
+
+	// 2. Check project creator / workspace creator git integration tokens
+	ctx := context.Background()
+	if proj, err := h.store.Projects().GetByID(ctx, projectID); err == nil && proj != nil {
+		if ws, err := h.store.Workspaces().GetByID(ctx, proj.WorkspaceID); err == nil && ws != nil {
+			if it, err := h.store.GitIntegrations().Get(ctx, ws.CreatedBy, provider); err == nil && it != nil && it.Token != "" {
+				return it.Token
+			}
+			// Check workspace members
+			if members, err := h.store.Workspaces().ListMembers(ctx, ws.ID); err == nil {
+				for _, m := range members {
+					if it, err := h.store.GitIntegrations().Get(ctx, m.UserID, provider); err == nil && it != nil && it.Token != "" {
+						return it.Token
+					}
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func injectGitToken(rawUrl, token string) string {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return rawUrl
+	}
+	u, err := url.Parse(rawUrl)
+	if err != nil {
+		return rawUrl
+	}
+	lowerHost := strings.ToLower(u.Host)
+	if strings.Contains(lowerHost, "github.com") {
+		u.User = url.UserPassword("x-access-token", token)
+	} else if strings.Contains(lowerHost, "gitlab.com") {
+		u.User = url.UserPassword("oauth2", token)
+	} else if strings.Contains(lowerHost, "bitbucket.org") {
+		u.User = url.UserPassword("x-token-auth", token)
+	} else {
+		u.User = url.User(token)
+	}
+	return u.String()
+}
+
+func sanitizeGitUrl(raw string) string {
+	if !strings.Contains(raw, "@") || !strings.Contains(raw, "://") {
+		return raw
+	}
+	parts := strings.SplitN(raw, "://", 2)
+	if len(parts) < 2 {
+		return raw
+	}
+	scheme := parts[0]
+	rest := parts[1]
+	atIdx := strings.Index(rest, "@")
+	if atIdx != -1 {
+		return fmt.Sprintf("%s://***@%s", scheme, rest[atIdx+1:])
+	}
+	return raw
+}
+
+// --- Real Deployment Execution Engine ---------------------------------------
 
 func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deployment, rootDomain string) {
 	serviceID := service.ID
@@ -117,6 +209,9 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 	if service.InternalPort != nil && *service.InternalPort > 0 {
 		port = *service.InternalPort
 	}
+	if service.Kind == domain.ServiceKindStatic || presetId == "static" || presetId == "static-spa" || presetId == "nginx" {
+		port = 80
+	}
 
 	workspaceDir := filepath.Join("/tmp/builds", service.Slug)
 	_ = os.RemoveAll(workspaceDir)
@@ -148,18 +243,36 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 		imageTag = dockerImageName
 		appendLog(serviceID, depID, "build", fmt.Sprintf("Docker image '%s' is ready.", dockerImageName))
 	} else if gitRepoUrl != "" {
-		appendLog(serviceID, depID, "system", fmt.Sprintf("[git] Cloning %s (branch: %s)...", gitRepoUrl, gitBranch))
-		cmd := exec.Command("git", "clone", "--depth", "1", "--branch", gitBranch, gitRepoUrl, workspaceDir)
+		authGitUrl := gitRepoUrl
+		if token := h.findGitAuthToken(gitRepoUrl, service.ProjectID); token != "" {
+			authGitUrl = injectGitToken(gitRepoUrl, token)
+		}
+
+		safeLogUrl := sanitizeGitUrl(gitRepoUrl)
+		appendLog(serviceID, depID, "system", fmt.Sprintf("[git] Cloning %s (branch: %s)...", safeLogUrl, gitBranch))
+
+		cmd := exec.Command("git", "clone", "--depth", "1", "--branch", gitBranch, authGitUrl, workspaceDir)
+		cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=echo")
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			// Fallback clone without branch
-			cmd = exec.Command("git", "clone", "--depth", "1", gitRepoUrl, workspaceDir)
+			cmd = exec.Command("git", "clone", "--depth", "1", authGitUrl, workspaceDir)
+			cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=echo")
 			out, err = cmd.CombinedOutput()
+		}
+		if err != nil && authGitUrl == gitRepoUrl {
+			// Fallback clone with .git appended if missing
+			if !strings.HasSuffix(authGitUrl, ".git") {
+				cmd = exec.Command("git", "clone", "--depth", "1", authGitUrl+".git", workspaceDir)
+				cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=echo")
+				out, err = cmd.CombinedOutput()
+			}
 		}
 
 		for _, line := range strings.Split(string(out), "\n") {
-			if strings.TrimSpace(line) != "" {
-				appendLog(serviceID, depID, "stdout", line)
+			cleanLine := sanitizeGitUrl(strings.TrimSpace(line))
+			if cleanLine != "" {
+				appendLog(serviceID, depID, "stdout", cleanLine)
 			}
 		}
 
@@ -330,7 +443,6 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 				port   int
 			}
 			detections := []runtimeDetection{
-				// Check more specific markers first
 				{"deno.json", "deno", 8000},
 				{"deno.jsonc", "deno", 8000},
 				{"bun.lockb", "bun", 3000},
@@ -379,7 +491,12 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 			}
 		}
 
-		// Project-wide auto-wiring for all dynamic service URLs & database URIs
+		// Force port 80 for static sites
+		if service.Kind == domain.ServiceKindStatic || presetId == "static" || presetId == "static-spa" || presetId == "nginx" {
+			port = 80
+		}
+
+		// Project-wide auto-wiring for all dynamic service URLs and database URIs
 		if projectServices, err := h.store.Services().ListForProject(context.Background(), service.ProjectID); err == nil {
 			var primaryBackend *domain.Service
 			for _, otherSvc := range projectServices {
@@ -409,7 +526,7 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 				}
 			}
 
-			// For static frontend apps (React / Vite), configure Render-style routing and proxying
+			// For static frontend apps, configure routing and proxying
 			if service.Kind == domain.ServiceKindStatic || presetId == "static" || presetId == "static-spa" {
 				var proxyDirectives strings.Builder
 				var customRoutes []ServiceRouteItem
@@ -520,6 +637,7 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 
 		// Step 4: Ensure Nginx configuration exists for static sites and generate Dockerfile
 		if service.Kind == domain.ServiceKindStatic || presetId == "static" || presetId == "static-spa" || presetId == "nginx" {
+			port = 80
 			nginxConfPath := filepath.Join(contextDir, "nginx.default.conf")
 			if _, err := os.Stat(nginxConfPath); os.IsNotExist(err) {
 				nginxConf := `server {
@@ -571,7 +689,7 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 			dfContent := generateDockerfileForPreset(presetId, buildCommand, startCommand, port, runtimeVersion)
 			_ = os.WriteFile(dockerfilePath, []byte(dfContent), 0644)
 		} else {
-			// User-provided Dockerfile — scan for dangerous patterns
+			// User-provided Dockerfile: scan for dangerous patterns
 			if dfBytes, err := os.ReadFile(dockerfilePath); err == nil {
 				warnings, dangers := ScanDockerfileForDangers(string(dfBytes))
 				for _, w := range warnings {
@@ -608,6 +726,11 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 		appendLog(serviceID, depID, "build", "Container image built successfully.")
 	}
 
+	// Force port 80 for static sites on container launch
+	if service.Kind == domain.ServiceKindStatic || presetId == "static" || presetId == "static-spa" || presetId == "nginx" {
+		port = 80
+	}
+
 	// Step 5: Stop previous container and run the new container
 	containerName := fmt.Sprintf("paas-svc-%s", service.Slug)
 	appendLog(serviceID, depID, "runtime", fmt.Sprintf("[runtime] Deploying container '%s' on network platform-control (mem: %s, cpu: %s)...", containerName, secProfile.MemoryLimit, secProfile.CPULimit))
@@ -640,7 +763,7 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 		"--label", "io.paas.managed=true",
 		"--label", fmt.Sprintf("io.paas.service=%s", service.ID),
 		"--label", "traefik.enable=true",
-		"--label", fmt.Sprintf("traefik.http.routers.%s.rule=Host(`%s.%s`)", service.Slug, service.Slug, rootDomain),
+		"--label", fmt.Sprintf("traefik.http.routers.%s.rule=Host(`%s.%s`)", service.Slug, rootDomain),
 		"--label", fmt.Sprintf("traefik.http.routers.%s.entrypoints=websecure", service.Slug),
 		"--label", fmt.Sprintf("traefik.http.routers.%s.tls.certresolver=letsencrypt", service.Slug),
 		"--label", fmt.Sprintf("traefik.http.services.%s.loadbalancer.server.port=%d", service.Slug, port),
@@ -725,7 +848,7 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 	_ = h.store.Services().Update(context.Background(), service)
 }
 
-// ─── Deployment Handlers ───────────────────────────────────────────────────────
+// --- Deployment Handlers ----------------------------------------------------
 
 func (h *Handler) handleListDeployments(c fiber.Ctx) error {
 	deps, err := h.store.Deployments().ListForService(c.Context(), c.Params("id"), 100, nil)
