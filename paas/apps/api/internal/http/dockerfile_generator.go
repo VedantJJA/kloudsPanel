@@ -116,6 +116,9 @@ CMD ["sh", "-c", "%s"]
 			if strings.Contains(bCmd, "pnpm") {
 				setup := nodePnpmSupportedArchSetup()
 				bCmd = fmt.Sprintf("%s; %s", setup, bCmd)
+				if strings.Contains(bCmd, "--frozen-lockfile") {
+					bCmd = strings.ReplaceAll(bCmd, "--frozen-lockfile", "--no-frozen-lockfile")
+				}
 			}
 			if strings.Contains(bCmd, "npm") {
 				bCmd = fmt.Sprintf("npm config set audit false 2>/dev/null || true; npm config set fund false 2>/dev/null || true; npm config set progress false 2>/dev/null || true; %s", bCmd)
@@ -561,6 +564,9 @@ CMD ["sh", "-c", "%s"]
 			if strings.Contains(bCmd, "pnpm") {
 				setup := nodePnpmSupportedArchSetup()
 				bCmd = fmt.Sprintf("%s; %s", setup, bCmd)
+				if strings.Contains(bCmd, "--frozen-lockfile") {
+					bCmd = strings.ReplaceAll(bCmd, "--frozen-lockfile", "--no-frozen-lockfile")
+				}
 			}
 			if strings.Contains(bCmd, "npm") {
 				bCmd = fmt.Sprintf("npm config set audit false 2>/dev/null || true; npm config set fund false 2>/dev/null || true; npm config set progress false 2>/dev/null || true; %s", bCmd)
