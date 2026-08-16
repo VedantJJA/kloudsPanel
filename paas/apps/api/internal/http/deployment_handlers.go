@@ -585,6 +585,11 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 						dest = strings.ReplaceAll(dest, fmt.Sprintf("${services.%s.internalUrl}", otherSvc.Slug), otherIntUrl)
 					}
 
+					// Skip internal SPA fallback rules (e.g. /* -> /index.html) as it is already the base root handler
+					if (src == "/*" || src == "*" || src == "/") && (dest == "/index.html" || dest == "index.html" || strings.HasSuffix(dest, "/index.html")) && !strings.HasPrefix(dest, "http://") && !strings.HasPrefix(dest, "https://") {
+						continue
+					}
+
 					locPath := "/" + strings.Trim(strings.TrimSuffix(src, "/*"), "/")
 					if locPath != "/" {
 						locPath += "/"

@@ -56,8 +56,15 @@ func writeTraefikDynamicConfigWithDomainsRoutesAndSiblings(slug string, port int
 			continue
 		}
 
-		var pathRule string
 		cleanSrc := src
+		// Skip internal SPA fallbacks (e.g. /* -> /index.html) in Traefik edge router
+		// The container's static web server (nginx) handles SPA fallbacks natively via try_files.
+		// Intercepting /* in Traefik rewrites static asset paths or triggers infinite redirect loops.
+		if (cleanSrc == "/*" || cleanSrc == "*" || cleanSrc == "/") && (dest == "/index.html" || dest == "index.html" || strings.HasSuffix(dest, "/index.html") || strings.HasSuffix(dest, ".html")) && !strings.HasPrefix(dest, "http://") && !strings.HasPrefix(dest, "https://") {
+			continue
+		}
+
+		var pathRule string
 		if cleanSrc == "/*" || cleanSrc == "*" || cleanSrc == "/" {
 			pathRule = ""
 		} else if strings.HasSuffix(cleanSrc, "/*") {
@@ -130,16 +137,13 @@ func writeTraefikDynamicConfigWithDomainsRoutesAndSiblings(slug string, port int
 `, targetServiceKey, targetBaseUrl))
 				}
 			} else {
-				// Internal rewrite (e.g. /* -> /index.html)
+				// Subpath internal rewrite (e.g. /docs/* -> /documentation/*)
 				internalRouterKey := fmt.Sprintf("svc-%s-internal-rtr-%d", slug, idx)
 				internalMwKey := fmt.Sprintf("svc-%s-internal-mw-%d", slug, idx)
 				priority := 1000 - (i * 10)
 
 				var mwRegex, mwReplacement string
-				if cleanSrc == "/*" || cleanSrc == "*" || cleanSrc == "/" {
-					mwRegex = ".*"
-					mwReplacement = dest
-				} else if strings.HasSuffix(src, "/*") {
+				if strings.HasSuffix(src, "/*") {
 					mwRegex = fmt.Sprintf("^%s/(.*)", strings.TrimSuffix(src, "/*"))
 					if strings.HasSuffix(dest, "/*") {
 						mwReplacement = fmt.Sprintf("%s/${1}", strings.TrimSuffix(dest, "/*"))
@@ -177,18 +181,26 @@ func writeTraefikDynamicConfigWithDomainsRoutesAndSiblings(slug string, port int
 			redirRouterKey := fmt.Sprintf("svc-%s-redir-rtr-%d", slug, idx)
 
 			var regex, replacement string
-			if strings.HasSuffix(src, "/*") {
-				regex = fmt.Sprintf("^%s(.*)", strings.TrimSuffix(src, "/*"))
-				if strings.HasSuffix(dest, "/*") {
-					replacement = strings.Replace(dest, "/*", "${1}", 1)
-				} else if strings.Contains(dest, "$1") {
-					replacement = strings.ReplaceAll(dest, "$1", "${1}")
+			if strings.HasPrefix(dest, "http://") || strings.HasPrefix(dest, "https://") {
+				targetUrl := strings.TrimSuffix(dest, "/*")
+				if strings.HasSuffix(src, "/*") {
+					prefix := strings.TrimSuffix(cleanSrc, "/*")
+					regex = fmt.Sprintf(`^https?://[^/]+%s/(.*)`, prefix)
+					replacement = fmt.Sprintf(`%s/${1}`, targetUrl)
 				} else {
-					replacement = fmt.Sprintf("%s${1}", dest)
+					regex = fmt.Sprintf(`^https?://[^/]+%s/?$`, cleanSrc)
+					replacement = targetUrl
 				}
 			} else {
-				regex = fmt.Sprintf("^%s$", src)
-				replacement = dest
+				targetPath := strings.TrimSuffix(dest, "/*")
+				if strings.HasSuffix(src, "/*") {
+					prefix := strings.TrimSuffix(cleanSrc, "/*")
+					regex = fmt.Sprintf(`^(https?://[^/]+)%s/(.*)`, prefix)
+					replacement = fmt.Sprintf(`${1}%s/${2}`, targetPath)
+				} else {
+					regex = fmt.Sprintf(`^(https?://[^/]+)%s/?$`, cleanSrc)
+					replacement = fmt.Sprintf(`${1}%s`, targetPath)
+				}
 			}
 
 			middlewaresYAML.WriteString(fmt.Sprintf(`    %s:
