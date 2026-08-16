@@ -174,14 +174,25 @@ func (h *Handler) handleUpdateService(c fiber.Ctx) error {
 			s.AutoDeploy = *req.AutoDeploy
 		}
 
-		var resMap map[string]any
-		if req.ResourceJSON != "" {
-			_ = json.Unmarshal([]byte(req.ResourceJSON), &resMap)
-		} else if s.ResourceJSON != "" {
-			_ = json.Unmarshal([]byte(s.ResourceJSON), &resMap)
+		var existingResMap map[string]any
+		if s.ResourceJSON != "" {
+			_ = json.Unmarshal([]byte(s.ResourceJSON), &existingResMap)
 		}
-		if resMap == nil {
-			resMap = make(map[string]any)
+		if existingResMap == nil {
+			existingResMap = make(map[string]any)
+		}
+
+		var incomingResMap map[string]any
+		if req.ResourceJSON != "" {
+			_ = json.Unmarshal([]byte(req.ResourceJSON), &incomingResMap)
+		}
+
+		resMap := existingResMap
+		for k, v := range incomingResMap {
+			resMap[k] = v
+		}
+		if _, ok := incomingResMap["routes"]; !ok && existingResMap["routes"] != nil {
+			resMap["routes"] = existingResMap["routes"]
 		}
 
 		if req.BuildCommand != nil {

@@ -86,6 +86,12 @@
   let routesSaving = $state(false);
   let routesNotice = $state<{ type: 'success' | 'error'; message: string } | null>(null);
 
+  $effect(() => {
+    if (tab === 'routes') {
+      loadRoutes(true);
+    }
+  });
+
   async function loadRoutes(force = false) {
     if (!force && (routesDirty || routesInitialLoaded)) return;
     try {
@@ -535,6 +541,9 @@
         currentR.runtimeVersion = settingsRuntimeVersion === 'auto' ? '' : settingsRuntimeVersion;
         currentR.mem_limit = settingsMemoryLimit;
         currentR.cpu_limit = settingsCPULimit;
+        if (serviceRoutes && serviceRoutes.length > 0) {
+          currentR.routes = serviceRoutes;
+        }
 
         const targetId = service?.id || id;
         await fetch(`/api/v1/services/${targetId}`, {
@@ -892,6 +901,9 @@
       currentR.runtimeVersion = settingsRuntimeVersion === 'auto' ? '' : settingsRuntimeVersion;
       currentR.mem_limit = settingsMemoryLimit;
       currentR.cpu_limit = settingsCPULimit;
+      if (serviceRoutes && serviceRoutes.length > 0) {
+        currentR.routes = serviceRoutes;
+      }
 
       const targetId = service?.id || id;
       const res = await fetch(`/api/v1/services/${targetId}`, {
