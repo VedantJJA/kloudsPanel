@@ -106,20 +106,12 @@ CMD ["sh", "-c", "%s"]
 			}
 			if strings.Contains(bCmd, "pnpm") {
 				usesBash = true
-				// Define the shared native binary package list
-				nativePkgs := "@rollup/rollup-linux-arm64-gnu @rollup/rollup-linux-x64-gnu lightningcss-linux-arm64-gnu lightningcss-linux-x64-gnu @esbuild/linux-arm64 @esbuild/linux-x64 sharp"
-				nativeInstall := fmt.Sprintf("{ pnpm add -w -D %s 2>/dev/null || npm install --no-save %s 2>/dev/null || true; }", nativePkgs, nativePkgs)
-				// Write local .npmrc with supported architectures BEFORE install so pnpm
-				// detects the config change and re-resolves optional native dependencies.
-				archSetup := "printf 'supported-architectures.os[]=linux\\nsupported-architectures.cpu[]=x64\\nsupported-architectures.cpu[]=arm64\\n' >> .npmrc 2>/dev/null || true"
-				bCmd = fmt.Sprintf("%s; pnpm config set verify-store-integrity false 2>/dev/null || true; %s", archSetup, bCmd)
-				// Replace --frozen-lockfile variant first with a sentinel to avoid double-matching
+				archSetup := "if [ -f pnpm-workspace.yaml ]; then grep -q 'supportedArchitectures:' pnpm-workspace.yaml || printf '\\nsupportedArchitectures:\\n  os:\\n    - linux\\n  cpu:\\n    - x64\\n    - arm64\\n' >> pnpm-workspace.yaml; fi; printf 'supported-architectures.os[]=linux\\nsupported-architectures.cpu[]=x64\\nsupported-architectures.cpu[]=arm64\\n' >> .npmrc 2>/dev/null || true; pnpm config set verify-store-integrity false 2>/dev/null || true"
+				bCmd = fmt.Sprintf("%s; %s", archSetup, bCmd)
 				const pnpmFrozenSentinel = "__PNPM_INSTALL_FROZEN__"
 				bCmd = strings.ReplaceAll(bCmd, "pnpm install --frozen-lockfile", pnpmFrozenSentinel)
-				// Replace plain 'pnpm install' with resilient install + native binary step
-				bCmd = strings.ReplaceAll(bCmd, "pnpm install", fmt.Sprintf("{ pnpm install --no-frozen-lockfile 2>/dev/null || pnpm install; } && %s", nativeInstall))
-				// Restore sentinel to its final form (also includes native binary install)
-				bCmd = strings.ReplaceAll(bCmd, pnpmFrozenSentinel, fmt.Sprintf("{ pnpm install --no-frozen-lockfile 2>/dev/null || pnpm install; } && %s", nativeInstall))
+				bCmd = strings.ReplaceAll(bCmd, "pnpm install", "{ pnpm install --no-frozen-lockfile --prefer-frozen-lockfile=false 2>/dev/null || pnpm install --no-frozen-lockfile 2>/dev/null || pnpm install; } && (pnpm rebuild 2>/dev/null || true)")
+				bCmd = strings.ReplaceAll(bCmd, pnpmFrozenSentinel, "{ pnpm install --no-frozen-lockfile --prefer-frozen-lockfile=false 2>/dev/null || pnpm install --no-frozen-lockfile 2>/dev/null || pnpm install; } && (pnpm rebuild 2>/dev/null || true)")
 			}
 			if strings.Contains(bCmd, "npm") {
 				bCmd = fmt.Sprintf("npm config set audit false 2>/dev/null || true; npm config set fund false 2>/dev/null || true; npm config set progress false 2>/dev/null || true; %s", bCmd)
@@ -142,7 +134,8 @@ RUN if command -v apt-get >/dev/null 2>&1; then \
     fi && \
     (corepack enable 2>/dev/null || true) && \
     (npm install -g pnpm@latest yarn@latest 2>/dev/null || true)
-RUN printf 'supportedArchitectures:\n  os:\n    - linux\n  cpu:\n    - x64\n    - arm64\n' > /root/.config/pnpm/rc 2>/dev/null || true && \
+RUN mkdir -p /root/.config/pnpm && \
+    printf 'supportedArchitectures:\n  os:\n    - linux\n  cpu:\n    - x64\n    - arm64\n' > /root/.config/pnpm/rc 2>/dev/null || true && \
     printf 'supported-architectures.os[]=linux\nsupported-architectures.cpu[]=x64\nsupported-architectures.cpu[]=arm64\n' >> /root/.npmrc 2>/dev/null || true
 COPY . /app
 RUN %s
@@ -570,14 +563,12 @@ CMD ["sh", "-c", "%s"]
 				bCmd = strings.ReplaceAll(bCmd, "npm ci", "{ npm ci || npm install; }")
 			}
 			if strings.Contains(bCmd, "pnpm") {
-				nativePkgs2 := "@rollup/rollup-linux-arm64-gnu @rollup/rollup-linux-x64-gnu lightningcss-linux-arm64-gnu lightningcss-linux-x64-gnu @esbuild/linux-arm64 @esbuild/linux-x64 sharp"
-				nativeInstall2 := fmt.Sprintf("{ pnpm add -w -D %s 2>/dev/null || npm install --no-save %s 2>/dev/null || true; }", nativePkgs2, nativePkgs2)
-				archSetup2 := "printf 'supported-architectures.os[]=linux\\nsupported-architectures.cpu[]=x64\\nsupported-architectures.cpu[]=arm64\\n' >> .npmrc 2>/dev/null || true"
-				bCmd = fmt.Sprintf("%s; pnpm config set verify-store-integrity false 2>/dev/null || true; %s", archSetup2, bCmd)
+				archSetup2 := "if [ -f pnpm-workspace.yaml ]; then grep -q 'supportedArchitectures:' pnpm-workspace.yaml || printf '\\nsupportedArchitectures:\\n  os:\\n    - linux\\n  cpu:\\n    - x64\\n    - arm64\\n' >> pnpm-workspace.yaml; fi; printf 'supported-architectures.os[]=linux\\nsupported-architectures.cpu[]=x64\\nsupported-architectures.cpu[]=arm64\\n' >> .npmrc 2>/dev/null || true; pnpm config set verify-store-integrity false 2>/dev/null || true"
+				bCmd = fmt.Sprintf("%s; %s", archSetup2, bCmd)
 				const pnpmFrozenSentinel2 = "__PNPM_INSTALL_FROZEN2__"
 				bCmd = strings.ReplaceAll(bCmd, "pnpm install --frozen-lockfile", pnpmFrozenSentinel2)
-				bCmd = strings.ReplaceAll(bCmd, "pnpm install", fmt.Sprintf("{ pnpm install --no-frozen-lockfile 2>/dev/null || pnpm install; } && %s", nativeInstall2))
-				bCmd = strings.ReplaceAll(bCmd, pnpmFrozenSentinel2, fmt.Sprintf("{ pnpm install --no-frozen-lockfile 2>/dev/null || pnpm install; } && %s", nativeInstall2))
+				bCmd = strings.ReplaceAll(bCmd, "pnpm install", "{ pnpm install --no-frozen-lockfile --prefer-frozen-lockfile=false 2>/dev/null || pnpm install --no-frozen-lockfile 2>/dev/null || pnpm install; } && (pnpm rebuild 2>/dev/null || true)")
+				bCmd = strings.ReplaceAll(bCmd, pnpmFrozenSentinel2, "{ pnpm install --no-frozen-lockfile --prefer-frozen-lockfile=false 2>/dev/null || pnpm install --no-frozen-lockfile 2>/dev/null || pnpm install; } && (pnpm rebuild 2>/dev/null || true)")
 			}
 			if strings.Contains(bCmd, "npm") {
 				bCmd = fmt.Sprintf("npm config set audit false 2>/dev/null || true; npm config set fund false 2>/dev/null || true; npm config set progress false 2>/dev/null || true; %s", bCmd)
@@ -590,7 +581,8 @@ WORKDIR /app
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates curl bash && rm -rf /var/lib/apt/lists/*
 RUN (corepack enable 2>/dev/null || true) && (npm install -g pnpm@latest yarn@latest 2>/dev/null || true)
-RUN printf 'supportedArchitectures:\n  os:\n    - linux\n  cpu:\n    - x64\n    - arm64\n' > /root/.config/pnpm/rc 2>/dev/null || true && \
+RUN mkdir -p /root/.config/pnpm && \
+    printf 'supportedArchitectures:\n  os:\n    - linux\n  cpu:\n    - x64\n    - arm64\n' > /root/.config/pnpm/rc 2>/dev/null || true && \
     printf 'supported-architectures.os[]=linux\nsupported-architectures.cpu[]=x64\nsupported-architectures.cpu[]=arm64\n' >> /root/.npmrc 2>/dev/null || true
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
