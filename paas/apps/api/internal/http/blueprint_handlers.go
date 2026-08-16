@@ -718,128 +718,135 @@ func (h *Handler) handleParseBlueprint(c fiber.Ctx) error {
 	} else if req.RepoURL != "" {
 		rawURL := req.RepoURL
 		if strings.Contains(rawURL, "github.com") {
-			clean := strings.TrimSuffix(strings.TrimSuffix(rawURL, "/"), ".git")
+			clean := strings.TrimSuffix(strings.TrimSuffix(strings.TrimSpace(rawURL), "/"), ".git")
 			parts := strings.Split(clean, "github.com/")
 			if len(parts) == 2 {
-				repoPath := parts[1]
-				subparts := strings.Split(repoPath, "/")
-				if len(subparts) > 1 {
-					repoBase = subparts[1]
-				}
+				pathParts := strings.Split(parts[1], "/")
+				if len(pathParts) >= 2 {
+					repoPath := fmt.Sprintf("%s/%s", pathParts[0], pathParts[1])
+					repoBase = pathParts[1]
 
-				var userToken string
-				if req.Token != "" {
-					userToken = req.Token
-				}
-				if userToken == "" {
-					if u, ok := c.Locals("user").(*domain.User); ok && u != nil {
-						if it, err := h.store.GitIntegrations().Get(c.Context(), u.ID, "github"); err == nil && it != nil && it.Token != "" {
-							userToken = it.Token
+					var userToken string
+					if req.Token != "" {
+						userToken = req.Token
+					}
+					if userToken == "" {
+						if u, ok := c.Locals("user").(*domain.User); ok && u != nil {
+							if it, err := h.store.GitIntegrations().Get(c.Context(), u.ID, "github"); err == nil && it != nil && it.Token != "" {
+								userToken = it.Token
+							}
 						}
 					}
-				}
 
-				client := &nethttp.Client{Timeout: 10 * time.Second}
-				fetchRaw := func(filename string) string {
-					// 1. Try raw.githubusercontent.com
-					for _, br := range []string{"main", "master", "HEAD"} {
-						testURL := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s", repoPath, br, filename)
-						r, err := nethttp.NewRequest("GET", testURL, nil)
-						if err == nil {
-							r.Header.Set("User-Agent", "kloudsPanel-App/1.0")
-							if userToken != "" {
-								r.Header.Set("Authorization", "token "+userToken)
+					client := &nethttp.Client{Timeout: 10 * time.Second}
+					branchesToTry := []string{"main", "master", "HEAD", "develop", "dev", "trunk"}
+					fetchRaw := func(filename string) string {
+						// 1. Try raw.githubusercontent.com across branches
+						for _, br := range branchesToTry {
+							testURL := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s", repoPath, br, filename)
+							r, err := nethttp.NewRequest("GET", testURL, nil)
+							if err == nil {
+								r.Header.Set("User-Agent", "kloudsPanel-App/1.0")
+								if userToken != "" {
+									r.Header.Set("Authorization", "token "+userToken)
+								}
+								resp, err := client.Do(r)
+								if err == nil && resp.StatusCode == 200 {
+									var b strings.Builder
+									_, _ = io.Copy(&b, resp.Body)
+									resp.Body.Close()
+									content := b.String()
+									if strings.TrimSpace(content) != "" && !strings.Contains(content, "404: Not Found") {
+										return content
+									}
+								}
+								if resp != nil {
+									resp.Body.Close()
+								}
 							}
-							resp, err := client.Do(r)
+						}
+
+						// 2. Try api.github.com
+						apiURL := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s", repoPath, filename)
+						apiReq, err := nethttp.NewRequest("GET", apiURL, nil)
+						if err == nil {
+							apiReq.Header.Set("User-Agent", "kloudsPanel-App/1.0")
+							apiReq.Header.Set("Accept", "application/vnd.github.raw+json")
+							if userToken != "" {
+								apiReq.Header.Set("Authorization", "Bearer "+userToken)
+							}
+							resp, err := client.Do(apiReq)
 							if err == nil && resp.StatusCode == 200 {
 								var b strings.Builder
 								_, _ = io.Copy(&b, resp.Body)
 								resp.Body.Close()
-								return b.String()
+								content := b.String()
+								if strings.TrimSpace(content) != "" && !strings.Contains(content, "404: Not Found") {
+									return content
+								}
 							}
 							if resp != nil {
 								resp.Body.Close()
 							}
 						}
+						return ""
 					}
 
-					// 2. Try api.github.com
-					apiURL := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s", repoPath, filename)
-					apiReq, err := nethttp.NewRequest("GET", apiURL, nil)
-					if err == nil {
-						apiReq.Header.Set("User-Agent", "kloudsPanel-App/1.0")
-						apiReq.Header.Set("Accept", "application/vnd.github.raw+json")
-						if userToken != "" {
-							apiReq.Header.Set("Authorization", "Bearer "+userToken)
-						}
-						resp, err := client.Do(apiReq)
-						if err == nil && resp.StatusCode == 200 {
-							var b strings.Builder
-							_, _ = io.Copy(&b, resp.Body)
-							resp.Body.Close()
-							return b.String()
-						}
-						if resp != nil {
-							resp.Body.Close()
-						}
-					}
-					return ""
-				}
-
-				// Efficient Single-Request Repository Tree Scan
-				treeFiles := make(map[string]bool)
-				for _, br := range []string{"HEAD", "main", "master"} {
-					treeURL := fmt.Sprintf("https://api.github.com/repos/%s/git/trees/%s?recursive=1", repoPath, br)
-					tReq, err := nethttp.NewRequest("GET", treeURL, nil)
-					if err == nil {
-						tReq.Header.Set("User-Agent", "kloudsPanel-App/1.0")
-						if userToken != "" {
-							tReq.Header.Set("Authorization", "Bearer "+userToken)
-						}
-						tResp, err := client.Do(tReq)
-						if err == nil && tResp.StatusCode == 200 {
-							var tData struct {
-								Tree []struct {
-									Path string `json:"path"`
-									Type string `json:"type"`
-								} `json:"tree"`
+					// Efficient Single-Request Repository Tree Scan
+					treeFiles := make(map[string]bool)
+					for _, br := range branchesToTry {
+						treeURL := fmt.Sprintf("https://api.github.com/repos/%s/git/trees/%s?recursive=1", repoPath, br)
+						tReq, err := nethttp.NewRequest("GET", treeURL, nil)
+						if err == nil {
+							tReq.Header.Set("User-Agent", "kloudsPanel-App/1.0")
+							if userToken != "" {
+								tReq.Header.Set("Authorization", "Bearer "+userToken)
 							}
-							if json.NewDecoder(tResp.Body).Decode(&tData) == nil && len(tData.Tree) > 0 {
-								for _, item := range tData.Tree {
-									treeFiles[item.Path] = true
+							tResp, err := client.Do(tReq)
+							if err == nil && tResp.StatusCode == 200 {
+								var tData struct {
+									Tree []struct {
+										Path string `json:"path"`
+										Type string `json:"type"`
+									} `json:"tree"`
+								}
+								if json.NewDecoder(tResp.Body).Decode(&tData) == nil && len(tData.Tree) > 0 {
+									for _, item := range tData.Tree {
+										treeFiles[item.Path] = true
+									}
+									tResp.Body.Close()
+									break
 								}
 								tResp.Body.Close()
-								break
-							}
-							tResp.Body.Close()
-						} else if tResp != nil {
-							tResp.Body.Close()
-						}
-					}
-				}
-
-				// Check for Blueprint files in tree
-				blueprintCandidates := []string{"klouds.yaml", "klouds.yml", ".klouds.yaml", ".klouds.yml", "render.yaml", "render.yml", ".render.yaml", ".render.yml"}
-				for _, bf := range blueprintCandidates {
-					if len(treeFiles) == 0 || treeFiles[bf] {
-						if cStr := fetchRaw(bf); strings.TrimSpace(cStr) != "" {
-							parsed := parseRenderYAMLString(cStr)
-							if len(parsed.Services) > 0 || len(parsed.Databases) > 0 {
-								detectedResult = parsed
-								hasResult = true
-								detectedSource = bf
-								break
+							} else if tResp != nil {
+								tResp.Body.Close()
 							}
 						}
 					}
-				}
 
-				// If no blueprint found, run the Intelligent Framework & Runtime Analyzer
-				if !hasResult {
-					detectedResult = detectFrameworkFromTree(repoPath, treeFiles, fetchRaw, repoBase)
-					if len(detectedResult.Services) > 0 {
-						hasResult = true
-						detectedSource = "auto-detected"
+					// Check for Blueprint files (prioritize render.yaml and klouds.yaml)
+					blueprintCandidates := []string{"render.yaml", "render.yml", ".render.yaml", ".render.yml", "klouds.yaml", "klouds.yml", ".klouds.yaml", ".klouds.yml"}
+					for _, bf := range blueprintCandidates {
+						if len(treeFiles) == 0 || treeFiles[bf] {
+							if cStr := fetchRaw(bf); strings.TrimSpace(cStr) != "" {
+								parsed := parseRenderYAMLString(cStr)
+								if len(parsed.Services) > 0 || len(parsed.Databases) > 0 {
+									detectedResult = parsed
+									hasResult = true
+									detectedSource = bf
+									break
+								}
+							}
+						}
+					}
+
+					// If no blueprint found, run the Intelligent Framework & Runtime Analyzer
+					if !hasResult {
+						detectedResult = detectFrameworkFromTree(repoPath, treeFiles, fetchRaw, repoBase)
+						if len(detectedResult.Services) > 0 {
+							hasResult = true
+							detectedSource = "auto-detected"
+						}
 					}
 				}
 			}
@@ -1767,39 +1774,54 @@ func (h *Handler) handleGetServiceBlueprint(c fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "service does not have a git repository linked"})
 	}
 
-	cleanRepo := strings.TrimSuffix(gitRepoUrl, ".git")
-	cleanRepo = strings.TrimPrefix(cleanRepo, "https://github.com/")
-	cleanRepo = strings.TrimPrefix(cleanRepo, "http://github.com/")
-	cleanRepo = strings.TrimPrefix(cleanRepo, "github.com/")
+	clean := strings.TrimSuffix(strings.TrimSuffix(strings.TrimSpace(gitRepoUrl), "/"), ".git")
+	cleanRepo := clean
+	if strings.Contains(clean, "github.com/") {
+		parts := strings.Split(clean, "github.com/")
+		if len(parts) == 2 {
+			sub := strings.Split(parts[1], "/")
+			if len(sub) >= 2 {
+				cleanRepo = fmt.Sprintf("%s/%s", sub[0], sub[1])
+			}
+		}
+	}
 
-	candidates := []string{"klouds.yaml", "klouds.yml", ".klouds.yaml", "render.yaml", "render.yml"}
+	candidates := []string{"render.yaml", "render.yml", ".render.yaml", ".render.yml", "klouds.yaml", "klouds.yml", ".klouds.yaml", ".klouds.yml"}
+	branchesToTry := []string{gitBranch, "main", "master", "HEAD"}
 	var yamlContent string
 	var detectedSource string
 
+	client := &nethttp.Client{Timeout: 6 * time.Second}
 	for _, filename := range candidates {
-		rawUrl := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s", cleanRepo, gitBranch, filename)
-		req, err := nethttp.NewRequestWithContext(c.Context(), "GET", rawUrl, nil)
-		if err != nil {
-			continue
-		}
-		client := &nethttp.Client{Timeout: 6 * time.Second}
-		resp, err := client.Do(req)
-		if err == nil && resp.StatusCode == 200 {
-			body, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			if len(body) > 0 {
-				yamlContent = string(body)
-				detectedSource = filename
-				break
+		for _, br := range branchesToTry {
+			rawUrl := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s", cleanRepo, br, filename)
+			req, err := nethttp.NewRequestWithContext(c.Context(), "GET", rawUrl, nil)
+			if err != nil {
+				continue
+			}
+			req.Header.Set("User-Agent", "kloudsPanel-App/1.0")
+			resp, err := client.Do(req)
+			if err == nil && resp.StatusCode == 200 {
+				body, _ := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				content := string(body)
+				if strings.TrimSpace(content) != "" && !strings.Contains(content, "404: Not Found") {
+					yamlContent = content
+					detectedSource = filename
+					break
+				}
+			}
+			if resp != nil && resp.Body != nil {
+				resp.Body.Close()
 			}
 		}
-		if resp != nil && resp.Body != nil {
-			resp.Body.Close()
+		if yamlContent != "" {
+			break
 		}
 	}
 
 	if yamlContent == "" {
-		return c.Status(404).JSON(fiber.Map{"error": "No klouds.yaml or render.yaml detected in repository"})
+		return c.Status(404).JSON(fiber.Map{"error": "No render.yaml or klouds.yaml detected in repository"})
 	}
 
 	parsed := parseRenderYAMLString(yamlContent)

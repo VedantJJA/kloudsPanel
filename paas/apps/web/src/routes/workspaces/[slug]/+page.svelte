@@ -130,7 +130,15 @@
                 <span class="text-xs text-muted truncate" style="max-width:240px; display:inline-block;">{proj.description || 'No description'}</span>
               </td>
               <td>
-                <span class="badge badge-running">active</span>
+                {#if (proj.status || 'active') === 'failed'}
+                  <span class="badge badge-failed">failed</span>
+                {:else if proj.status === 'building'}
+                  <span class="badge badge-building">building</span>
+                {:else if proj.status === 'stopped'}
+                  <span class="badge badge-stopped">stopped</span>
+                {:else}
+                  <span class="badge badge-running">active</span>
+                {/if}
               </td>
               <td style="text-align:right;" onclick={(e) => e.stopPropagation()}>
                 <div style="display:inline-flex; align-items:center; gap:6px;">

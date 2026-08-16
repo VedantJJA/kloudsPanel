@@ -976,10 +976,13 @@
     if (svc.internalPort) internalPort = svc.internalPort;
     if (svc.cron_schedule) cronSchedule = svc.cron_schedule;
     if (svc.cronSchedule) cronSchedule = svc.cronSchedule;
-    if (svc.env_vars && Object.keys(svc.env_vars).length > 0) {
-      envVars = Object.entries(svc.env_vars).map(([k, v]) => ({ key: k, value: String(v) }));
-    } else if (svc.env && Object.keys(svc.env).length > 0) {
-      envVars = Object.entries(svc.env).map(([k, v]) => ({ key: k, value: String(v) }));
+    const rawSvcEnv = svc.env_vars || svc.envVars || (svc.env && typeof svc.env === 'object' && !Array.isArray(svc.env) ? svc.env : null);
+    if (rawSvcEnv && typeof rawSvcEnv === 'object' && !Array.isArray(rawSvcEnv) && Object.keys(rawSvcEnv).length > 0) {
+      envVars = Object.entries(rawSvcEnv)
+        .filter(([k]) => isNaN(Number(k)) || k.length > 2)
+        .map(([k, v]) => ({ key: k, value: String(v) }));
+    } else {
+      envVars = [];
     }
     yamlParsedInfo = `Configured "${name}" (${svc.kind.toUpperCase()} | ${svc.env || svc.preset} in ${rootDirectory === '.' ? 'root' : '/' + rootDirectory} on port :${internalPort})`;
   }

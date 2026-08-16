@@ -18,7 +18,45 @@ func (h *Handler) handleListProjects(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	return c.JSON(fiber.Map{"projects": projects})
+
+	type ProjectWithStatus struct {
+		*domain.Project
+		Status string `json:"status"`
+	}
+	var res []ProjectWithStatus
+	for _, p := range projects {
+		status := "active"
+		if services, err := h.store.Services().ListForProject(c.Context(), p.ID); err == nil && len(services) > 0 {
+			hasFailed := false
+			hasBuilding := false
+			hasRunning := false
+			for _, s := range services {
+				rs := strings.ToLower(string(s.RuntimeStatus))
+				if rs == "failed" || rs == "error" || rs == "dead" || rs == "crashed" {
+					hasFailed = true
+				} else if rs == "building" || rs == "deploying" || rs == "queued" || rs == "starting" || rs == "restarting" {
+					hasBuilding = true
+				} else if rs == "running" || rs == "ready" {
+					hasRunning = true
+				}
+			}
+			if hasFailed {
+				status = "failed"
+			} else if hasBuilding {
+				status = "building"
+			} else if hasRunning {
+				status = "active"
+			} else {
+				status = "stopped"
+			}
+		}
+		res = append(res, ProjectWithStatus{
+			Project: p,
+			Status:  status,
+		})
+	}
+
+	return c.JSON(fiber.Map{"projects": res})
 }
 
 func (h *Handler) handleCreateProject(c fiber.Ctx) error {
@@ -102,6 +140,31 @@ func (h *Handler) handleGetProject(c fiber.Ctx) error {
 		wsName = ws.Name
 		wsSlug = ws.Slug
 	}
+	status := "active"
+	if services, err := h.store.Services().ListForProject(c.Context(), p.ID); err == nil && len(services) > 0 {
+		hasFailed := false
+		hasBuilding := false
+		hasRunning := false
+		for _, s := range services {
+			rs := strings.ToLower(string(s.RuntimeStatus))
+			if rs == "failed" || rs == "error" || rs == "dead" || rs == "crashed" {
+				hasFailed = true
+			} else if rs == "building" || rs == "deploying" || rs == "queued" || rs == "starting" || rs == "restarting" {
+				hasBuilding = true
+			} else if rs == "running" || rs == "ready" {
+				hasRunning = true
+			}
+		}
+		if hasFailed {
+			status = "failed"
+		} else if hasBuilding {
+			status = "building"
+		} else if hasRunning {
+			status = "active"
+		} else {
+			status = "stopped"
+		}
+	}
 	return c.JSON(fiber.Map{
 		"id":             p.ID,
 		"workspace_id":   p.WorkspaceID,
@@ -110,6 +173,7 @@ func (h *Handler) handleGetProject(c fiber.Ctx) error {
 		"name":           p.Name,
 		"slug":           p.Slug,
 		"description":    p.Description,
+		"status":         status,
 		"created_at":     p.CreatedAt,
 		"updated_at":     p.UpdatedAt,
 	})

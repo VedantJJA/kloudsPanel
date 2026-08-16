@@ -436,8 +436,11 @@
         if (service.resource_json || service.ResourceJSON) {
           const r = JSON.parse(service.resource_json || service.ResourceJSON);
           if (!envDirty && (!envInitialLoaded || tab !== 'variables')) {
-            if (r.env && typeof r.env === 'object') {
-              envVars = Object.entries(r.env).map(([k, v]) => ({ key: k, value: String(v) }));
+            const rawEnv = r.env_vars || r.envVars || (r.env && typeof r.env === 'object' && !Array.isArray(r.env) ? r.env : null);
+            if (rawEnv && typeof rawEnv === 'object' && !Array.isArray(rawEnv)) {
+              envVars = Object.entries(rawEnv)
+                .filter(([k]) => isNaN(Number(k)) || k.length > 2)
+                .map(([k, v]) => ({ key: k, value: String(v) }));
               envInitialLoaded = true;
             }
           }

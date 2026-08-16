@@ -162,8 +162,19 @@
         {/if}
         <span>{project?.name || project?.Name || slug}</span>
       </div>
-      <h1 class="page-title">{project?.name || project?.Name || slug}</h1>
-      <p class="page-subtitle">{project?.description || 'Project environments and deployed services'}</p>
+      <div style="display:flex; align-items:center; gap:10px; margin-top:4px;">
+        <h1 class="page-title" style="margin:0;">{project?.name || project?.Name || slug}</h1>
+        {#if services.some(s => s.runtime_status === 'failed' || s.runtime_status === 'error' || s.runtime_status === 'dead' || s.runtime_status === 'crashed') || project?.status === 'failed'}
+          <span class="badge badge-failed">failed</span>
+        {:else if services.some(s => s.runtime_status === 'building' || s.runtime_status === 'deploying' || s.runtime_status === 'queued' || s.runtime_status === 'starting' || s.runtime_status === 'restarting') || project?.status === 'building'}
+          <span class="badge badge-building">building</span>
+        {:else if services.length > 0 && services.every(s => s.runtime_status === 'running' || s.runtime_status === 'ready')}
+          <span class="badge badge-running">active</span>
+        {:else if services.length > 0}
+          <span class="badge badge-stopped">stopped</span>
+        {/if}
+      </div>
+      <p class="page-subtitle" style="margin-top:4px;">{project?.description || 'Project environments and deployed services'}</p>
     </div>
     <div style="display:flex; gap:0.6rem; align-items:center;">
       <button class="btn btn-secondary" style="color:var(--color-danger); border-color:var(--color-border);" onclick={deleteProject}>
