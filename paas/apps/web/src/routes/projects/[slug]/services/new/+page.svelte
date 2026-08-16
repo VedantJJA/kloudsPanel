@@ -1026,6 +1026,24 @@
     }
   });
 
+  $effect(() => {
+    if (detectedServices && detectedServices[selectedBlueprintIndex]) {
+      const s = detectedServices[selectedBlueprintIndex];
+      s.name = name;
+      s.slug = svcSlug;
+      s.internal_port = internalPort;
+      s.build_command = buildCommand;
+      s.start_command = startCommand;
+      s.runtime_version = runtimeVersion;
+      if (selectedPreset?.id) s.preset = selectedPreset.id;
+      const envMap: Record<string, string> = {};
+      for (const item of envVars) {
+        if (item.key.trim()) envMap[item.key.trim()] = item.value;
+      }
+      s.env_vars = envMap;
+    }
+  });
+
   function addEnv() {
     envVars = [...envVars, { key: '', value: '' }];
   }
@@ -1991,22 +2009,49 @@
         {/if}
       </div>
 
-      <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--color-border); padding-top: 1rem;">
+      <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--color-border); padding-top: 1rem; flex-wrap: wrap; gap: 0.75rem;">
         <button type="button" class="btn btn-secondary" onclick={() => activeTab = 'config'}>
           <ChevronLeft size={16} /> Back to Build Config
         </button>
-        <button 
-          type="submit" 
-          class="btn btn-primary" 
-          disabled={submitting || !name || !svcSlug}
-          style="padding: 0.625rem 1.75rem;"
-        >
-          {#if submitting}
-            <Loader2 size={16} class="animate-spin" /> Provisioning & Deploying...
+
+        <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+          {#if detectedServices.length > 1}
+            <button 
+              type="button" 
+              class="btn btn-secondary" 
+              disabled={submitting || !name || !svcSlug}
+              onclick={handleSubmit}
+            >
+              Deploy Only {name || 'Active Service'}
+            </button>
+            <button 
+              type="button" 
+              class="btn btn-primary" 
+              disabled={deployingBlueprint}
+              onclick={requestDeployBlueprint}
+              style="padding: 0.625rem 1.75rem; display: flex; align-items: center; gap: 6px;"
+            >
+              {#if deployingBlueprint}
+                <Loader2 size={16} class="animate-spin" /> Deploying Full Stack...
+              {:else}
+                <Rocket size={16} /> Deploy All {detectedServices.length + detectedDatabases.length} Stack Services
+              {/if}
+            </button>
           {:else}
-            <Rocket size={16} /> Deploy {name || 'Service'}
+            <button 
+              type="submit" 
+              class="btn btn-primary" 
+              disabled={submitting || !name || !svcSlug}
+              style="padding: 0.625rem 1.75rem;"
+            >
+              {#if submitting}
+                <Loader2 size={16} class="animate-spin" /> Provisioning & Deploying...
+              {:else}
+                <Rocket size={16} /> Deploy {name || 'Service'}
+              {/if}
+            </button>
           {/if}
-        </button>
+        </div>
       </div>
     </div>
   {/if}
