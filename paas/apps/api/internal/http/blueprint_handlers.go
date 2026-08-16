@@ -1706,18 +1706,23 @@ func (h *Handler) handleDeployBlueprint(c fiber.Ctx) error {
 		}
 
 		resMap := map[string]any{
-			"gitRepoUrl":     req.RepoURL,
-			"gitBranch":      branch,
-			"rootDir":        svcInfo.RootDir,
-			"rootDirectory":  svcInfo.RootDir,
-			"buildCommand":   svcInfo.BuildCommand,
-			"startCommand":   svcInfo.StartCommand,
-			"presetId":       svcInfo.Preset,
-			"runtimeVersion": svcInfo.RuntimeVersion,
-			"mem_limit":      svcInfo.MemoryLimit,
-			"cpu_limit":      svcInfo.CPULimit,
-			"routes":         svcInfo.Routes,
-			"env":            resolvedEnv,
+			"gitRepoUrl":      req.RepoURL,
+			"gitBranch":       branch,
+			"rootDir":         svcInfo.RootDir,
+			"rootDirectory":   svcInfo.RootDir,
+			"buildCommand":    svcInfo.BuildCommand,
+			"build_command":   svcInfo.BuildCommand,
+			"startCommand":    svcInfo.StartCommand,
+			"start_command":   svcInfo.StartCommand,
+			"presetId":        svcInfo.Preset,
+			"preset":          svcInfo.Preset,
+			"runtimeVersion":  svcInfo.RuntimeVersion,
+			"runtime_version": svcInfo.RuntimeVersion,
+			"mem_limit":       svcInfo.MemoryLimit,
+			"cpu_limit":       svcInfo.CPULimit,
+			"routes":          svcInfo.Routes,
+			"env":             resolvedEnv,
+			"env_vars":        resolvedEnv,
 		}
 		resJSON, _ := json.Marshal(resMap)
 		s.ResourceJSON = string(resJSON)

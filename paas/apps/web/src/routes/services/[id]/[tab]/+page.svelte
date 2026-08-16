@@ -446,16 +446,16 @@
           }
           if (!settingsDirty) {
             settingsName = service.name || service.Name || '';
-            settingsPreset = r.presetId || service.kind || 'node';
-            settingsRuntimeVersion = r.runtimeVersion || 'auto';
-            settingsMemoryLimit = r.mem_limit || '512m';
-            settingsCPULimit = r.cpu_limit || '1.0';
-            settingsBuildCmd = r.buildCommand || '';
-            settingsStartCmd = r.startCommand || '';
-            settingsRootDir = r.rootDirectory || r.rootDir || '.';
-            settingsBranch = r.gitBranch || 'main';
-            settingsRepoUrl = r.gitRepoUrl || '';
-            settingsPort = service.internal_port || service.InternalPort || 80;
+            settingsPreset = r.presetId || r.preset || service.kind || 'node';
+            settingsRuntimeVersion = r.runtimeVersion || r.runtime_version || 'auto';
+            settingsMemoryLimit = r.mem_limit || r.memoryLimit || '512m';
+            settingsCPULimit = r.cpu_limit || r.cpuLimit || '1.0';
+            settingsBuildCmd = r.buildCommand || r.build_command || r.buildCmd || '';
+            settingsStartCmd = r.startCommand || r.start_command || r.startCmd || '';
+            settingsRootDir = r.rootDirectory || r.rootDir || r.root_dir || '.';
+            settingsBranch = r.gitBranch || r.branch || 'main';
+            settingsRepoUrl = r.gitRepoUrl || r.repoUrl || '';
+            settingsPort = service.internal_port || service.InternalPort || r.internal_port || r.internalPort || 80;
             settingsAutoDeploy = service.auto_deploy !== false;
           }
         }

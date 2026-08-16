@@ -156,31 +156,48 @@
 
   function updateDetectedEnv(sIdx: number, key: string, val: string) {
     if (detectedServices[sIdx]) {
-      if (!detectedServices[sIdx].env_vars) detectedServices[sIdx].env_vars = {};
-      detectedServices[sIdx].env_vars[key] = val;
+      const updated = { ...(detectedServices[sIdx].env_vars || detectedServices[sIdx].envVars || {}) };
+      updated[key] = val;
+      detectedServices = detectedServices.map((svc, idx) => 
+        idx === sIdx ? { ...svc, env_vars: updated, envVars: updated } : svc
+      );
       if (selectedBlueprintIndex === sIdx) {
-        envVars = Object.entries(detectedServices[sIdx].env_vars).map(([k, v]) => ({ key: k, value: String(v) }));
+        envVars = Object.entries(updated).map(([k, v]) => ({ key: k, value: String(v) }));
       }
     }
   }
 
   function autoFillAllSecrets() {
-    detectedServices.forEach((svc, sIdx) => {
-      Object.keys(svc.env_vars || {}).forEach(k => {
-        const strVal = String(svc.env_vars[k] || '').trim();
-        const isSecret = k.includes('SECRET') || k.includes('KEY') || k.includes('PASS') || k.includes('TOKEN') || k.includes('AUTH');
-        if (isSecret && (strVal === '' || strVal.toLowerCase().startsWith('your_') || strVal.toLowerCase().startsWith('replace_') || strVal.toLowerCase() === 'changeme')) {
-          svc.env_vars[k] = generateRandomSecret(32);
+    detectedServices = detectedServices.map((svc) => {
+      const updatedEnv = { ...(svc.env_vars || svc.envVars || {}) };
+      Object.keys(updatedEnv).forEach(k => {
+        const strVal = String(updatedEnv[k] || '').trim();
+        const upperK = k.toUpperCase();
+        const isSecretName = upperK.includes('SECRET') || upperK.includes('KEY') || upperK.includes('PASS') || upperK.includes('TOKEN') || upperK.includes('AUTH') || upperK.includes('SALT') || upperK.includes('PRIVATE') || upperK.includes('SIGN') || upperK.includes('HASH');
+        const isPlaceholderOrEmpty = !strVal || strVal.toLowerCase().startsWith('your_') || strVal.toLowerCase().startsWith('replace_') || strVal.toLowerCase() === 'changeme' || strVal.toLowerCase() === 'todo' || strVal.startsWith('<');
+        if (isSecretName || isPlaceholderOrEmpty) {
+          updatedEnv[k] = generateRandomSecret(32);
         }
       });
+      return { ...svc, env_vars: updatedEnv, envVars: updatedEnv };
     });
+
     envVars = envVars.map(e => {
-      const isSecret = e.key.includes('SECRET') || e.key.includes('KEY') || e.key.includes('PASS') || e.key.includes('TOKEN') || e.key.includes('AUTH');
-      if (isSecret && (!e.value || e.value.toLowerCase().startsWith('your_') || e.value.toLowerCase().startsWith('replace_') || e.value.toLowerCase() === 'changeme')) {
+      const upperK = (e.key || '').toUpperCase();
+      const isSecretName = upperK.includes('SECRET') || upperK.includes('KEY') || upperK.includes('PASS') || upperK.includes('TOKEN') || upperK.includes('AUTH') || upperK.includes('SALT') || upperK.includes('PRIVATE') || upperK.includes('SIGN') || upperK.includes('HASH');
+      const isPlaceholderOrEmpty = !e.value || e.value.toLowerCase().startsWith('your_') || e.value.toLowerCase().startsWith('replace_') || e.value.toLowerCase() === 'changeme' || e.value.toLowerCase() === 'todo' || e.value.startsWith('<');
+      if (isSecretName || isPlaceholderOrEmpty) {
         return { ...e, value: generateRandomSecret(32) };
       }
       return e;
     });
+
+    if (detectedServices[selectedBlueprintIndex]) {
+      const envMap: Record<string, string> = {};
+      envVars.forEach(e => { if (e.key.trim()) envMap[e.key.trim()] = e.value; });
+      detectedServices[selectedBlueprintIndex].env_vars = envMap;
+      detectedServices[selectedBlueprintIndex].envVars = envMap;
+    }
   }
 
   // Git Provider integration state
@@ -1094,15 +1111,23 @@
       s.name = name;
       s.slug = svcSlug;
       s.internal_port = internalPort;
+      s.internalPort = internalPort;
       s.build_command = buildCommand;
+      s.buildCommand = buildCommand;
       s.start_command = startCommand;
+      s.startCommand = startCommand;
+      s.root_dir = rootDirectory;
+      s.rootDir = rootDirectory;
+      s.rootDirectory = rootDirectory;
       s.runtime_version = runtimeVersion;
+      s.runtimeVersion = runtimeVersion;
       if (selectedPreset?.id) s.preset = selectedPreset.id;
       const envMap: Record<string, string> = {};
       for (const item of envVars) {
         if (item.key.trim()) envMap[item.key.trim()] = item.value;
       }
       s.env_vars = envMap;
+      s.envVars = envMap;
     }
   });
 
@@ -1143,17 +1168,23 @@
         gitRepoUrl: (sourceType === 'git_public' || sourceType === 'git_provider') ? gitRepoUrl : '',
         gitBranch: gitBranch,
         rootDirectory: rootDirectory,
+        rootDir: rootDirectory,
         sourceType: sourceType,
         presetId: selectedPreset?.id ?? 'custom',
+        preset: selectedPreset?.id ?? 'custom',
         runtimeVersion: runtimeVersion === 'auto' ? '' : runtimeVersion,
+        runtime_version: runtimeVersion === 'auto' ? '' : runtimeVersion,
         mem_limit: memoryLimit,
         cpu_limit: cpuLimit,
         pids_limit: pidsLimit,
         image: imageRef,
         buildCommand: buildCommand,
+        build_command: buildCommand,
         startCommand: startCommand,
+        start_command: startCommand,
         cronSchedule: kind === 'cron' ? cronSchedule : '',
-        env: envMap
+        env: envMap,
+        env_vars: envMap
       };
 
       const res = await fetch('/api/v1/services', {
