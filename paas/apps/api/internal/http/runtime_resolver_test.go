@@ -176,6 +176,13 @@ services:
     rootDir: web
     buildCommand: npm install && npm run build
     staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+      - type: rewrite
+        source: /api/*
+        destination: https://devpanel-backend.klouds.online
     envVars:
       - key: API_URL
         value: https://devpanel-backend.klouds.online
@@ -187,15 +194,29 @@ services:
     rootDir: api
     buildCommand: npm install
     startCommand: node index.js
+
+databases:
+  - name: bar-code-db
+    engine: postgres
+    version: "16"
 `
 	res := parseRenderYAMLString(sampleYaml)
 	if len(res.Services) != 2 {
-		t.Fatalf("expected 2 services parsed from render.yaml, got %d", len(res.Services))
+		t.Fatalf("expected exactly 2 services (no phantom route services), got %d", len(res.Services))
 	}
 	if res.Services[0].Name != "devpanel-frontend" && res.Services[0].Name != "devpanel" {
 		t.Errorf("expected first service name devpanel-frontend, got %s", res.Services[0].Name)
 	}
 	if res.Services[1].Name != "devpanel-backend" {
 		t.Errorf("expected second service name devpanel-backend, got %s", res.Services[1].Name)
+	}
+	if len(res.Databases) != 1 {
+		t.Fatalf("expected exactly 1 database parsed, got %d", len(res.Databases))
+	}
+	if res.Databases[0]["name"] != "bar-code-db" {
+		t.Errorf("expected database name bar-code-db, got %v", res.Databases[0]["name"])
+	}
+	if res.Databases[0]["engine"] != "postgres" {
+		t.Errorf("expected database engine postgres, got %v", res.Databases[0]["engine"])
 	}
 }

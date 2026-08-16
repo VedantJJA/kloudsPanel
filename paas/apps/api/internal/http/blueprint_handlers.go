@@ -79,17 +79,16 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 			// Check if this service is actually a database
 			lowerKind := strings.ToLower(currentSvc.Kind)
 			lowerImg := strings.ToLower(currentSvc.Image)
-			lowerName := strings.ToLower(currentSvc.Name)
-			if lowerKind == "database" || lowerKind == "redis" || lowerKind == "postgres" || lowerKind == "mysql" || lowerKind == "mongodb" || lowerKind == "clickhouse" ||
+			if lowerKind == "database" || lowerKind == "redis" || lowerKind == "postgres" || lowerKind == "postgresql" || lowerKind == "mysql" || lowerKind == "mongodb" || lowerKind == "clickhouse" ||
 				strings.Contains(lowerImg, "redis") || strings.Contains(lowerImg, "postgres") || strings.Contains(lowerImg, "mysql") || strings.Contains(lowerImg, "mongo") || strings.Contains(lowerImg, "clickhouse") {
 				engine := "postgres"
-				if strings.Contains(lowerKind, "redis") || strings.Contains(lowerImg, "redis") || strings.Contains(lowerName, "redis") {
+				if strings.Contains(lowerKind, "redis") || strings.Contains(lowerImg, "redis") {
 					engine = "redis"
-				} else if strings.Contains(lowerKind, "mysql") || strings.Contains(lowerImg, "mysql") || strings.Contains(lowerName, "mysql") {
+				} else if strings.Contains(lowerKind, "mysql") || strings.Contains(lowerImg, "mysql") {
 					engine = "mysql"
-				} else if strings.Contains(lowerKind, "mongo") || strings.Contains(lowerImg, "mongo") || strings.Contains(lowerName, "mongo") {
+				} else if strings.Contains(lowerKind, "mongo") || strings.Contains(lowerImg, "mongo") {
 					engine = "mongodb"
-				} else if strings.Contains(lowerKind, "clickhouse") || strings.Contains(lowerImg, "clickhouse") || strings.Contains(lowerName, "clickhouse") {
+				} else if strings.Contains(lowerKind, "clickhouse") || strings.Contains(lowerImg, "clickhouse") {
 					engine = "clickhouse"
 				}
 				res.Databases = append(res.Databases, fiber.Map{
@@ -97,7 +96,7 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 					"engine":  engine,
 					"version": currentSvc.RuntimeVersion,
 				})
-			} else {
+			} else if lowerKind != "rewrite" && lowerKind != "redirect" && lowerKind != "header" && lowerKind != "proxy" {
 				res.Services = append(res.Services, *currentSvc)
 			}
 			currentSvc = nil
@@ -118,60 +117,93 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 			inDatabases = true
 			inServices = false
 			inEnvVars = false
+			inRoutes = false
 			continue
 		} else if trimmed == "services:" {
 			flushCurrent()
 			inServices = true
 			inDatabases = false
 			inEnvVars = false
+			inRoutes = false
 			continue
 		}
 
 		// Database list items (e.g. "- name: devpanel-postgres" or "- name: devpanel-redis")
 		if inDatabases {
-			if strings.HasPrefix(trimmed, "- name:") || strings.HasPrefix(trimmed, "name:") {
+			isNewDbItem := strings.HasPrefix(trimmed, "- name:") || strings.HasPrefix(trimmed, "- databaseName:") || strings.HasPrefix(trimmed, "- engine:") || strings.HasPrefix(trimmed, "- type:") || strings.HasPrefix(trimmed, "- ") || trimmed == "-"
+			if isNewDbItem {
 				parts := strings.SplitN(trimmed, ":", 2)
+				key := strings.Trim(strings.TrimPrefix(parts[0], "-"), " ")
+				val := ""
 				if len(parts) > 1 {
-					dbName := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
-					engine := "postgres"
-					lower := strings.ToLower(dbName)
-					if strings.Contains(lower, "redis") {
-						engine = "redis"
-					} else if strings.Contains(lower, "mysql") {
-						engine = "mysql"
-					} else if strings.Contains(lower, "mongo") {
-						engine = "mongodb"
-					} else if strings.Contains(lower, "clickhouse") {
-						engine = "clickhouse"
-					}
-					newDb := fiber.Map{
-						"name":   dbName,
-						"engine": engine,
-					}
-					res.Databases = append(res.Databases, newDb)
+					val = strings.Trim(strings.TrimSpace(parts[1]), "\"'")
 				}
-			} else if (strings.HasPrefix(trimmed, "engine:") || strings.HasPrefix(trimmed, "image:")) && len(res.Databases) > 0 {
+				dbName := "database"
+				engine := "postgres"
+				if key == "name" || key == "databaseName" {
+					dbName = val
+				} else if key == "engine" || key == "type" {
+					engine = strings.ToLower(val)
+				}
+				lower := strings.ToLower(dbName)
+				if strings.Contains(lower, "redis") {
+					engine = "redis"
+				} else if strings.Contains(lower, "mysql") {
+					engine = "mysql"
+				} else if strings.Contains(lower, "mongo") {
+					engine = "mongodb"
+				} else if strings.Contains(lower, "clickhouse") {
+					engine = "clickhouse"
+				}
+				newDb := fiber.Map{
+					"name":   dbName,
+					"engine": engine,
+				}
+				res.Databases = append(res.Databases, newDb)
+			} else if len(res.Databases) > 0 {
 				parts := strings.SplitN(trimmed, ":", 2)
 				if len(parts) > 1 {
-					val := strings.ToLower(strings.Trim(strings.TrimSpace(parts[1]), "\"'"))
-					if strings.Contains(val, "redis") {
-						res.Databases[len(res.Databases)-1]["engine"] = "redis"
-					} else if strings.Contains(val, "mysql") {
-						res.Databases[len(res.Databases)-1]["engine"] = "mysql"
-					} else if strings.Contains(val, "mongo") {
-						res.Databases[len(res.Databases)-1]["engine"] = "mongodb"
-					} else if strings.Contains(val, "clickhouse") {
-						res.Databases[len(res.Databases)-1]["engine"] = "clickhouse"
-					} else if strings.Contains(val, "postgres") {
-						res.Databases[len(res.Databases)-1]["engine"] = "postgres"
+					k := strings.ToLower(strings.TrimSpace(parts[0]))
+					val := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
+					idx := len(res.Databases) - 1
+					switch k {
+					case "name", "databasename":
+						res.Databases[idx]["name"] = val
+						lower := strings.ToLower(val)
+						if strings.Contains(lower, "redis") {
+							res.Databases[idx]["engine"] = "redis"
+						} else if strings.Contains(lower, "mysql") {
+							res.Databases[idx]["engine"] = "mysql"
+						} else if strings.Contains(lower, "mongo") {
+							res.Databases[idx]["engine"] = "mongodb"
+						} else if strings.Contains(lower, "clickhouse") {
+							res.Databases[idx]["engine"] = "clickhouse"
+						}
+					case "engine", "image", "type":
+						lower := strings.ToLower(val)
+						if strings.Contains(lower, "redis") {
+							res.Databases[idx]["engine"] = "redis"
+						} else if strings.Contains(lower, "mysql") {
+							res.Databases[idx]["engine"] = "mysql"
+						} else if strings.Contains(lower, "mongo") {
+							res.Databases[idx]["engine"] = "mongodb"
+						} else if strings.Contains(lower, "clickhouse") {
+							res.Databases[idx]["engine"] = "clickhouse"
+						} else if strings.Contains(lower, "postgres") {
+							res.Databases[idx]["engine"] = "postgres"
+						}
+					case "version", "runtime_version":
+						res.Databases[idx]["version"] = sanitizeVersionString(val)
 					}
 				}
 			}
 			continue
 		}
 
-		// In services section: Detect new service start (either list item "- name:" / "- type:" / "- runtime:" / "- service:" or map key "  frontend:" / "  backend:" / "  redis:")
-		isListServiceHeader := inServices && (strings.HasPrefix(trimmed, "- type:") || strings.HasPrefix(trimmed, "- name:") || strings.HasPrefix(trimmed, "- service:") || strings.HasPrefix(trimmed, "- kind:") || strings.HasPrefix(trimmed, "- runtime:") || strings.HasPrefix(trimmed, "- env:"))
+		// In services section: Detect new service start
+		isRouteRule := inRoutes && (strings.HasPrefix(trimmed, "- type: rewrite") || strings.HasPrefix(trimmed, "- type: redirect") || strings.HasPrefix(trimmed, "- type: header") || strings.HasPrefix(trimmed, "type: rewrite") || strings.HasPrefix(trimmed, "type: redirect") || strings.HasPrefix(trimmed, "type: header") || strings.HasPrefix(trimmed, "- source:") || strings.HasPrefix(trimmed, "source:") || strings.HasPrefix(trimmed, "destination:"))
+
+		isListServiceHeader := inServices && !isRouteRule && (strings.HasPrefix(trimmed, "- type:") || strings.HasPrefix(trimmed, "- name:") || strings.HasPrefix(trimmed, "- service:") || strings.HasPrefix(trimmed, "- kind:") || strings.HasPrefix(trimmed, "- runtime:")) && (!inRoutes || strings.HasPrefix(rawLine, "  - ") || strings.HasPrefix(rawLine, "- ") || strings.HasPrefix(rawLine, "\t- "))
 
 		isMapServiceHeader := inServices && !inRoutes && !inEnvVars && !strings.HasPrefix(trimmed, "-") && strings.HasSuffix(trimmed, ":") && !strings.Contains(trimmed, " ") &&
 			(strings.HasPrefix(rawLine, "  ") || strings.HasPrefix(rawLine, "\t")) && !strings.HasPrefix(rawLine, "    ") && !strings.HasPrefix(rawLine, "\t\t") &&
@@ -1412,6 +1444,52 @@ func detectFrameworkFromTree(repoPath string, treeFiles map[string]bool, fetchRa
 		}
 		if hasSubServices {
 			result.Services = result.Services[1:]
+		}
+	}
+
+	// Auto-detect databases referenced in environment variables (.env.example or service envVars)
+	dbAdded := make(map[string]bool)
+	for _, s := range result.Services {
+		for k, v := range s.EnvVars {
+			kUpper := strings.ToUpper(k)
+			vLower := strings.ToLower(v)
+			if strings.Contains(kUpper, "DATABASE_URL") || strings.Contains(kUpper, "POSTGRES") || strings.Contains(kUpper, "PGDATABASE") || strings.Contains(vLower, "postgres") {
+				if !dbAdded["postgres"] {
+					dbName := fmt.Sprintf("%s-postgres", repoBase)
+					result.Databases = append(result.Databases, fiber.Map{
+						"name":   dbName,
+						"engine": "postgres",
+					})
+					dbAdded["postgres"] = true
+				}
+			} else if strings.Contains(kUpper, "REDIS_URL") || strings.Contains(kUpper, "REDIS_HOST") || strings.Contains(vLower, "redis") {
+				if !dbAdded["redis"] {
+					dbName := fmt.Sprintf("%s-redis", repoBase)
+					result.Databases = append(result.Databases, fiber.Map{
+						"name":   dbName,
+						"engine": "redis",
+					})
+					dbAdded["redis"] = true
+				}
+			} else if strings.Contains(kUpper, "MYSQL_URL") || strings.Contains(kUpper, "MYSQL_HOST") || strings.Contains(kUpper, "MYSQL_DATABASE") || strings.Contains(vLower, "mysql") {
+				if !dbAdded["mysql"] {
+					dbName := fmt.Sprintf("%s-mysql", repoBase)
+					result.Databases = append(result.Databases, fiber.Map{
+						"name":   dbName,
+						"engine": "mysql",
+					})
+					dbAdded["mysql"] = true
+				}
+			} else if strings.Contains(kUpper, "MONGO_URI") || strings.Contains(kUpper, "MONGODB_URI") || strings.Contains(kUpper, "MONGO_URL") || strings.Contains(vLower, "mongo") {
+				if !dbAdded["mongodb"] {
+					dbName := fmt.Sprintf("%s-mongodb", repoBase)
+					result.Databases = append(result.Databases, fiber.Map{
+						"name":   dbName,
+						"engine": "mongodb",
+					})
+					dbAdded["mongodb"] = true
+				}
+			}
 		}
 	}
 
