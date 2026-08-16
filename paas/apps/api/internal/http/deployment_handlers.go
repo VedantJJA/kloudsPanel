@@ -522,6 +522,13 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 					val = strings.ReplaceAll(val, fmt.Sprintf("${services.%s.host}", otherSvc.Slug), otherHost)
 					val = strings.ReplaceAll(val, fmt.Sprintf("${services.%s.internalUrl}", otherSvc.Name), otherIntUrl)
 					val = strings.ReplaceAll(val, fmt.Sprintf("${services.%s.internalUrl}", otherSvc.Slug), otherIntUrl)
+					// Docker Compose-style plain name resolution:
+					// If the env var value exactly equals another service's name or slug,
+					// resolve it to the internal container hostname (paas-svc-{slug}).
+					internalHost := fmt.Sprintf("paas-svc-%s", otherSvc.Slug)
+					if val == otherSvc.Name || val == otherSvc.Slug {
+						val = internalHost
+					}
 					envMap[k] = val
 				}
 			}
