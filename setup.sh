@@ -245,8 +245,10 @@ PREPULL_IMAGES=(
     "clickhouse/clickhouse-server:24.3-alpine"
     "nginx:alpine"
     "node:20-alpine"
-    "python:3.11-slim"
-    "golang:1.22-alpine"
+    "python:3.12-slim"
+    "golang:1.23-alpine"
+    "rust:1.82-alpine"
+    "eclipse-temurin:21-jdk-alpine"
 )
 
 for img in "${PREPULL_IMAGES[@]}"; do

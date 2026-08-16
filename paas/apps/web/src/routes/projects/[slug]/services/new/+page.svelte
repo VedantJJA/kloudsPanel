@@ -35,7 +35,7 @@
   } from 'lucide-svelte';
   import FrameworkIcon from '$lib/components/icons/FrameworkIcon.svelte';
 
-  const { slug } = $derived($page.params);
+  const slug = $derived($page.params.slug);
   let project = $state<any>(null);
   let loading = $state(true);
 
@@ -697,26 +697,27 @@
   }
 
   onMount(async () => {
-    try {
-      const projSlug = slug || '';
-      const res = await fetch(`/api/v1/projects/${encodeURIComponent(projSlug)}`, { credentials: 'include' });
-      if (res.ok) {
-        project = await res.json();
-      } else {
+    choosePreset(presets[0]);
+    const projSlug = $page.params.slug || slug || '';
+    if (projSlug) {
+      try {
+        const res = await fetch(`/api/v1/projects/${encodeURIComponent(projSlug)}`, { credentials: 'include' });
+        if (res.ok) {
+          project = await res.json();
+        } else {
+          project = { id: projSlug, slug: projSlug, name: projSlug };
+        }
+      } catch (e) {
         project = { id: projSlug, slug: projSlug, name: projSlug };
       }
-      try {
-        await loadIntegrations();
-      } catch {}
-      try {
-        await loadProviderRepos('github');
-      } catch {}
-      choosePreset(presets[0]);
-    } catch (e) {
-      project = { id: slug, slug: slug, name: slug };
-    } finally {
-      loading = false;
+    } else {
+      project = { id: 'default', slug: 'default', name: 'Default Project' };
     }
+    loading = false;
+
+    // Load background Git integrations asynchronously so UI doesn't block
+    loadIntegrations().catch(() => {});
+    loadProviderRepos('github').catch(() => {});
   });
 
   let autoDetectDebounce: any = null;
