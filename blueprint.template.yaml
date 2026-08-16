@@ -1,0 +1,133 @@
+# ==============================================================================
+# kloudsPanel & Render Universal Blueprint Template (render.yaml / klouds.yaml)
+# ==============================================================================
+# Place this file in the root of your Git repository as `render.yaml` or `klouds.yaml`.
+# kloudsPanel automatically detects this file, parses all services & databases,
+# wires up internal networking, sets up SSL certificates, and configures environment variables.
+# ==============================================================================
+
+services:
+  # ----------------------------------------------------------------------------
+  # 1. Backend REST / GraphQL / gRPC API Service
+  # ----------------------------------------------------------------------------
+  - type: web
+    name: api-server
+    env: node                # Runtime: node, python, go, rust, java, php, ruby, bun, deno, docker
+    plan: free
+    rootDir: .               # Subdirectory if using a monorepo (e.g. backend or artifacts/api-server)
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: "8080"
+      - key: NODE_ENV
+        value: production
+
+      # Auto-wire database connection from the database declared below
+      - key: DATABASE_URL
+        fromDatabase:
+          name: app-db
+          property: connectionString
+
+      # Auto-wire host and port individually if required by your framework
+      - key: DB_HOST
+        fromDatabase:
+          name: app-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: app-db
+          property: port
+
+      # Auto-wire Redis cache connection
+      - key: REDIS_URL
+        fromDatabase:
+          name: redis-cache
+          property: connectionString
+
+      # Auto-generate a secure random secret at deployment setup
+      - key: JWT_SECRET
+        generateValue: true
+
+      # Required user variable: prompt the user for input during setup
+      - key: THIRD_PARTY_API_KEY
+        sync: false
+
+  # ----------------------------------------------------------------------------
+  # 2. Frontend Web Application (Single Page App: React, Vite, Svelte, Vue, Next)
+  # ----------------------------------------------------------------------------
+  - type: web
+    name: web-client
+    env: static              # "static" builds into high-performance Nginx with automated SPA routing
+    rootDir: .               # Subdirectory if using a monorepo (e.g. frontend or artifacts/loyalty-app)
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist  # Output folder: dist, build, out, or public
+
+    # Client-side environment variables (dynamic backend URL injection)
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: api-server
+          property: url      # Automatically resolves to https://<api-server-domain>
+
+    # Custom routing and reverse-proxy rules
+    routes:
+      # Reverse proxy /api requests to the backend container
+      - type: rewrite
+        source: /api/*
+        destination: ${services.api-server.url}/api/*
+
+      # SPA Fallback: non-asset routes fallback to index.html
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+  # ----------------------------------------------------------------------------
+  # 3. Async Background Worker (e.g. BullMQ, Celery, Sidekiq)
+  # ----------------------------------------------------------------------------
+  - type: worker
+    name: queue-worker
+    env: node
+    buildCommand: npm install
+    startCommand: node worker.js
+    envVars:
+      - key: REDIS_URL
+        fromDatabase:
+          name: redis-cache
+          property: connectionString
+      - key: DATABASE_URL
+        fromDatabase:
+          name: app-db
+          property: connectionString
+
+  # ----------------------------------------------------------------------------
+  # 4. Scheduled Cron Job
+  # ----------------------------------------------------------------------------
+  - type: cron
+    name: nightly-cleanup
+    env: node
+    schedule: "0 2 * * *"    # Standard 5-field cron expression (Runs daily at 02:00 UTC)
+    buildCommand: npm install
+    startCommand: node scripts/cleanup.js
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: app-db
+          property: connectionString
+
+# ------------------------------------------------------------------------------
+# Databases: Managed PostgreSQL, MySQL, Redis, MongoDB, or ClickHouse
+# ------------------------------------------------------------------------------
+databases:
+  # Relational Database
+  - name: app-db
+    databaseName: app_production
+    user: db_user
+    engine: postgres         # postgres, mysql, redis, mongodb, clickhouse
+    plan: free
+
+  # Cache / Message Broker
+  - name: redis-cache
+    engine: redis
+    plan: free
