@@ -691,15 +691,17 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 
 		dockerfilePath := filepath.Join(contextDir, "Dockerfile")
 		if _, err := os.Stat(dockerfilePath); os.IsNotExist(err) {
-			// Auto-detect version from project files if not specified
-			if runtimeVersion == "" {
+			// Auto-detect version from project files or live registry if not specified or set to auto
+			if runtimeVersion == "" || strings.EqualFold(runtimeVersion, "auto") {
 				resolved := resolveRuntimeVersion(presetId, contextDir, "")
 				runtimeVersion = resolved.Version
 				if resolved.Source == "project-file" {
 					appendLog(serviceID, depID, "system", fmt.Sprintf("[version] Auto-detected %s version %s from %s", presetId, resolved.Version, resolved.DetectedFrom))
 				} else {
-					appendLog(serviceID, depID, "system", fmt.Sprintf("[version] Using default %s version %s", presetId, resolved.Version))
+					appendLog(serviceID, depID, "system", fmt.Sprintf("[version] Using latest %s version %s (%s)", presetId, resolved.Version, resolved.FullImage))
 				}
+			} else {
+				appendLog(serviceID, depID, "system", fmt.Sprintf("[version] Using configured %s version %s", presetId, runtimeVersion))
 			}
 			appendLog(serviceID, depID, "build", fmt.Sprintf("[builder] Generating runtime Dockerfile (preset: %s, port: %d, version: %s)", presetId, port, runtimeVersion))
 			dfContent := generateDockerfileForPreset(presetId, buildCommand, startCommand, port, runtimeVersion)

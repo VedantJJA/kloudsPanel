@@ -183,7 +183,7 @@
       description: 'Fullstack JavaScript/TypeScript apps with Node.js & npm/pnpm/yarn/bun',
       category: 'web',
       kind: 'web',
-      image: 'node:20-alpine',
+      image: 'node:22-alpine',
       port: 3000,
       badge: 'JavaScript/TS',
       iconColor: '#22c55e',
@@ -191,8 +191,8 @@
       defaultBuild: 'npm install && npm run build',
       defaultStart: 'npm start',
       versions: [
-        { value: 'auto', label: 'Auto-Detect (.node-version / package.json)', default: true },
-        { value: '22', label: 'Node.js 22 (Current)' },
+        { value: 'auto', label: 'Auto-Detect (Latest / .node-version)', default: true },
+        { value: '22', label: 'Node.js 22 (Current Active)' },
         { value: '20', label: 'Node.js 20 (LTS)' },
         { value: '18', label: 'Node.js 18 (LTS)' },
         { value: '16', label: 'Node.js 16 (Legacy)' }
@@ -212,7 +212,7 @@
       defaultBuild: 'pip install -r requirements.txt',
       defaultStart: 'gunicorn app:app --bind 0.0.0.0:5000 --workers 2',
       versions: [
-        { value: 'auto', label: 'Auto-Detect (.python-version / runtime.txt)', default: true },
+        { value: 'auto', label: 'Auto-Detect (Latest / .python-version)', default: true },
         { value: '3.12', label: 'Python 3.12 (Recommended)' },
         { value: '3.11', label: 'Python 3.11' },
         { value: '3.10', label: 'Python 3.10' },
@@ -233,7 +233,7 @@
       defaultBuild: 'go build -o server .',
       defaultStart: './server',
       versions: [
-        { value: 'auto', label: 'Auto-Detect (go.mod)', default: true },
+        { value: 'auto', label: 'Auto-Detect (Latest / go.mod)', default: true },
         { value: '1.23', label: 'Go 1.23 (Latest)' },
         { value: '1.22', label: 'Go 1.22' },
         { value: '1.21', label: 'Go 1.21' }
@@ -245,7 +245,7 @@
       description: 'High-performance memory-safe Rust services compiled via Cargo release mode',
       category: 'web',
       kind: 'web',
-      image: 'rust:1.82-alpine',
+      image: 'rust:1.84-alpine',
       port: 8080,
       badge: 'Rust Cargo',
       iconColor: '#f97316',
@@ -253,8 +253,9 @@
       defaultBuild: 'cargo build --release',
       defaultStart: './app/server',
       versions: [
-        { value: 'auto', label: 'Auto-Detect (rust-toolchain.toml)', default: true },
-        { value: '1.82', label: 'Rust 1.82 (Latest)' },
+        { value: 'auto', label: 'Auto-Detect (Latest / rust-toolchain.toml)', default: true },
+        { value: '1.84', label: 'Rust 1.84 (Latest)' },
+        { value: '1.82', label: 'Rust 1.82' },
         { value: '1.80', label: 'Rust 1.80' },
         { value: '1.78', label: 'Rust 1.78' }
       ]
@@ -324,7 +325,7 @@
       description: 'Fault-tolerant concurrent services on the BEAM VM with Mix package manager',
       category: 'web',
       kind: 'web',
-      image: 'elixir:1.17-alpine',
+      image: 'elixir:1.18-alpine',
       port: 4000,
       badge: 'Elixir Phoenix',
       iconColor: '#4e2a8e',
@@ -332,7 +333,8 @@
       defaultBuild: 'mix deps.get --only prod && mix compile',
       defaultStart: 'mix phx.server',
       versions: [
-        { value: 'auto', label: 'Auto-Detect (.elixir-version / mix.exs)', default: true },
+        { value: 'auto', label: 'Auto-Detect (Latest / .elixir-version)', default: true },
+        { value: '1.18', label: 'Elixir 1.18 (Latest / OTP 27)' },
         { value: '1.17', label: 'Elixir 1.17 (OTP 26)' },
         { value: '1.16', label: 'Elixir 1.16' }
       ]
@@ -351,7 +353,7 @@
       defaultBuild: 'deno cache main.ts',
       defaultStart: 'deno run --allow-net --allow-env --allow-read main.ts',
       versions: [
-        { value: 'auto', label: 'Auto-Detect (deno.json)', default: true },
+        { value: 'auto', label: 'Auto-Detect (Latest / deno.json)', default: true },
         { value: 'latest', label: 'Deno (Latest)' },
         { value: '2.0', label: 'Deno 2.0' },
         { value: '1.45', label: 'Deno 1.45' }
@@ -371,7 +373,7 @@
       defaultBuild: 'bun install --frozen-lockfile',
       defaultStart: 'bun run start',
       versions: [
-        { value: 'auto', label: 'Auto-Detect (bunfig.toml / package.json)', default: true },
+        { value: 'auto', label: 'Auto-Detect (Latest / bunfig.toml)', default: true },
         { value: 'latest', label: 'Bun (Latest)' },
         { value: '1.1', label: 'Bun 1.1' }
       ]
@@ -382,7 +384,7 @@
       description: 'High-performance cross-platform enterprise web applications and APIs',
       category: 'web',
       kind: 'web',
-      image: 'mcr.microsoft.com/dotnet/sdk:8.0-alpine',
+      image: 'mcr.microsoft.com/dotnet/sdk:9.0-alpine',
       port: 5000,
       badge: '.NET Core',
       iconColor: '#512bd4',
@@ -390,9 +392,9 @@
       defaultBuild: 'dotnet restore && dotnet publish -c Release -o /app/publish',
       defaultStart: 'dotnet /app/publish/*.dll',
       versions: [
-        { value: 'auto', label: 'Auto-Detect (global.json / .csproj)', default: true },
-        { value: '8.0', label: '.NET 8.0 (LTS / Recommended)' },
-        { value: '9.0', label: '.NET 9.0' }
+        { value: 'auto', label: 'Auto-Detect (Latest / global.json)', default: true },
+        { value: '9.0', label: '.NET 9.0 (Latest)' },
+        { value: '8.0', label: '.NET 8.0 (LTS / Recommended)' }
       ]
     },
     {
@@ -604,7 +606,7 @@
       description: 'Continuous queue consumer, event listener, Celery, BullMQ, or worker task',
       category: 'worker',
       kind: 'worker',
-      image: 'node:20-alpine',
+      image: 'node:22-alpine',
       port: 0,
       badge: 'Worker',
       iconColor: '#6366f1',
@@ -764,6 +766,57 @@
     }
   }
 
+  function getPresetVersions(presetId: string) {
+    const p = presets.find(x => x.id === (presetId || '').toLowerCase()) || 
+              presets.find(x => x.kind === (presetId || '').toLowerCase()) || 
+              presets[0];
+    return p?.versions || [
+      { value: 'auto', label: 'Auto-Detect (Latest)' }
+    ];
+  }
+
+  function getDatabaseVersions(engine: string) {
+    const eng = (engine || 'postgres').toLowerCase();
+    if (eng === 'postgres' || eng === 'postgresql') {
+      return [
+        { value: 'auto', label: 'PostgreSQL (Latest / 17)' },
+        { value: '17', label: 'PostgreSQL 17' },
+        { value: '16', label: 'PostgreSQL 16' },
+        { value: '15', label: 'PostgreSQL 15' },
+        { value: '14', label: 'PostgreSQL 14' }
+      ];
+    } else if (eng === 'mysql') {
+      return [
+        { value: 'auto', label: 'MySQL (Latest / 8.4 LTS)' },
+        { value: '8.4', label: 'MySQL 8.4 LTS' },
+        { value: '8.0', label: 'MySQL 8.0' }
+      ];
+    } else if (eng === 'redis') {
+      return [
+        { value: 'auto', label: 'Redis (Latest / 7.4)' },
+        { value: '7.4', label: 'Redis 7.4' },
+        { value: '7.2', label: 'Redis 7.2' },
+        { value: '7.0', label: 'Redis 7.0' }
+      ];
+    } else if (eng === 'mongodb' || eng === 'mongo') {
+      return [
+        { value: 'auto', label: 'MongoDB (Latest / 8.0)' },
+        { value: '8.0', label: 'MongoDB 8.0' },
+        { value: '7.0', label: 'MongoDB 7.0' },
+        { value: '6.0', label: 'MongoDB 6.0' }
+      ];
+    } else if (eng === 'clickhouse') {
+      return [
+        { value: 'auto', label: 'ClickHouse (Latest / 24.8)' },
+        { value: '24.8', label: 'ClickHouse 24.8' },
+        { value: '24.3', label: 'ClickHouse 24.3' }
+      ];
+    }
+    return [
+      { value: 'auto', label: 'Auto-Detect (Latest)' }
+    ];
+  }
+
   function applyDetectedService(svc: any, idx: number) {
     selectedBlueprintIndex = idx;
     detectedBlueprint = svc;
@@ -785,6 +838,9 @@
                           presets.find(p => p.kind === svc.kind) || 
                           presets[0];
     choosePreset(matchingPreset);
+
+    runtimeVersion = svc.runtime_version || svc.runtimeVersion || 'auto';
+    svc.runtime_version = runtimeVersion;
 
     if (svc.build_command) buildCommand = svc.build_command;
     if (svc.buildCommand) buildCommand = svc.buildCommand;
@@ -901,6 +957,44 @@
   $effect(() => {
     if (!slugEdited && name) {
       svcSlug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+    }
+  });
+
+  $effect(() => {
+    if (selectedPreset?.id === 'node') {
+      if (runtimeVersion === 'auto' || runtimeVersion === '22') {
+        imageRef = 'node:22-alpine';
+      } else if (runtimeVersion === '20') {
+        imageRef = 'node:20-alpine';
+      } else if (runtimeVersion === '18') {
+        imageRef = 'node:18-alpine';
+      } else if (runtimeVersion === '16') {
+        imageRef = 'node:16-alpine';
+      }
+    } else if (selectedPreset?.id === 'python') {
+      if (runtimeVersion === 'auto' || runtimeVersion === '3.12') {
+        imageRef = 'python:3.12-slim';
+      } else if (runtimeVersion === '3.11') {
+        imageRef = 'python:3.11-slim';
+      } else if (runtimeVersion === '3.10') {
+        imageRef = 'python:3.10-slim';
+      }
+    } else if (selectedPreset?.id === 'go') {
+      if (runtimeVersion === 'auto' || runtimeVersion === '1.23') {
+        imageRef = 'golang:1.23-alpine';
+      } else if (runtimeVersion === '1.22') {
+        imageRef = 'golang:1.22-alpine';
+      }
+    } else if (selectedPreset?.id === 'rust') {
+      if (runtimeVersion === 'auto' || runtimeVersion === '1.84') {
+        imageRef = 'rust:1.84-alpine';
+      } else if (runtimeVersion === '1.82') {
+        imageRef = 'rust:1.82-alpine';
+      }
+    }
+
+    if (detectedServices && detectedServices[selectedBlueprintIndex]) {
+      detectedServices[selectedBlueprintIndex].runtime_version = runtimeVersion;
     }
   });
 
@@ -1252,47 +1346,104 @@
               </div>
             {/if}
 
-            <!-- Discovered Items Grid -->
+            <!-- Discovered Items Grid with Individual Service Version Selectors -->
             <div style="display: flex; flex-direction: column; gap: 0.5rem; border-top: 1px solid rgba(16,185,129,0.2); padding-top: 0.75rem;">
-              <div class="text-xs" style="font-weight: 700; color: #065f46; text-transform: uppercase; letter-spacing: 0.04em;">
-                Declared Blueprint Services & Databases:
+              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                <div class="text-xs" style="font-weight: 700; color: #065f46; text-transform: uppercase; letter-spacing: 0.04em;">
+                  Declared Blueprint Stack Services ({detectedServices.length + detectedDatabases.length}):
+                </div>
+                <span class="text-xs text-muted">
+                  Configure individual versions below or click to edit service
+                </span>
               </div>
-              <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 0.5rem; width: 100%;">
+              <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 0.6rem; width: 100%;">
                 {#each detectedServices as s, idx}
-                  <button
-                    type="button"
-                    class="btn btn-secondary"
+                  <div
+                    class="card"
                     style="
-                      text-align: left; 
-                      display: flex; 
-                      align-items: center; 
-                      justify-content: space-between; 
-                      padding: 8px 12px; 
-                      background: {selectedBlueprintIndex === idx ? 'rgba(5,150,105,0.15)' : 'var(--color-surface)'};
-                      border-color: {selectedBlueprintIndex === idx ? '#059669' : 'var(--color-border)'};
-                      min-width: 0;
-                      overflow: hidden;
+                      padding: 10px 12px; 
+                      background: {selectedBlueprintIndex === idx ? 'var(--color-surface-subtle)' : 'var(--color-surface)'};
+                      border: 1.5px solid {selectedBlueprintIndex === idx ? 'var(--color-accent)' : 'var(--color-border)'};
+                      border-radius: var(--radius-md);
+                      display: flex;
+                      flex-direction: column;
+                      gap: 6px;
                     "
-                    onclick={() => applyDetectedService(s, idx)}
                   >
-                    <div style="min-width: 0; overflow: hidden; margin-right: 8px;">
-                      <div style="font-weight: 700; font-size: 0.8125rem; color: var(--color-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{s.name}</div>
-                      <div class="text-xs text-muted" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                        {s.kind} | {s.env || s.preset || 'custom'} {s.root_dir ? `| /${s.root_dir}` : ''} | :{s.internal_port}
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                      <div style="font-weight: 700; font-size: 0.8125rem; color: var(--color-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        {s.name}
                       </div>
+                      <button
+                        type="button"
+                        class="badge"
+                        style="background: {selectedBlueprintIndex === idx ? 'var(--color-accent)' : 'var(--color-border)'}; color: {selectedBlueprintIndex === idx ? 'var(--color-accent-contrast)' : 'var(--color-ink)'}; font-size: 0.68rem; border: none; cursor: pointer;"
+                        onclick={() => applyDetectedService(s, idx)}
+                      >
+                        {selectedBlueprintIndex === idx ? 'Editing' : 'Customize'}
+                      </button>
                     </div>
-                    <span class="badge" style="background: rgba(16,185,129,0.2); color: #065f46; font-size: 0.7rem; flex-shrink: 0;">
-                      {selectedBlueprintIndex === idx ? 'Active' : 'Customize'}
-                    </span>
-                  </button>
+
+                    <div class="text-xs text-muted" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                      {s.kind} | {s.env || s.preset || 'custom'} {s.root_dir ? `| /${s.root_dir}` : ''} | :{s.internal_port}
+                    </div>
+
+                    <!-- Individual Service Runtime Version Selector -->
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 2px; padding-top: 4px; border-top: 1px solid var(--color-border);">
+                      <span class="text-xs text-muted" style="font-size: 0.72rem; font-weight: 600;">Version:</span>
+                      <select
+                        class="form-select font-mono text-xs"
+                        style="padding: 2px 6px; height: 24px; font-size: 0.72rem; width: auto; max-width: 170px;"
+                        bind:value={s.runtime_version}
+                        onclick={(e) => e.stopPropagation()}
+                        onchange={() => {
+                          if (selectedBlueprintIndex === idx) {
+                            runtimeVersion = s.runtime_version;
+                          }
+                        }}
+                      >
+                        {#each getPresetVersions(s.preset || s.env || s.kind) as v}
+                          <option value={v.value}>{v.label}</option>
+                        {/each}
+                      </select>
+                    </div>
+                  </div>
                 {/each}
 
                 {#each detectedDatabases as db}
-                  <div style="display: flex; align-items: center; gap: 0.5rem; padding: 8px 12px; border-radius: var(--radius-md); background: var(--color-surface); border: 1px solid var(--color-border); min-width: 0; overflow: hidden;">
-                    <Database size={16} style="color: #0369a1; flex-shrink: 0;" />
-                    <div style="min-width: 0; overflow: hidden;">
-                      <div style="font-weight: 700; font-size: 0.8125rem; color: var(--color-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{db.name}</div>
-                      <div class="text-xs text-muted" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Managed {db.engine || 'postgres'} database</div>
+                  <div 
+                    class="card"
+                    style="
+                      padding: 10px 12px; 
+                      border-radius: var(--radius-md); 
+                      background: var(--color-surface); 
+                      border: 1px solid var(--color-border);
+                      display: flex;
+                      flex-direction: column;
+                      gap: 6px;
+                    "
+                  >
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <Database size={16} style="color: var(--color-info); flex-shrink: 0;" />
+                      <div style="font-weight: 700; font-size: 0.8125rem; color: var(--color-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        {db.name}
+                      </div>
+                    </div>
+                    <div class="text-xs text-muted">
+                      Managed {db.engine || 'postgres'} database
+                    </div>
+                    <!-- Individual Database Version Selector -->
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 2px; padding-top: 4px; border-top: 1px solid var(--color-border);">
+                      <span class="text-xs text-muted" style="font-size: 0.72rem; font-weight: 600;">Version:</span>
+                      <select
+                        class="form-select font-mono text-xs"
+                        style="padding: 2px 6px; height: 24px; font-size: 0.72rem; width: auto; max-width: 170px;"
+                        bind:value={db.version}
+                      >
+                        {#each getDatabaseVersions(db.engine) as v}
+                          <option value={v.value}>{v.label}</option>
+                        {/each}
+                      </select>
                     </div>
                   </div>
                 {/each}
