@@ -10,7 +10,7 @@ import (
 func TestRuntimeVersionResolver(t *testing.T) {
 	// Test user-specified versions
 	nodeUser := resolveRuntimeVersion("node", "", "18")
-	if nodeUser.Version != "18" || nodeUser.FullImage != "node:18-alpine" || nodeUser.Source != "user" {
+	if nodeUser.Version != "18" || nodeUser.FullImage != "node:18-bookworm-slim" || nodeUser.Source != "user" {
 		t.Errorf("expected node 18 user version, got %+v", nodeUser)
 	}
 
@@ -35,7 +35,7 @@ func TestRuntimeVersionResolver(t *testing.T) {
 	_ = os.WriteFile(filepath.Join(tmpDir, ".node-version"), []byte("22.1.0\n"), 0644)
 
 	nodeAuto := resolveRuntimeVersion("node", tmpDir, "")
-	if nodeAuto.Version != "22" || nodeAuto.FullImage != "node:22-alpine" || nodeAuto.Source != "project-file" {
+	if nodeAuto.Version != "22" || nodeAuto.FullImage != "node:22-bookworm-slim" || nodeAuto.Source != "project-file" {
 		t.Errorf("expected node 22 auto-detected from .node-version, got %+v", nodeAuto)
 	}
 
@@ -53,7 +53,7 @@ func TestRuntimeVersionResolver(t *testing.T) {
 	_ = os.WriteFile(filepath.Join(goDir, "go.mod"), []byte("module myapp\n\ngo 1.22.4\n"), 0644)
 
 	goAuto := resolveRuntimeVersion("go", goDir, "")
-	if goAuto.Version != "1.22" || goAuto.FullImage != "golang:1.22-alpine" || goAuto.Source != "project-file" {
+	if goAuto.Version != "1.22" || goAuto.FullImage != "golang:1.22-bookworm" || goAuto.Source != "project-file" {
 		t.Errorf("expected go 1.22 auto-detected from go.mod, got %+v", goAuto)
 	}
 }
@@ -142,16 +142,16 @@ func TestDynamicTagParser(t *testing.T) {
 
 	// Test parseBestVersionFromTags
 	mockNodeTags := []registryTagItem{
-		{Name: "20-alpine"},
-		{Name: "22-alpine"},
-		{Name: "23-alpine"},
-		{Name: "24-rc1-alpine"},
-		{Name: "alpine3.21"},
+		{Name: "18-bookworm-slim"},
+		{Name: "20-bookworm-slim"},
+		{Name: "22-bookworm-slim"},
+		{Name: "23-bookworm-slim"},
+		{Name: "24-rc1-bookworm-slim"},
 		{Name: "latest"},
 	}
-	bestNode := parseBestVersionFromTags("node", mockNodeTags, "-alpine", "22")
-	if bestNode != "23" {
-		t.Errorf("expected best node version 23, got %s", bestNode)
+	bestNode := parseBestVersionFromTags("node", mockNodeTags, "-bookworm-slim", "22")
+	if bestNode != "22" {
+		t.Errorf("expected best node LTS version 22, got %s", bestNode)
 	}
 
 	mockPythonTags := []registryTagItem{

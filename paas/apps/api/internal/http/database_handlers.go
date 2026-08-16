@@ -377,7 +377,6 @@ func (h *Handler) startDatabaseContainer(dbID, dbSlug, containerName, defaultUse
 			"--network", "platform-control",
 			"--restart", "unless-stopped",
 			"--pids-limit", "256",
-			"--security-opt", "no-new-privileges:true",
 			"--memory", "1g",
 			"--memory-swap", "1g",
 			"--label", "io.paas.managed=true",

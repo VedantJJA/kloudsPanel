@@ -32,20 +32,20 @@ type RuntimeVersionInfo struct {
 var runtimeDefaults = map[string]struct {
 	base      string
 	version   string
-	tagSuffix string // "-alpine", "-slim", etc.
+	tagSuffix string // "-bookworm-slim", "-slim", etc.
 }{
-	"node":       {"node", "22", "-alpine"},
-	"nodejs":     {"node", "22", "-alpine"},
-	"static":     {"node", "22", "-alpine"},
-	"static-spa": {"node", "22", "-alpine"},
+	"node":       {"node", "22", "-bookworm-slim"},
+	"nodejs":     {"node", "22", "-bookworm-slim"},
+	"static":     {"node", "22", "-bookworm-slim"},
+	"static-spa": {"node", "22", "-bookworm-slim"},
 	"nginx":      {"nginx", "alpine", ""},
 	"python":     {"python", "3.12", "-slim"},
-	"go":         {"golang", "1.23", "-alpine"},
-	"golang":     {"golang", "1.23", "-alpine"},
-	"rust":       {"rust", "1.84", "-alpine"},
+	"go":         {"golang", "1.23", "-bookworm"},
+	"golang":     {"golang", "1.23", "-bookworm"},
+	"rust":       {"rust", "1.84", "-slim-bookworm"},
 	"java":       {"eclipse-temurin", "21", "-jdk-alpine"},
 	"php":        {"php", "8.3", "-apache"},
-	"ruby":       {"ruby", "3.3", "-alpine"},
+	"ruby":       {"ruby", "3.3", "-slim-bookworm"},
 	"elixir":     {"elixir", "1.18", "-alpine"},
 	"phoenix":    {"elixir", "1.18", "-alpine"},
 	"deno":       {"denoland/deno", "latest", ""},
@@ -164,6 +164,13 @@ func parseBestVersionFromTags(baseImage string, tags []registryTagItem, tagSuffi
 		m := re.FindStringSubmatch(tagName)
 		if len(m) > 1 {
 			candidateVer := m[1]
+
+			// Node: Stick to active LTS releases (22, 20, 18) for maximum package compatibility
+			if baseImage == "node" {
+				if candNum, err := strconv.Atoi(candidateVer); err == nil && candNum > 22 {
+					continue
+				}
+			}
 
 			// Sanity filters to avoid experimental/internal branch numbers
 			if isMajorOnly {

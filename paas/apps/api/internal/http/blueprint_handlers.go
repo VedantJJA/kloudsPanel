@@ -1457,13 +1457,26 @@ func (h *Handler) handleDeployBlueprint(c fiber.Ctx) error {
 
 	for _, dbInfo := range req.Databases {
 		dbName := fmt.Sprintf("%v", dbInfo["name"])
-		engine := fmt.Sprintf("%v", dbInfo["engine"])
-		if dbName == "" {
+		if dbName == "" || dbName == "<nil>" {
 			continue
+		}
+		engine := fmt.Sprintf("%v", dbInfo["engine"])
+		if engine == "" || engine == "<nil>" || engine == "null" {
+			engine = "postgres"
+			lowerName := strings.ToLower(dbName)
+			if strings.Contains(lowerName, "redis") {
+				engine = "redis"
+			} else if strings.Contains(lowerName, "mysql") {
+				engine = "mysql"
+			} else if strings.Contains(lowerName, "mongo") {
+				engine = "mongodb"
+			} else if strings.Contains(lowerName, "clickhouse") {
+				engine = "clickhouse"
+			}
 		}
 
 		dbVersion := fmt.Sprintf("%v", dbInfo["version"])
-		if dbVersion == "<nil>" {
+		if dbVersion == "<nil>" || dbVersion == "auto" || dbVersion == "null" {
 			dbVersion = ""
 		}
 

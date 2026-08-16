@@ -814,12 +814,12 @@
     runtimeVersion = ver || 'auto';
     const pId = (presetId || selectedPreset?.id || 'node').toLowerCase();
 
-    if (pId === 'node' || pId === 'nodejs') {
-      if (ver === 'auto' || ver === '22' || !ver) imageRef = 'node:22-alpine';
-      else if (ver === '20') imageRef = 'node:20-alpine';
-      else if (ver === '18') imageRef = 'node:18-alpine';
-      else if (ver === '16') imageRef = 'node:16-alpine';
-      else imageRef = `node:${ver}-alpine`;
+    if (pId === 'node' || pId === 'nodejs' || pId === 'static' || pId === 'static-spa') {
+      if (ver === 'auto' || ver === '22' || !ver) imageRef = 'node:22-bookworm-slim';
+      else if (ver === '20') imageRef = 'node:20-bookworm-slim';
+      else if (ver === '18') imageRef = 'node:18-bookworm-slim';
+      else if (ver === '16') imageRef = 'node:16-bullseye-slim';
+      else imageRef = `node:${ver}-bookworm-slim`;
     } else if (pId === 'python') {
       if (ver === 'auto' || ver === '3.12' || !ver) imageRef = 'python:3.12-slim';
       else if (ver === '3.11') imageRef = 'python:3.11-slim';
