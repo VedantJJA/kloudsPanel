@@ -30,7 +30,7 @@ volumes:
 
 services:
 
-  # ── Traefik edge proxy ──────────────────────────────────────────────────────
+  # -- Traefik edge proxy ------------------------------------------------------
   traefik:
     image: traefik:v3.7
     container_name: klouds-traefik
@@ -65,7 +65,7 @@ services:
       timeout: 5s
       retries: 3
 
-  # ── Sablier scale-to-zero ───────────────────────────────────────────────────
+  # -- Sablier scale-to-zero ---------------------------------------------------
   sablier:
     image: sablierapp/sablier:1.10
     container_name: klouds-sablier

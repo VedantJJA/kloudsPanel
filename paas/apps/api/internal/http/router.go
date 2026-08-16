@@ -29,7 +29,7 @@ func NewServer(log *slog.Logger, store repository.Store, addr string) *fiber.App
 		ErrorHandler: middleware.ProblemErrorHandler,
 	})
 
-	// ── Global middleware ───────────────────────────────────────────────────
+	// -- Global middleware ---------------------------------------------------
 	app.Use(recover.New())
 	app.Use(requestid.New())
 	app.Use(logger.New(logger.Config{
@@ -39,12 +39,12 @@ func NewServer(log *slog.Logger, store repository.Store, addr string) *fiber.App
 	app.Use(compress.New())
 	app.Use(middleware.DefaultCORS())
 
-	// ── Health endpoints ────────────────────────────────────────────────────
+	// -- Health endpoints ----------------------------------------------------
 	app.Get("/healthz", func(c fiber.Ctx) error {
 		return c.JSON(fiber.Map{"status": "ok", "time": time.Now().UTC()})
 	})
 
-	// ── API v1 ──────────────────────────────────────────────────────────────
+	// -- API v1 --------------------------------------------------------------
 	v1 := app.Group("/api/v1")
 
 	h := NewHandler(store, log)

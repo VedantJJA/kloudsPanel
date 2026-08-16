@@ -11,7 +11,7 @@ import (
 	"github.com/yourorg/klouds/api/internal/domain"
 )
 
-// ─── Service Handlers ──────────────────────────────────────────────────────────
+// --- Service Handlers ----------------------------------------------------------
 
 func (h *Handler) handleListServices(c fiber.Ctx) error {
 	projID := c.Query("projectId")
@@ -498,7 +498,7 @@ func (h *Handler) handleDeleteServiceDomain(c fiber.Ctx) error {
 	return h.handleListServiceDomains(c)
 }
 
-// ─── Service Redirect and Rewrite Rules ──────────────────────────────────────
+// --- Service Redirect and Rewrite Rules --------------------------------------
 
 type ServiceRouteItem struct {
 	Type        string `json:"type"`

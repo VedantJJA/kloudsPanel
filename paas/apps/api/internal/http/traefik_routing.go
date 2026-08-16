@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// ─── Traefik Dynamic Ingress Configuration ────────────────────────────────────
+// --- Traefik Dynamic Ingress Configuration ------------------------------------
 
 func getRootDomain() string {
 	if d := os.Getenv("ROOT_DOMAIN"); d != "" {

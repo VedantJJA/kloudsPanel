@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// ─── Container Security Module ───────────────────────────────────────────────
+// --- Container Security Module -----------------------------------------------
 // Provides security hardening for Docker containers, Dockerfile sanitization,
 // slug validation, and environment variable safety checks.
 
@@ -78,19 +78,19 @@ func BuildSecurityProfile(resMap map[string]any) SecurityProfile {
 func ContainerSecurityArgs(profile SecurityProfile) []string {
 	args := []string{}
 
-	// Memory limit — prevents OOM and memory abuse
+	// Memory limit  -  prevents OOM and memory abuse
 	if profile.MemoryLimit != "" {
 		args = append(args, "--memory", profile.MemoryLimit)
 		// Set memory+swap equal to memory to disable swap
 		args = append(args, "--memory-swap", profile.MemoryLimit)
 	}
 
-	// CPU limit — prevents CPU monopolization
+	// CPU limit  -  prevents CPU monopolization
 	if profile.CPULimit != "" {
 		args = append(args, "--cpus", profile.CPULimit)
 	}
 
-	// PID limit — prevents fork bombs
+	// PID limit  -  prevents fork bombs
 	if profile.PIDLimit > 0 {
 		args = append(args, "--pids-limit", fmt.Sprintf("%d", profile.PIDLimit))
 	}
@@ -127,9 +127,9 @@ func ContainerSecurityArgs(profile SecurityProfile) []string {
 	return args
 }
 
-// ─── Slug Validation ─────────────────────────────────────────────────────────
+// --- Slug Validation ---------------------------------------------------------
 
-// slugValidation regex — only lowercase alphanumeric and hyphens
+// slugValidation regex  -  only lowercase alphanumeric and hyphens
 var validSlugPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9\-]{0,62}[a-z0-9]$`)
 
 // ValidateSlug ensures a slug is safe for use in Docker container names,
@@ -163,7 +163,7 @@ func ValidateSlug(slug string) error {
 	return nil
 }
 
-// ─── Dockerfile Safety Scanner ───────────────────────────────────────────────
+// --- Dockerfile Safety Scanner -----------------------------------------------
 
 // dangerousDockerfilePatterns are patterns that should never appear in
 // generated Dockerfiles. User-provided Dockerfiles are not scanned.
@@ -197,7 +197,7 @@ func ScanDockerfileForDangers(content string) (warnings []string, errors []strin
 	return warnings, errors
 }
 
-// ─── Environment Variable Safety ─────────────────────────────────────────────
+// --- Environment Variable Safety ---------------------------------------------
 
 // dangerousEnvPatterns blocks command injection via environment variable values.
 var dangerousEnvValuePattern = regexp.MustCompile(`[;|&$` + "`" + `\\\n]`)
@@ -223,7 +223,7 @@ func SanitizeEnvValue(key, value string) (string, bool) {
 	return value, false
 }
 
-// ─── Resource Limit Sanitization ─────────────────────────────────────────────
+// --- Resource Limit Sanitization ---------------------------------------------
 
 // sanitizeResourceLimit validates resource limit strings like "512m", "1g", "1.5".
 var validResourcePattern = regexp.MustCompile(`^[\d]+\.?[\d]*[kmgKMG]?[bB]?$`)
@@ -236,7 +236,7 @@ func sanitizeResourceLimit(limit string) string {
 	return "" // Invalid, will fall back to default
 }
 
-// ─── Non-Root User Dockerfile Directives ─────────────────────────────────────
+// --- Non-Root User Dockerfile Directives -------------------------------------
 
 // NonRootDirective returns Dockerfile lines to add a non-root user and switch to it.
 // This prevents containers from running as root, reducing attack surface.

@@ -36,7 +36,7 @@ func NewClient(socketPath string) *Client {
 // baseURL is the fake HTTP base (dialing is done via Unix socket).
 const baseURL = "http://agent"
 
-// ─── Request/Response DTOs ────────────────────────────────────────────────────
+// --- Request/Response DTOs ----------------------------------------------------
 
 type DeployRequest struct {
 	ServiceID      string            `json:"service_id"`
@@ -70,7 +70,7 @@ type HostMetricsResponse struct {
 	StorageUsedBytes  int64   `json:"storage_used_bytes"`
 }
 
-// ─── RPC Methods ──────────────────────────────────────────────────────────────
+// --- RPC Methods --------------------------------------------------------------
 
 // Deploy instructs the agent to create and start a container.
 func (c *Client) Deploy(ctx context.Context, req DeployRequest) (DeployResponse, error) {
@@ -91,7 +91,7 @@ func (c *Client) GetHostMetrics(ctx context.Context) (HostMetricsResponse, error
 	return resp, err
 }
 
-// ─── HTTP transport helpers ───────────────────────────────────────────────────
+// --- HTTP transport helpers ---------------------------------------------------
 
 func (c *Client) post(ctx context.Context, path string, body, resp any) error {
 	// TODO Phase 4: implement full HTTP over Unix socket

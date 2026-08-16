@@ -9,7 +9,7 @@ import (
 	"github.com/yourorg/klouds/api/internal/domain"
 )
 
-// ─── Workspace Handlers ───────────────────────────────────────────────────────
+// --- Workspace Handlers -------------------------------------------------------
 
 func (h *Handler) handleListWorkspaces(c fiber.Ctx) error {
 	u := c.Locals("user").(*domain.User)

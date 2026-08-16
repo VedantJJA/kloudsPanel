@@ -31,7 +31,7 @@ func (s *Server) Handler() http.Handler {
 	})
 }
 
-// ─── MCP Scopes ───────────────────────────────────────────────────────────────
+// --- MCP Scopes ---------------------------------------------------------------
 
 const (
 	ScopeProjectsRead    = "mcp:projects:read"
@@ -42,7 +42,7 @@ const (
 	ScopeAdminRead       = "mcp:admin:read"      // main admin only
 )
 
-// ─── Tool names (forbidden list) ─────────────────────────────────────────────
+// --- Tool names (forbidden list) ---------------------------------------------
 // These must never be registered as tools in any version.
 var forbiddenToolNames = []string{
 	"shell",
@@ -62,7 +62,7 @@ func validateToolName(name string) {
 	}
 }
 
-// ─── MCP Tools ────────────────────────────────────────────────────────────────
+// --- MCP Tools ----------------------------------------------------------------
 // All tools are workspace-scoped. Raw container IDs, socket paths, or file
 // system paths are never accepted as authoritative inputs.
 
@@ -78,7 +78,7 @@ func validateToolName(name string) {
 //   - docs.search         (mcp:docs:read)
 //   - docs.fetch          (mcp:docs:read)
 
-// ─── Docs Adapters ────────────────────────────────────────────────────────────
+// --- Docs Adapters ------------------------------------------------------------
 
 // SvelteDocAdapter queries the Svelte MCP sidecar (stdio, not public).
 type SvelteDocAdapter struct{}

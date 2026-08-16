@@ -37,7 +37,7 @@ func init() {
 	}()
 }
 
-// ─── Auth Middleware ──────────────────────────────────────────────────────────
+// --- Auth Middleware ----------------------------------------------------------
 
 func (h *Handler) requireSession(c fiber.Ctx) error {
 	token := c.Cookies("session_token")
@@ -93,7 +93,7 @@ func (h *Handler) requireMainAdmin(c fiber.Ctx) error {
 	return c.Next()
 }
 
-// ─── Auth Handlers ────────────────────────────────────────────────────────────
+// --- Auth Handlers ------------------------------------------------------------
 
 func (h *Handler) handleSignup(c fiber.Ctx) error {
 	var req struct {

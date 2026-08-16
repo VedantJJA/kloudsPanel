@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// ─── Build Driver Interface ────────────────────────────────────────────────────
+// --- Build Driver Interface ----------------------------------------------------
 
 // BuildRequest carries the input to a build driver.
 type BuildRequest struct {
@@ -68,7 +68,7 @@ type BuildDriver interface {
 	Build(ctx context.Context, plan BuildPlan, sink LogSink) (ImageArtifact, error)
 }
 
-// ─── CNB Driver ───────────────────────────────────────────────────────────────
+// --- CNB Driver ---------------------------------------------------------------
 
 type CNBDriver struct{ defaultBuilderImage string }
 
@@ -228,7 +228,7 @@ func (d *ImageDriver) Build(ctx context.Context, plan BuildPlan, sink LogSink) (
 	return ImageArtifact{ImageRef: plan.Request.ImageReference}, nil
 }
 
-// ─── Registry ─────────────────────────────────────────────────────────────────
+// --- Registry -----------------------------------------------------------------
 
 type Registry map[string]BuildDriver
 

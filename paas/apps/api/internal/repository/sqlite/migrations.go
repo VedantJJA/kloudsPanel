@@ -3,13 +3,13 @@ package sqlite
 // sqliteMigrations is the ordered list of DDL migrations for SQLite.
 // Each entry is idempotent using CREATE TABLE IF NOT EXISTS.
 var sqliteMigrations = []string{
-	// ── Migration 1: Schema version tracking ─────────────────────────────────
+	// -- Migration 1: Schema version tracking ---------------------------------
 	`CREATE TABLE IF NOT EXISTS schema_migrations (
 		version     INTEGER PRIMARY KEY,
 		applied_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 	)`,
 
-	// ── Migration 2: Users ────────────────────────────────────────────────────
+	// -- Migration 2: Users ----------------------------------------------------
 	`CREATE TABLE IF NOT EXISTS users (
 		id                  TEXT PRIMARY KEY,
 		email               TEXT NOT NULL,
@@ -27,7 +27,7 @@ var sqliteMigrations = []string{
 	`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(lower(email))`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_main_admin ON users(platform_role) WHERE platform_role = 'main_admin'`,
 
-	// ── Migration 3: Auth sessions ────────────────────────────────────────────
+	// -- Migration 3: Auth sessions --------------------------------------------
 	`CREATE TABLE IF NOT EXISTS auth_sessions (
 		id               TEXT PRIMARY KEY,
 		user_id          TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -43,7 +43,7 @@ var sqliteMigrations = []string{
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions(user_id)`,
 
-	// ── Migration 4: Workspaces ───────────────────────────────────────────────
+	// -- Migration 4: Workspaces -----------------------------------------------
 	`CREATE TABLE IF NOT EXISTS workspaces (
 		id          TEXT PRIMARY KEY,
 		name        TEXT NOT NULL,
@@ -56,7 +56,7 @@ var sqliteMigrations = []string{
 		updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 	)`,
 
-	// ── Migration 5: Workspace members ───────────────────────────────────────
+	// -- Migration 5: Workspace members ---------------------------------------
 	`CREATE TABLE IF NOT EXISTS workspace_members (
 		workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
 		user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -69,7 +69,7 @@ var sqliteMigrations = []string{
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_workspace_members_user ON workspace_members(user_id)`,
 
-	// ── Migration 6: Workspace invitations ───────────────────────────────────
+	// -- Migration 6: Workspace invitations -----------------------------------
 	`CREATE TABLE IF NOT EXISTS workspace_invitations (
 		id           TEXT PRIMARY KEY,
 		workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -85,7 +85,7 @@ var sqliteMigrations = []string{
 	`CREATE UNIQUE INDEX IF NOT EXISTS idx_workspace_invitations_open
 		ON workspace_invitations(workspace_id, lower(email)) WHERE accepted_at IS NULL`,
 
-	// ── Migration 7: Encrypted secrets ───────────────────────────────────────
+	// -- Migration 7: Encrypted secrets ---------------------------------------
 	`CREATE TABLE IF NOT EXISTS encrypted_secrets (
 		id           TEXT PRIMARY KEY,
 		workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -100,7 +100,7 @@ var sqliteMigrations = []string{
 		updated_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 	)`,
 
-	// ── Migration 8: Projects ─────────────────────────────────────────────────
+	// -- Migration 8: Projects -------------------------------------------------
 	`CREATE TABLE IF NOT EXISTS projects (
 		id                       TEXT PRIMARY KEY,
 		workspace_id             TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -119,7 +119,7 @@ var sqliteMigrations = []string{
 		UNIQUE(workspace_id, slug)
 	)`,
 
-	// ── Migration 9: Project revisions ───────────────────────────────────────
+	// -- Migration 9: Project revisions ---------------------------------------
 	`CREATE TABLE IF NOT EXISTS project_revisions (
 		id                  TEXT PRIMARY KEY,
 		project_id          TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -131,7 +131,7 @@ var sqliteMigrations = []string{
 		created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 	)`,
 
-	// ── Migration 10: Services ────────────────────────────────────────────────
+	// -- Migration 10: Services ------------------------------------------------
 	`CREATE TABLE IF NOT EXISTS services (
 		id               TEXT PRIMARY KEY,
 		project_id       TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -150,7 +150,7 @@ var sqliteMigrations = []string{
 		UNIQUE(project_id, slug)
 	)`,
 
-	// ── Migration 11: Service build configs ──────────────────────────────────
+	// -- Migration 11: Service build configs ----------------------------------
 	`CREATE TABLE IF NOT EXISTS service_build_configs (
 		id               TEXT PRIMARY KEY,
 		service_id       TEXT NOT NULL UNIQUE REFERENCES services(id) ON DELETE CASCADE,
@@ -170,7 +170,7 @@ var sqliteMigrations = []string{
 		updated_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 	)`,
 
-	// ── Migration 12: Service scale-to-zero ──────────────────────────────────
+	// -- Migration 12: Service scale-to-zero ----------------------------------
 	`CREATE TABLE IF NOT EXISTS service_scale_to_zero (
 		service_id                TEXT PRIMARY KEY REFERENCES services(id) ON DELETE CASCADE,
 		enabled                   INTEGER NOT NULL DEFAULT 0,
@@ -186,7 +186,7 @@ var sqliteMigrations = []string{
 		updated_at               TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 	)`,
 
-	// ── Migration 13: Environment variables ──────────────────────────────────
+	// -- Migration 13: Environment variables ----------------------------------
 	`CREATE TABLE IF NOT EXISTS environment_variables (
 		id          TEXT PRIMARY KEY,
 		service_id  TEXT NOT NULL REFERENCES services(id) ON DELETE CASCADE,
@@ -203,7 +203,7 @@ var sqliteMigrations = []string{
 		   OR (is_secret = 1 AND plain_value IS NULL AND secret_id IS NOT NULL))
 	)`,
 
-	// ── Migration 14: Databases ───────────────────────────────────────────────
+	// -- Migration 14: Databases -----------------------------------------------
 	`CREATE TABLE IF NOT EXISTS databases (
 		id                 TEXT PRIMARY KEY,
 		project_id         TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -223,7 +223,7 @@ var sqliteMigrations = []string{
 		UNIQUE(project_id, name)
 	)`,
 
-	// ── Migration 15: Service-database links ─────────────────────────────────
+	// -- Migration 15: Service-database links ---------------------------------
 	`CREATE TABLE IF NOT EXISTS service_database_links (
 		id               TEXT PRIMARY KEY,
 		service_id       TEXT NOT NULL REFERENCES services(id) ON DELETE CASCADE,
@@ -238,7 +238,7 @@ var sqliteMigrations = []string{
 		UNIQUE(service_id, alias)
 	)`,
 
-	// ── Migration 16: Persistent volumes ─────────────────────────────────────
+	// -- Migration 16: Persistent volumes -------------------------------------
 	`CREATE TABLE IF NOT EXISTS persistent_volumes (
 		id                  TEXT PRIMARY KEY,
 		workspace_id        TEXT NOT NULL REFERENCES workspaces(id),
@@ -255,7 +255,7 @@ var sqliteMigrations = []string{
 		updated_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 	)`,
 
-	// ── Migration 17: Domains ─────────────────────────────────────────────────
+	// -- Migration 17: Domains -------------------------------------------------
 	`CREATE TABLE IF NOT EXISTS domains (
 		id                   TEXT PRIMARY KEY,
 		service_id           TEXT NOT NULL REFERENCES services(id) ON DELETE CASCADE,
@@ -274,7 +274,7 @@ var sqliteMigrations = []string{
 	`CREATE UNIQUE INDEX IF NOT EXISTS idx_domains_primary_service
 		ON domains(service_id) WHERE is_primary = 1`,
 
-	// ── Migration 18: Deployments ─────────────────────────────────────────────
+	// -- Migration 18: Deployments ---------------------------------------------
 	`CREATE TABLE IF NOT EXISTS deployments (
 		id                  TEXT PRIMARY KEY,
 		service_id          TEXT NOT NULL REFERENCES services(id) ON DELETE CASCADE,
@@ -300,7 +300,7 @@ var sqliteMigrations = []string{
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_deployments_service_seq ON deployments(service_id, sequence DESC)`,
 
-	// ── Migration 19: Deployment log entries ─────────────────────────────────
+	// -- Migration 19: Deployment log entries ---------------------------------
 	`CREATE TABLE IF NOT EXISTS deployment_log_entries (
 		deployment_id TEXT NOT NULL REFERENCES deployments(id) ON DELETE CASCADE,
 		sequence      INTEGER NOT NULL,
@@ -311,7 +311,7 @@ var sqliteMigrations = []string{
 		PRIMARY KEY (deployment_id, sequence)
 	)`,
 
-	// ── Migration 20: Terminal sessions ──────────────────────────────────────
+	// -- Migration 20: Terminal sessions --------------------------------------
 	`CREATE TABLE IF NOT EXISTS terminal_sessions (
 		id            TEXT PRIMARY KEY,
 		service_id    TEXT NOT NULL REFERENCES services(id),
@@ -327,7 +327,7 @@ var sqliteMigrations = []string{
 		created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 	)`,
 
-	// ── Migration 21: Jobs ────────────────────────────────────────────────────
+	// -- Migration 21: Jobs ----------------------------------------------------
 	`CREATE TABLE IF NOT EXISTS jobs (
 		id           TEXT PRIMARY KEY,
 		kind         TEXT NOT NULL,
@@ -345,7 +345,7 @@ var sqliteMigrations = []string{
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_jobs_status_run_after ON jobs(status, run_after) WHERE status = 'queued'`,
 
-	// ── Migration 22: Outbox events ───────────────────────────────────────────
+	// -- Migration 22: Outbox events -------------------------------------------
 	`CREATE TABLE IF NOT EXISTS outbox_events (
 		id             TEXT PRIMARY KEY,
 		topic          TEXT NOT NULL,
@@ -358,7 +358,7 @@ var sqliteMigrations = []string{
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_outbox_unpublished ON outbox_events(occurred_at) WHERE published_at IS NULL`,
 
-	// ── Migration 23: System hosts and metrics ───────────────────────────────
+	// -- Migration 23: System hosts and metrics -------------------------------
 	`CREATE TABLE IF NOT EXISTS system_hosts (
 		id                   TEXT PRIMARY KEY,
 		name                 TEXT NOT NULL UNIQUE,
@@ -401,7 +401,7 @@ var sqliteMigrations = []string{
 		PRIMARY KEY (deployment_id, observed_at)
 	)`,
 
-	// ── Migration 24: Audit events ────────────────────────────────────────────
+	// -- Migration 24: Audit events --------------------------------------------
 	`CREATE TABLE IF NOT EXISTS audit_events (
 		id           TEXT PRIMARY KEY,
 		actor_user_id TEXT NULL REFERENCES users(id),
@@ -417,7 +417,7 @@ var sqliteMigrations = []string{
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_audit_workspace_time ON audit_events(workspace_id, occurred_at DESC)`,
 
-	// ── Migration 25: MCP OAuth ───────────────────────────────────────────────
+	// -- Migration 25: MCP OAuth -----------------------------------------------
 	`CREATE TABLE IF NOT EXISTS mcp_oauth_clients (
 		id             TEXT PRIMARY KEY,
 		client_id      TEXT NOT NULL UNIQUE,
@@ -442,7 +442,7 @@ var sqliteMigrations = []string{
 		updated_at         TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 	)`,
 
-	// ── Migration 26: Platform settings ──────────────────────────────────────
+	// -- Migration 26: Platform settings --------------------------------------
 	`CREATE TABLE IF NOT EXISTS platform_settings (
 		key        TEXT PRIMARY KEY,
 		value_json TEXT NOT NULL,
@@ -451,7 +451,7 @@ var sqliteMigrations = []string{
 		updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 	)`,
 
-	// ── Migration 27: Default platform settings ───────────────────────────────
+	// -- Migration 27: Default platform settings -------------------------------
 	`INSERT OR IGNORE INTO platform_settings(key, value_json, updated_at) VALUES
 		('setup_complete', 'false', strftime('%Y-%m-%dT%H:%M:%fZ','now')),
 		('root_domain', 'null', strftime('%Y-%m-%dT%H:%M:%fZ','now')),
@@ -460,7 +460,7 @@ var sqliteMigrations = []string{
 		('disk_warn_pct', '80', strftime('%Y-%m-%dT%H:%M:%fZ','now')),
 		('disk_critical_pct', '90', strftime('%Y-%m-%dT%H:%M:%fZ','now'))`,
 
-	// ── Migration 28: User Git Integrations ───────────────────────────────────
+	// -- Migration 28: User Git Integrations -----------------------------------
 	`CREATE TABLE IF NOT EXISTS user_git_integrations (
 		user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		provider     TEXT NOT NULL,

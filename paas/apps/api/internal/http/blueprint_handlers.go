@@ -14,7 +14,7 @@ import (
 	"github.com/yourorg/klouds/api/internal/domain"
 )
 
-// ─── klouds.yaml / Blueprint Parser ──────────────────────────────────────────
+// --- klouds.yaml / Blueprint Parser ------------------------------------------
 
 func generateSecureRandomSecret(length int) string {
 	b := make([]byte, length)

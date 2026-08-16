@@ -13,7 +13,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-// ─── Log Storage & In-Memory / Disk Stream ───────────────────────────────────
+// --- Log Storage & In-Memory / Disk Stream -----------------------------------
 
 type LogEntry struct {
 	Timestamp string `json:"timestamp"`
@@ -104,7 +104,7 @@ func loadLogsFromDisk(id string) []LogEntry {
 	return entries
 }
 
-// ─── Log Handlers ─────────────────────────────────────────────────────────────
+// --- Log Handlers -------------------------------------------------------------
 
 func (h *Handler) handleGetLogs(c fiber.Ctx) error {
 	id := c.Params("id")

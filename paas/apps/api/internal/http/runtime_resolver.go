@@ -362,7 +362,7 @@ func detectVersionFromProject(preset, contextDir string) *RuntimeVersionInfo {
 	return nil
 }
 
-// ─── Node.js Version Detection ───────────────────────────────────────────────
+// --- Node.js Version Detection -----------------------------------------------
 
 func detectNodeVersion(readFile func(string) string, fileExists func(string) bool) *RuntimeVersionInfo {
 	// .node-version (e.g. "20.11.0" or "v20" or "20")
@@ -405,7 +405,7 @@ func detectNodeVersion(readFile func(string) string, fileExists func(string) boo
 	return nil
 }
 
-// ─── Python Version Detection ────────────────────────────────────────────────
+// --- Python Version Detection ------------------------------------------------
 
 func detectPythonVersion(readFile func(string) string, fileExists func(string) bool) *RuntimeVersionInfo {
 	// .python-version (e.g. "3.11.4" or "3.12")
@@ -434,7 +434,7 @@ func detectPythonVersion(readFile func(string) string, fileExists func(string) b
 	return nil
 }
 
-// ─── Go Version Detection ────────────────────────────────────────────────────
+// --- Go Version Detection ----------------------------------------------------
 
 func detectGoVersion(readFile func(string) string) *RuntimeVersionInfo {
 	// go.mod "go 1.22" directive
@@ -447,7 +447,7 @@ func detectGoVersion(readFile func(string) string) *RuntimeVersionInfo {
 	return nil
 }
 
-// ─── Rust Version Detection ─────────────────────────────────────────────────
+// --- Rust Version Detection -------------------------------------------------
 
 func detectRustVersion(readFile func(string) string, fileExists func(string) bool) *RuntimeVersionInfo {
 	// rust-toolchain.toml [toolchain] channel = "1.78"
@@ -466,7 +466,7 @@ func detectRustVersion(readFile func(string) string, fileExists func(string) boo
 	return nil
 }
 
-// ─── Ruby Version Detection ─────────────────────────────────────────────────
+// --- Ruby Version Detection -------------------------------------------------
 
 func detectRubyVersion(readFile func(string) string, fileExists func(string) bool) *RuntimeVersionInfo {
 	if content := readFile(".ruby-version"); content != "" {
@@ -483,7 +483,7 @@ func detectRubyVersion(readFile func(string) string, fileExists func(string) boo
 	return nil
 }
 
-// ─── Java Version Detection ─────────────────────────────────────────────────
+// --- Java Version Detection -------------------------------------------------
 
 func detectJavaVersion(readFile func(string) string, fileExists func(string) bool) *RuntimeVersionInfo {
 	if content := readFile(".java-version"); content != "" {
@@ -514,7 +514,7 @@ func detectJavaVersion(readFile func(string) string, fileExists func(string) boo
 	return nil
 }
 
-// ─── PHP Version Detection ──────────────────────────────────────────────────
+// --- PHP Version Detection --------------------------------------------------
 
 func detectPHPVersion(readFile func(string) string, fileExists func(string) bool) *RuntimeVersionInfo {
 	if content := readFile("composer.json"); content != "" {
@@ -526,7 +526,7 @@ func detectPHPVersion(readFile func(string) string, fileExists func(string) bool
 	return nil
 }
 
-// ─── Elixir Version Detection ───────────────────────────────────────────────
+// --- Elixir Version Detection -----------------------------------------------
 
 func detectElixirVersion(readFile func(string) string, fileExists func(string) bool) *RuntimeVersionInfo {
 	if content := readFile(".elixir-version"); content != "" {
@@ -543,7 +543,7 @@ func detectElixirVersion(readFile func(string) string, fileExists func(string) b
 	return nil
 }
 
-// ─── .NET Version Detection ─────────────────────────────────────────────────
+// --- .NET Version Detection -------------------------------------------------
 
 func detectDotnetVersion(readFile func(string) string, fileExists func(string) bool) *RuntimeVersionInfo {
 	// global.json
@@ -568,7 +568,7 @@ func detectDotnetVersion(readFile func(string) string, fileExists func(string) b
 	return nil
 }
 
-// ─── Swift Version Detection ────────────────────────────────────────────────
+// --- Swift Version Detection ------------------------------------------------
 
 func detectSwiftVersion(readFile func(string) string) *RuntimeVersionInfo {
 	if content := readFile("Package.swift"); content != "" {
@@ -580,7 +580,7 @@ func detectSwiftVersion(readFile func(string) string) *RuntimeVersionInfo {
 	return nil
 }
 
-// ─── Dart Version Detection ─────────────────────────────────────────────────
+// --- Dart Version Detection -------------------------------------------------
 
 func detectDartVersion(readFile func(string) string) *RuntimeVersionInfo {
 	if content := readFile("pubspec.yaml"); content != "" {
@@ -592,7 +592,7 @@ func detectDartVersion(readFile func(string) string) *RuntimeVersionInfo {
 	return nil
 }
 
-// ─── Crystal Version Detection ──────────────────────────────────────────────
+// --- Crystal Version Detection ----------------------------------------------
 
 func detectCrystalVersion(readFile func(string) string) *RuntimeVersionInfo {
 	if content := readFile("shard.yml"); content != "" {
@@ -604,7 +604,7 @@ func detectCrystalVersion(readFile func(string) string) *RuntimeVersionInfo {
 	return nil
 }
 
-// ─── Zig Version Detection ──────────────────────────────────────────────────
+// --- Zig Version Detection --------------------------------------------------
 
 func detectZigVersion(readFile func(string) string) *RuntimeVersionInfo {
 	if content := readFile("build.zig.zon"); content != "" {
@@ -616,7 +616,7 @@ func detectZigVersion(readFile func(string) string) *RuntimeVersionInfo {
 	return nil
 }
 
-// ─── Version String Utilities ────────────────────────────────────────────────
+// --- Version String Utilities ------------------------------------------------
 
 // sanitizeVersionString cleans and validates a user-specified version string.
 // Prevents injection through version strings (e.g. "20; rm -rf /").
@@ -684,7 +684,7 @@ func extractVoltaNode(packageJSON string) string {
 	return ""
 }
 
-// ─── Image Tag Helpers ───────────────────────────────────────────────────────
+// --- Image Tag Helpers -------------------------------------------------------
 
 // getJavaBaseImage returns the appropriate JDK/JRE image for a Java version.
 func getJavaBaseImage(version string, stage string) string {

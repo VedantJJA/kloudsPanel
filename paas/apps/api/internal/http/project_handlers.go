@@ -7,7 +7,7 @@ import (
 	"github.com/yourorg/klouds/api/internal/domain"
 )
 
-// ─── Project Handlers ─────────────────────────────────────────────────────────
+// --- Project Handlers ---------------------------------------------------------
 
 func (h *Handler) handleListProjects(c fiber.Ctx) error {
 	wsID := c.Query("workspaceId")

@@ -83,7 +83,7 @@ func HashIP(ip string) string {
 	return hashString("ip:" + ip)
 }
 
-// ─── RBAC ─────────────────────────────────────────────────────────────────────
+// --- RBAC ---------------------------------------------------------------------
 
 // Permission represents an action a user can perform.
 type Permission string

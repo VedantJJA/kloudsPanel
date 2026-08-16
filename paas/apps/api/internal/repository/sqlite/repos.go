@@ -10,7 +10,7 @@ import (
 	"github.com/yourorg/klouds/api/internal/domain/ids"
 )
 
-// ─── Projects ─────────────────────────────────────────────────────────────────
+// --- Projects -----------------------------------------------------------------
 
 type projectRepo struct{ db querier }
 
@@ -146,7 +146,7 @@ func scanProjectRow(rows *sql.Rows) (*domain.Project, error) {
 	return p, nil
 }
 
-// ─── Services ─────────────────────────────────────────────────────────────────
+// --- Services -----------------------------------------------------------------
 
 type serviceRepo struct{ db querier }
 
@@ -266,7 +266,7 @@ func parseNullableTime(s *string) *time.Time {
 	return &t
 }
 
-// ─── Deployments ──────────────────────────────────────────────────────────────
+// --- Deployments --------------------------------------------------------------
 
 type deploymentRepo struct{ db querier }
 
@@ -391,7 +391,7 @@ func scanDeploymentRow(rows *sql.Rows) (*domain.Deployment, error) {
 	return d, nil
 }
 
-// ─── Databases ────────────────────────────────────────────────────────────────
+// --- Databases ----------------------------------------------------------------
 
 type databaseRepo struct{ db querier }
 
@@ -515,7 +515,7 @@ func (r *databaseRepo) Delete(ctx context.Context, id string) error {
 	return err
 }
 
-// ─── Jobs ─────────────────────────────────────────────────────────────────────
+// --- Jobs ---------------------------------------------------------------------
 
 type jobRepo struct{ db querier }
 
@@ -607,7 +607,7 @@ func joinKinds(kinds []string) string {
 	return result
 }
 
-// ─── Audit Events ─────────────────────────────────────────────────────────────
+// --- Audit Events -------------------------------------------------------------
 
 type auditRepo struct{ db querier }
 
@@ -661,7 +661,7 @@ func (r *auditRepo) List(ctx context.Context, workspaceID *string, limit int, cu
 	return out, rows.Err()
 }
 
-// ─── Git Integrations ─────────────────────────────────────────────────────────
+// --- Git Integrations ---------------------------------------------------------
 
 type gitIntegrationRepo struct{ db querier }
 
@@ -728,7 +728,7 @@ func (r *gitIntegrationRepo) Delete(ctx context.Context, userID, provider string
 	return err
 }
 
-// ─── Auth Sessions ───────────────────────────────────────────────────────────
+// --- Auth Sessions -----------------------------------------------------------
 
 type authSessionRepo struct{ db querier }
 

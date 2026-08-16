@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// ─── Users ───────────────────────────────────────────────────────────────────
+// --- Users -------------------------------------------------------------------
 
 type UserStatus string
 
@@ -38,7 +38,7 @@ type User struct {
 	UpdatedAt       time.Time    `json:"updated_at"`
 }
 
-// ─── Workspaces ───────────────────────────────────────────────────────────────
+// --- Workspaces ---------------------------------------------------------------
 
 type WorkspaceStatus string
 
@@ -78,7 +78,7 @@ type WorkspaceMember struct {
 	Version     int                 `json:"version"`
 }
 
-// ─── Projects ─────────────────────────────────────────────────────────────────
+// --- Projects -----------------------------------------------------------------
 
 type ProjectStatus string
 
@@ -113,7 +113,7 @@ type Project struct {
 	UpdatedAt            time.Time     `json:"updated_at"`
 }
 
-// ─── Services ─────────────────────────────────────────────────────────────────
+// --- Services -----------------------------------------------------------------
 
 type ServiceKind string
 
@@ -160,7 +160,7 @@ type Service struct {
 	UpdatedAt       time.Time            `json:"updated_at"`
 }
 
-// ─── Deployments ──────────────────────────────────────────────────────────────
+// --- Deployments --------------------------------------------------------------
 
 type DeploymentStatus string
 
@@ -209,7 +209,7 @@ type Deployment struct {
 	UpdatedAt       time.Time         `json:"updated_at"`
 }
 
-// ─── Databases ────────────────────────────────────────────────────────────────
+// --- Databases ----------------------------------------------------------------
 
 type DatabaseEngine string
 
@@ -249,7 +249,7 @@ type Database struct {
 	UpdatedAt        time.Time      `json:"updated_at"`
 }
 
-// ─── Jobs ─────────────────────────────────────────────────────────────────────
+// --- Jobs ---------------------------------------------------------------------
 
 type JobStatus string
 
@@ -277,7 +277,7 @@ type Job struct {
 	UpdatedAt   time.Time  `json:"updated_at"`
 }
 
-// ─── Audit ────────────────────────────────────────────────────────────────────
+// --- Audit --------------------------------------------------------------------
 
 type AuditActorKind string
 
@@ -312,7 +312,7 @@ type UserGitIntegration struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
-// ─── Errors ───────────────────────────────────────────────────────────────────
+// --- Errors -------------------------------------------------------------------
 
 type ErrNotFound struct{ Resource string }
 
