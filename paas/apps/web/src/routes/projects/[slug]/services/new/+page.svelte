@@ -31,7 +31,8 @@
     AlertTriangle,
     Wand2,
     Sliders,
-    Info
+    Info,
+    ShieldCheck
   } from 'lucide-svelte';
   import FrameworkIcon from '$lib/components/icons/FrameworkIcon.svelte';
 
