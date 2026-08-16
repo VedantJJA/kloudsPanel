@@ -86,7 +86,7 @@ type cachedDynamicTag struct {
 var (
 	registryCacheMu sync.RWMutex
 	registryCache   = make(map[string]cachedDynamicTag)
-	regHttpClient   = &nethttp.Client{Timeout: 3 * time.Second}
+	regHttpClient   = &nethttp.Client{Timeout: 5 * time.Second}
 )
 
 // compareVersionStrings compares two version strings numerically (e.g. "23" vs "22.1", "1.24" vs "1.23").
@@ -204,7 +204,8 @@ func parseBestVersionFromTags(baseImage string, tags []registryTagItem, tagSuffi
 }
 
 // fetchLatestRegistryTag queries the Docker Hub API for the latest matching tag.
-// If the registry cannot be reached or rate limited, it returns the baseline default.
+// Retries once on transient failure before falling back to the baseline default,
+// so a single slow/dropped request doesn't silently pin an old version.
 func fetchLatestRegistryTag(baseImage, tagSuffix string, fallbackVersion string) (version string, tag string) {
 	cacheKey := fmt.Sprintf("%s:%s", baseImage, tagSuffix)
 
@@ -216,26 +217,63 @@ func fetchLatestRegistryTag(baseImage, tagSuffix string, fallbackVersion string)
 	}
 	registryCacheMu.RUnlock()
 
-	// 2. Format Docker Hub API URL
 	apiUrl := fmt.Sprintf("https://registry.hub.docker.com/v2/repositories/library/%s/tags?page_size=100&ordering=last_updated", baseImage)
 	if strings.Contains(baseImage, "/") {
 		apiUrl = fmt.Sprintf("https://registry.hub.docker.com/v2/repositories/%s/tags?page_size=100&ordering=last_updated", baseImage)
 	}
 
-	req, err := nethttp.NewRequest("GET", apiUrl, nil)
-	if err != nil {
-		return fallbackVersion, fallbackVersion + tagSuffix
-	}
-	req.Header.Set("User-Agent", "kloudsPanel-VersionResolver/1.0")
-
-	resp, err := regHttpClient.Do(req)
-	if err != nil || resp.StatusCode != 200 {
-		return fallbackVersion, fallbackVersion + tagSuffix
-	}
-	defer resp.Body.Close()
-
 	var data registryTagsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil || len(data.Results) == 0 {
+	var lastErr error
+	fetched := false
+
+	for attempt := 0; attempt < 2; attempt++ {
+		if attempt == 1 {
+			time.Sleep(400 * time.Millisecond) // brief backoff before retry
+		}
+
+		req, err := nethttp.NewRequest("GET", apiUrl, nil)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		req.Header.Set("User-Agent", "kloudsPanel-VersionResolver/1.0")
+
+		resp, err := regHttpClient.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if resp.StatusCode != 200 {
+			lastErr = fmt.Errorf("registry returned status %d", resp.StatusCode)
+			resp.Body.Close()
+			continue
+		}
+
+		decodeErr := json.NewDecoder(resp.Body).Decode(&data)
+		resp.Body.Close()
+		if decodeErr != nil || len(data.Results) == 0 {
+			lastErr = decodeErr
+			continue
+		}
+
+		fetched = true
+		break
+	}
+
+	if !fetched {
+		// Cache the fallback briefly (5 min) too, so a registry outage
+		// doesn't cause a full-timeout retry on every single build in a
+		// tight loop - but don't cache it for the full 6h, so we recover
+		// automatically once the registry is healthy again.
+		registryCacheMu.Lock()
+		registryCache[cacheKey] = cachedDynamicTag{
+			version:   fallbackVersion,
+			tag:       fallbackVersion + tagSuffix,
+			fullImage: fmt.Sprintf("%s:%s", baseImage, fallbackVersion+tagSuffix),
+			cachedAt:  time.Now().Add(-6*time.Hour + 5*time.Minute),
+		}
+		registryCacheMu.Unlock()
+		_ = lastErr // available for logging by caller if desired
 		return fallbackVersion, fallbackVersion + tagSuffix
 	}
 
@@ -245,7 +283,6 @@ func fetchLatestRegistryTag(baseImage, tagSuffix string, fallbackVersion string)
 		bestTag = bestVer
 	}
 
-	// 3. Store in cache
 	registryCacheMu.Lock()
 	registryCache[cacheKey] = cachedDynamicTag{
 		version:   bestVer,

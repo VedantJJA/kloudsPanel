@@ -7,16 +7,25 @@ import (
 
 // --- Multi-Language Dockerfile Generator ------------------------------------
 
+// nodePnpmSupportedArchSetup ensures pnpm resolves optional native
+// dependencies (rollup, esbuild, lightningcss, swc, etc.) for whatever
+// architecture the build is actually running on. Must run BEFORE
+// pnpm install. Creates pnpm-workspace.yaml if missing so this works
+// for both single-package repos and monorepos.
+func nodePnpmSupportedArchSetup() string {
+	return `if [ ! -f pnpm-workspace.yaml ]; then printf 'packages:\n  - "."\n' > pnpm-workspace.yaml; fi; ` +
+		`grep -q 'supportedArchitectures:' pnpm-workspace.yaml || printf '\nsupportedArchitectures:\n  os:\n    - current\n  cpu:\n    - current\n  libc:\n    - current\n' >> pnpm-workspace.yaml`
+}
+
 // detectNodePackageManager returns the install and build commands based on lockfile presence.
 // order: bun > pnpm > yarn > npm (fallback)
 func detectNodeInstallCommand(buildCmd string) string {
 	if buildCmd != "" {
 		return buildCmd
 	}
-	// Default: try to detect at build time via lockfile presence
-	syncCmd := "node -e 'const fs=require(\"fs\"),path=require(\"path\");function copyDir(s,d){if(!fs.existsSync(s))return;fs.mkdirSync(d,{recursive:true});for(const item of fs.readdirSync(s)){const sp=path.join(s,item),dp=path.join(d,item);try{if(fs.lstatSync(sp).isDirectory())copyDir(sp,dp);else fs.copyFileSync(sp,dp);}catch(e){}}}const pnpmDir=\"node_modules/.pnpm\";if(fs.existsSync(pnpmDir)){for(const d of fs.readdirSync(pnpmDir)){const target=path.join(pnpmDir,d,\"node_modules\");if(fs.existsSync(target)){copyDir(\"node_modules/@rollup\",path.join(target,\"@rollup\"));copyDir(\"node_modules/lightningcss-linux-arm64-gnu\",path.join(target,\"lightningcss-linux-arm64-gnu\"));copyDir(\"node_modules/lightningcss-linux-x64-gnu\",path.join(target,\"lightningcss-linux-x64-gnu\"));const lcss=path.join(target,\"lightningcss\");if(fs.existsSync(lcss)){for(const f of[\"lightningcss.linux-arm64-gnu.node\",\"lightningcss.linux-x64-gnu.node\"]){for(const cand of[\"node_modules/lightningcss-linux-arm64-gnu/\"+f,\"node_modules/lightningcss-linux-x64-gnu/\"+f]){if(fs.existsSync(cand)){try{fs.copyFileSync(cand,path.join(lcss,f));}catch(e){}}}}}}}}'"
+	setup := nodePnpmSupportedArchSetup()
 	return fmt.Sprintf(`if [ -f bun.lockb ]; then bun install --frozen-lockfile; \
-elif [ -f pnpm-lock.yaml ]; then corepack enable && (if [ -f pnpm-workspace.yaml ]; then grep -q 'supportedArchitectures:' pnpm-workspace.yaml || printf '\nsupportedArchitectures:\n  os:\n    - linux\n  cpu:\n    - x64\n    - arm64\n' >> pnpm-workspace.yaml; fi) && (pnpm install --no-frozen-lockfile 2>/dev/null || pnpm install) && (npm install --no-save @rollup/rollup-linux-arm64-gnu @rollup/rollup-linux-x64-gnu lightningcss-linux-arm64-gnu lightningcss-linux-x64-gnu 2>/dev/null || true) && (%s 2>/dev/null || true) && (pnpm rebuild 2>/dev/null || true); \
+elif [ -f pnpm-lock.yaml ]; then corepack enable && (%s) && pnpm install --no-frozen-lockfile && (pnpm rebuild 2>/dev/null || true); \
 elif [ -f yarn.lock ]; then corepack enable && (yarn install --frozen-lockfile || yarn install); \
 elif [ -f package-lock.json ]; then (npm ci || npm install); \
 elif [ -f package.json ]; then npm install; fi && \
@@ -25,7 +34,7 @@ if grep -q '"build":' package.json 2>/dev/null; then \
   elif [ -f pnpm-lock.yaml ]; then pnpm run build; \
   elif [ -f yarn.lock ]; then yarn build; \
   else npm run build; fi; \
-fi`, syncCmd)
+fi`, setup)
 }
 
 // detectPythonInstallCommand returns the install command based on dependency file presence.
@@ -98,7 +107,6 @@ CMD ["sh", "-c", "%s"]
 			sCmd = "npm start || node index.js || node server.js || node app.js || node dist/index.js || node dist/server.js"
 		}
 		bCmd := buildCmd
-		usesBash := false
 		if bCmd == "" {
 			bCmd = detectNodeInstallCommand("")
 		} else {
@@ -106,15 +114,11 @@ CMD ["sh", "-c", "%s"]
 				bCmd = strings.ReplaceAll(bCmd, "npm ci", "{ npm ci || npm install; }")
 			}
 			if strings.Contains(bCmd, "pnpm") {
-				usesBash = true
-				syncScript := "node -e 'const fs=require(\"fs\"),path=require(\"path\");function copyDir(s,d){if(!fs.existsSync(s))return;fs.mkdirSync(d,{recursive:true});for(const item of fs.readdirSync(s)){const sp=path.join(s,item),dp=path.join(d,item);try{if(fs.lstatSync(sp).isDirectory())copyDir(sp,dp);else fs.copyFileSync(sp,dp);}catch(e){}}}const pnpmDir=\"node_modules/.pnpm\";if(fs.existsSync(pnpmDir)){for(const d of fs.readdirSync(pnpmDir)){const target=path.join(pnpmDir,d,\"node_modules\");if(fs.existsSync(target)){copyDir(\"node_modules/@rollup\",path.join(target,\"@rollup\"));copyDir(\"node_modules/lightningcss-linux-arm64-gnu\",path.join(target,\"lightningcss-linux-arm64-gnu\"));copyDir(\"node_modules/lightningcss-linux-x64-gnu\",path.join(target,\"lightningcss-linux-x64-gnu\"));const lcss=path.join(target,\"lightningcss\");if(fs.existsSync(lcss)){for(const f of[\"lightningcss.linux-arm64-gnu.node\",\"lightningcss.linux-x64-gnu.node\"]){for(const cand of[\"node_modules/lightningcss-linux-arm64-gnu/\"+f,\"node_modules/lightningcss-linux-x64-gnu/\"+f]){if(fs.existsSync(cand)){try{fs.copyFileSync(cand,path.join(lcss,f));}catch(e){}}}}}}}}'"
-				archSetup := "if [ -f pnpm-workspace.yaml ]; then grep -q 'supportedArchitectures:' pnpm-workspace.yaml || printf '\\nsupportedArchitectures:\\n  os:\\n    - linux\\n  cpu:\\n    - x64\\n    - arm64\\n' >> pnpm-workspace.yaml; fi; printf 'supported-architectures.os[]=linux\\nsupported-architectures.cpu[]=x64\\nsupported-architectures.cpu[]=arm64\\n' >> .npmrc 2>/dev/null || true; pnpm config set verify-store-integrity false 2>/dev/null || true"
-				bCmd = fmt.Sprintf("%s; %s", archSetup, bCmd)
-				const pnpmFrozenSentinel = "__PNPM_INSTALL_FROZEN__"
-				bCmd = strings.ReplaceAll(bCmd, "pnpm install --frozen-lockfile", pnpmFrozenSentinel)
-				installStep := fmt.Sprintf("{ pnpm install --no-frozen-lockfile --prefer-frozen-lockfile=false 2>/dev/null || pnpm install --no-frozen-lockfile 2>/dev/null || pnpm install; } && (npm install --no-save @rollup/rollup-linux-arm64-gnu @rollup/rollup-linux-x64-gnu lightningcss-linux-arm64-gnu lightningcss-linux-x64-gnu 2>/dev/null || true) && (%s 2>/dev/null || true) && (pnpm rebuild 2>/dev/null || true)", syncScript)
+				setup := nodePnpmSupportedArchSetup()
+				installStep := "pnpm install --no-frozen-lockfile && (pnpm rebuild 2>/dev/null || true)"
+				bCmd = fmt.Sprintf("%s; %s", setup, bCmd)
+				bCmd = strings.ReplaceAll(bCmd, "pnpm install --frozen-lockfile", installStep)
 				bCmd = strings.ReplaceAll(bCmd, "pnpm install", installStep)
-				bCmd = strings.ReplaceAll(bCmd, pnpmFrozenSentinel, installStep)
 			}
 			if strings.Contains(bCmd, "npm") {
 				bCmd = fmt.Sprintf("npm config set audit false 2>/dev/null || true; npm config set fund false 2>/dev/null || true; npm config set progress false 2>/dev/null || true; %s", bCmd)
@@ -123,14 +127,8 @@ CMD ["sh", "-c", "%s"]
 				bCmd = strings.ReplaceAll(bCmd, "yarn install --frozen-lockfile", "{ yarn install --frozen-lockfile || yarn install; }")
 			}
 		}
-		runCmd := "sh"
-		if usesBash {
-			runCmd = "bash"
-		}
 		return fmt.Sprintf(`FROM %s
 WORKDIR /app
-SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-ENV NODE_PATH=/app/node_modules
 RUN if command -v apt-get >/dev/null 2>&1; then \
         apt-get update && apt-get install -y --no-install-recommends git ca-certificates curl bash && rm -rf /var/lib/apt/lists/*; \
     else \
@@ -138,15 +136,12 @@ RUN if command -v apt-get >/dev/null 2>&1; then \
     fi && \
     (corepack enable 2>/dev/null || true) && \
     (npm install -g pnpm@latest yarn@latest 2>/dev/null || true)
-RUN mkdir -p /root/.config/pnpm && \
-    printf 'supportedArchitectures:\n  os:\n    - linux\n  cpu:\n    - x64\n    - arm64\n' > /root/.config/pnpm/rc 2>/dev/null || true && \
-    printf 'supported-architectures.os[]=linux\nsupported-architectures.cpu[]=x64\nsupported-architectures.cpu[]=arm64\n' >> /root/.npmrc 2>/dev/null || true
 COPY . /app
 RUN %s
 ENV PORT=%d HOST=0.0.0.0 NODE_ENV=production
 EXPOSE %d%s%s
-CMD ["%s", "-c", "%s"]
-`, imageTag, bCmd, port, port, nonRoot, healthcheck, runCmd, sCmd)
+CMD ["sh", "-c", "%s"]
+`, imageTag, bCmd, port, port, nonRoot, healthcheck, sCmd)
 
 	// --- Go / Golang ---------------------------------------------------------
 	case "go", "golang":
@@ -567,14 +562,11 @@ CMD ["sh", "-c", "%s"]
 				bCmd = strings.ReplaceAll(bCmd, "npm ci", "{ npm ci || npm install; }")
 			}
 			if strings.Contains(bCmd, "pnpm") {
-				syncScript2 := "node -e 'const fs=require(\"fs\"),path=require(\"path\");function copyDir(s,d){if(!fs.existsSync(s))return;fs.mkdirSync(d,{recursive:true});for(const item of fs.readdirSync(s)){const sp=path.join(s,item),dp=path.join(d,item);try{if(fs.lstatSync(sp).isDirectory())copyDir(sp,dp);else fs.copyFileSync(sp,dp);}catch(e){}}}const pnpmDir=\"node_modules/.pnpm\";if(fs.existsSync(pnpmDir)){for(const d of fs.readdirSync(pnpmDir)){const target=path.join(pnpmDir,d,\"node_modules\");if(fs.existsSync(target)){copyDir(\"node_modules/@rollup\",path.join(target,\"@rollup\"));copyDir(\"node_modules/lightningcss-linux-arm64-gnu\",path.join(target,\"lightningcss-linux-arm64-gnu\"));copyDir(\"node_modules/lightningcss-linux-x64-gnu\",path.join(target,\"lightningcss-linux-x64-gnu\"));const lcss=path.join(target,\"lightningcss\");if(fs.existsSync(lcss)){for(const f of[\"lightningcss.linux-arm64-gnu.node\",\"lightningcss.linux-x64-gnu.node\"]){for(const cand of[\"node_modules/lightningcss-linux-arm64-gnu/\"+f,\"node_modules/lightningcss-linux-x64-gnu/\"+f]){if(fs.existsSync(cand)){try{fs.copyFileSync(cand,path.join(lcss,f));}catch(e){}}}}}}}}'"
-				archSetup2 := "if [ -f pnpm-workspace.yaml ]; then grep -q 'supportedArchitectures:' pnpm-workspace.yaml || printf '\\nsupportedArchitectures:\\n  os:\\n    - linux\\n  cpu:\\n    - x64\\n    - arm64\\n' >> pnpm-workspace.yaml; fi; printf 'supported-architectures.os[]=linux\\nsupported-architectures.cpu[]=x64\\nsupported-architectures.cpu[]=arm64\\n' >> .npmrc 2>/dev/null || true; pnpm config set verify-store-integrity false 2>/dev/null || true"
-				bCmd = fmt.Sprintf("%s; %s", archSetup2, bCmd)
-				const pnpmFrozenSentinel2 = "__PNPM_INSTALL_FROZEN2__"
-				bCmd = strings.ReplaceAll(bCmd, "pnpm install --frozen-lockfile", pnpmFrozenSentinel2)
-				installStep2 := fmt.Sprintf("{ pnpm install --no-frozen-lockfile --prefer-frozen-lockfile=false 2>/dev/null || pnpm install --no-frozen-lockfile 2>/dev/null || pnpm install; } && (npm install --no-save @rollup/rollup-linux-arm64-gnu @rollup/rollup-linux-x64-gnu lightningcss-linux-arm64-gnu lightningcss-linux-x64-gnu 2>/dev/null || true) && (%s 2>/dev/null || true) && (pnpm rebuild 2>/dev/null || true)", syncScript2)
-				bCmd = strings.ReplaceAll(bCmd, "pnpm install", installStep2)
-				bCmd = strings.ReplaceAll(bCmd, pnpmFrozenSentinel2, installStep2)
+				setup := nodePnpmSupportedArchSetup()
+				installStep := "pnpm install --no-frozen-lockfile && (pnpm rebuild 2>/dev/null || true)"
+				bCmd = fmt.Sprintf("%s; %s", setup, bCmd)
+				bCmd = strings.ReplaceAll(bCmd, "pnpm install --frozen-lockfile", installStep)
+				bCmd = strings.ReplaceAll(bCmd, "pnpm install", installStep)
 			}
 			if strings.Contains(bCmd, "npm") {
 				bCmd = fmt.Sprintf("npm config set audit false 2>/dev/null || true; npm config set fund false 2>/dev/null || true; npm config set progress false 2>/dev/null || true; %s", bCmd)
@@ -584,13 +576,8 @@ CMD ["sh", "-c", "%s"]
 			}
 			return fmt.Sprintf(`FROM node:22-bookworm-slim AS builder
 WORKDIR /app
-SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-ENV NODE_PATH=/app/node_modules
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates curl bash && rm -rf /var/lib/apt/lists/*
 RUN (corepack enable 2>/dev/null || true) && (npm install -g pnpm@latest yarn@latest 2>/dev/null || true)
-RUN mkdir -p /root/.config/pnpm && \
-    printf 'supportedArchitectures:\n  os:\n    - linux\n  cpu:\n    - x64\n    - arm64\n' > /root/.config/pnpm/rc 2>/dev/null || true && \
-    printf 'supported-architectures.os[]=linux\nsupported-architectures.cpu[]=x64\nsupported-architectures.cpu[]=arm64\n' >> /root/.npmrc 2>/dev/null || true
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
 ARG API_URL
