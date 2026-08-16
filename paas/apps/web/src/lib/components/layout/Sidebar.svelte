@@ -274,7 +274,7 @@
   <!-- Context-Aware Sidebar Content -->
   {#if isServiceContext && currentServiceId}
     <!-- Service Context Header -->
-    <div style="padding: 0 var(--sp-2); margin-bottom: 1.25rem;">
+    <div style="padding: 0 var(--sp-2); margin-bottom: 0.75rem;">
       <a 
         href={currentService?.project_id ? `/projects/${currentService.project_id}` : '/workspaces'} 
         class="nav-item" 
@@ -285,19 +285,6 @@
         <ArrowLeft size={14} style="margin-right: 4px; flex-shrink:0;" /> 
         <span class="nav-item-text">Back to Project</span>
       </a>
-      <div class="context-header-details" style="margin-top: 0.75rem; padding: 0.75rem; background: var(--color-surface-subtle); border-radius: var(--radius-md); border: 1px solid var(--color-border);">
-        <div style="font-size: 0.875rem; font-weight: 600; color: var(--color-ink); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
-          {currentService?.name || 'Service'}
-        </div>
-        <div style="display: flex; gap: 0.4rem; align-items: center; margin-top: 0.25rem;">
-          <span style="font-size: 0.6875rem; text-transform: uppercase; background: rgba(255,255,255,0.08); color: #ffffff; padding: 2px 6px; border-radius: var(--radius-sm); font-weight: 600;">
-            {currentService?.kind || 'web'}
-          </span>
-          <span style="font-size: 0.6875rem; color: var(--color-ink-muted);">
-            {currentService?.runtime_status || 'draft'}
-          </span>
-        </div>
-      </div>
     </div>
 
     <!-- Service Specific Nav Tabs -->
@@ -323,7 +310,7 @@
 
   {:else if isDatabaseContext && currentDatabaseId}
     <!-- Database Context Header -->
-    <div style="padding: 0 var(--sp-2); margin-bottom: 1.25rem;">
+    <div style="padding: 0 var(--sp-2); margin-bottom: 0.75rem;">
       <a 
         href="/databases" 
         class="nav-item" 
@@ -334,19 +321,6 @@
         <ArrowLeft size={14} style="margin-right: 4px; flex-shrink:0;" /> 
         <span class="nav-item-text">Back to Databases</span>
       </a>
-      <div class="context-header-details" style="margin-top: 0.75rem; padding: 0.75rem; background: var(--color-surface-subtle); border-radius: var(--radius-md); border: 1px solid var(--color-border);">
-        <div style="font-size: 0.875rem; font-weight: 600; color: var(--color-ink); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
-          {currentDatabase?.name || 'Database'}
-        </div>
-        <div style="display: flex; gap: 0.4rem; align-items: center; margin-top: 0.25rem;">
-          <span style="font-size: 0.6875rem; text-transform: uppercase; background: rgba(56,189,248,0.15); color: #38bdf8; padding: 2px 6px; border-radius: var(--radius-sm); font-weight: 600;">
-            {currentDatabase?.engine || 'postgres'}
-          </span>
-          <span style="font-size: 0.6875rem; color: {(currentDatabase?.runtime_status === 'ready' || currentDatabase?.runtime_status === 'running') ? '#34d399' : currentDatabase?.runtime_status === 'restarting' ? '#fbbf24' : 'var(--color-ink-muted)'}; text-transform: lowercase;">
-            {currentDatabase?.runtime_status || 'provisioning'}
-          </span>
-        </div>
-      </div>
     </div>
 
     <!-- Database Specific Nav Tabs -->
@@ -372,7 +346,7 @@
 
   {:else if isWorkspaceContext && currentWorkspaceSlug}
     <!-- Workspace Context Header -->
-    <div style="padding: 0 var(--sp-2); margin-bottom: 1.25rem;">
+    <div style="padding: 0 var(--sp-2); margin-bottom: 0.75rem;">
       <a 
         href="/workspaces" 
         class="nav-item" 
@@ -383,19 +357,6 @@
         <ArrowLeft size={14} style="margin-right: 4px; flex-shrink:0;" /> 
         <span class="nav-item-text">All Workspaces</span>
       </a>
-      <div class="context-header-details" style="margin-top: 0.75rem; padding: 0.75rem; background: var(--color-surface-subtle); border-radius: var(--radius-md); border: 1px solid var(--color-border);">
-        <div style="font-size: 0.875rem; font-weight: 600; color: var(--color-ink); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
-          {currentWorkspace?.name || currentWorkspace?.Name || currentWorkspaceSlug}
-        </div>
-        <div style="display: flex; gap: 0.4rem; align-items: center; margin-top: 0.25rem;">
-          <span style="font-size: 0.6875rem; text-transform: uppercase; background: rgba(52,211,153,0.15); color: #34d399; padding: 2px 6px; border-radius: var(--radius-sm); font-weight: 600;">
-            Workspace
-          </span>
-          <span style="font-size: 0.6875rem; color: var(--color-ink-muted);">
-            {currentWorkspace?.status || 'active'}
-          </span>
-        </div>
-      </div>
     </div>
 
     <!-- Workspace Specific Nav Tabs -->
@@ -421,7 +382,7 @@
 
   {:else if isProjectContext && currentProjectSlug}
     <!-- Project Context Header -->
-    <div style="padding: 0 var(--sp-2); margin-bottom: 1.25rem;">
+    <div style="padding: 0 var(--sp-2); margin-bottom: 0.75rem;">
       <a 
         href={currentProject?.workspace_slug ? `/workspaces/${currentProject.workspace_slug}` : currentProject?.workspace_id ? `/workspaces/${currentProject.workspace_id}` : '/workspaces'} 
         class="nav-item" 
@@ -432,19 +393,6 @@
         <ArrowLeft size={14} style="margin-right: 4px; flex-shrink:0;" /> 
         <span class="nav-item-text">Back to Workspace</span>
       </a>
-      <div class="context-header-details" style="margin-top: 0.75rem; padding: 0.75rem; background: var(--color-surface-subtle); border-radius: var(--radius-md); border: 1px solid var(--color-border);">
-        <div style="font-size: 0.875rem; font-weight: 600; color: var(--color-ink); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
-          {currentProject?.name || currentProject?.Name || currentProjectSlug}
-        </div>
-        <div style="display: flex; gap: 0.4rem; align-items: center; margin-top: 0.25rem;">
-          <span style="font-size: 0.6875rem; text-transform: uppercase; background: rgba(255,255,255,0.08); color: #ffffff; padding: 2px 6px; border-radius: var(--radius-sm); font-weight: 600;">
-            Project
-          </span>
-          <span style="font-size: 0.6875rem; color: var(--color-ink-muted); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
-            {currentProject?.slug || currentProjectSlug}
-          </span>
-        </div>
-      </div>
     </div>
 
     <!-- Project Specific Nav Tabs -->
