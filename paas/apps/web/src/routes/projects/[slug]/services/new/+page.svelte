@@ -37,7 +37,6 @@
 
   const slug = $derived($page.params.slug);
   let project = $state<any>(null);
-  let loading = $state(true);
 
   // Source Type: 'git_public' | 'git_provider' | 'image'
   let sourceType = $state<'git_public' | 'git_provider' | 'image'>('git_public');
@@ -132,10 +131,8 @@
   // Active category filter
   let activeCategory = $state<'all' | 'web' | 'static' | 'worker'>('all');
 
-  // Selected service preset
+  // Form fields (initialized to Node preset by default)
   let selectedPreset = $state<any>(null);
-
-  // Form fields
   let name = $state('');
   let svcSlug = $state('');
   let slugEdited = false;
@@ -696,26 +693,19 @@
     window.location.href = `/api/v1/integrations/git/${provider}/authorize?return_to=${encodeURIComponent(returnTo)}`;
   }
 
-  onMount(async () => {
+  onMount(() => {
     choosePreset(presets[0]);
     const projSlug = $page.params.slug || slug || '';
     if (projSlug) {
-      try {
-        const res = await fetch(`/api/v1/projects/${encodeURIComponent(projSlug)}`, { credentials: 'include' });
-        if (res.ok) {
-          project = await res.json();
-        } else {
-          project = { id: projSlug, slug: projSlug, name: projSlug };
-        }
-      } catch (e) {
-        project = { id: projSlug, slug: projSlug, name: projSlug };
-      }
+      fetch(`/api/v1/projects/${encodeURIComponent(projSlug)}`, { credentials: 'include' })
+        .then(res => res.ok ? res.json() : { id: projSlug, slug: projSlug, name: projSlug })
+        .then(data => { project = data; })
+        .catch(() => { project = { id: projSlug, slug: projSlug, name: projSlug }; });
     } else {
       project = { id: 'default', slug: 'default', name: 'Default Project' };
     }
-    loading = false;
 
-    // Load background Git integrations asynchronously so UI doesn't block
+    // Load background Git integrations asynchronously
     loadIntegrations().catch(() => {});
     loadProviderRepos('github').catch(() => {});
   });
@@ -1004,14 +994,8 @@
   <title>Deploy a Service - kloudsPanel</title>
 </svelte:head>
 
-{#if loading}
-  <div class="empty-state">
-    <div class="animate-spin text-muted" style="margin-bottom:1rem"><Loader2 size={48} /></div>
-    <p>Loading deployment studio…</p>
-  </div>
-{:else}
-  <!-- Header -->
-  <div class="page-header" style="margin-bottom: 2rem;">
+<!-- Header -->
+<div class="page-header" style="margin-bottom: 2rem;">
     <div style="display: flex; align-items: center; gap: 1rem;">
       <button 
         class="btn btn-secondary" 
@@ -1657,11 +1641,7 @@
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
               <div style="display: flex; align-items: center; gap: 0.6rem;">
                 <div style="width: 34px; height: 34px; border-radius: var(--radius-sm); background: rgba(0,0,0,0.03); border: 1px solid var(--color-border); display: flex; align-items: center; justify-content: center; padding: 4px;">
-                  {#if preset.iconSvg}
-                    <img src={preset.iconSvg} alt={preset.title} width="22" height="22" style="width: 22px; height: 22px; object-fit: contain; display: block;" />
-                  {:else}
-                    <FrameworkIcon name={preset.id} size={20} />
-                  {/if}
+                  <FrameworkIcon name={preset.id} size={22} />
                 </div>
                 <span class="badge" style="background: rgba(0,0,0,0.04); font-size: 0.7rem; font-weight: 600;">{preset.badge}</span>
               </div>
@@ -1927,7 +1907,6 @@
       </div>
     </div>
   </form>
-{/if}
 
 <!-- Modal: Required Environment Variables Setup Prompt -->
 {#if showEnvPromptModal}
