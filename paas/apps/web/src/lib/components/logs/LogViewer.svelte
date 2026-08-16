@@ -127,6 +127,66 @@
     return ts;
   }
 
+  function cleanLogMessage(msg?: string): string {
+    if (!msg) return '';
+    // Strip raw ANSI escape sequences (e.g. [91m, \x1b[0m, etc.)
+    return msg
+      .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')
+      .replace(/\[[0-9]{1,2}m/g, '')
+      .replace(/\x1b/g, '');
+  }
+
+  function getLineType(stream?: string, message?: string): 'error' | 'warning' | 'success' | 'build' | 'system' | 'stdout' {
+    const raw = (message || '').trim();
+    const clean = cleanLogMessage(raw);
+    const lower = clean.toLowerCase();
+
+    // Check for errors
+    if (
+      lower.includes('[error]') ||
+      lower.includes('error:') ||
+      lower.includes('build failed') ||
+      lower.includes('failed to') ||
+      lower.includes('cannot find module') ||
+      lower.includes('err_pnpm') ||
+      lower.includes('exit status 1') ||
+      clean.startsWith('✘ [ERROR]') ||
+      clean.startsWith('Error:') ||
+      (stream === 'stderr' && !lower.includes('warn'))
+    ) {
+      if (lower.includes('warning') || lower.includes('[warn]') || lower.includes('deprecated')) {
+        return 'warning';
+      }
+      return 'error';
+    }
+
+    // Check for warnings
+    if (
+      lower.includes('[warn]') ||
+      lower.includes('warning:') ||
+      lower.includes('warn:') ||
+      lower.includes('deprecated') ||
+      lower.includes('deprecation')
+    ) {
+      return 'warning';
+    }
+
+    // Check for success markers
+    if (
+      lower.includes('done in') ||
+      lower.includes('successfully') ||
+      lower.includes('deployment completed') ||
+      lower.includes('container is healthy') ||
+      lower.includes('checkout complete')
+    ) {
+      return 'success';
+    }
+
+    if (stream === 'build') return 'build';
+    if (stream === 'system') return 'system';
+    return 'stdout';
+  }
+
   $effect(() => {
     isPolling = true;
     unchangedCount = 0;
@@ -174,11 +234,18 @@
   {:else}
     {#each logs as entry}
       {@const timeStr = formatTime(entry.emitted_at || entry.timestamp)}
-      <div class="log-line-{entry.stream || 'stdout'}" style="margin-bottom:0.25rem; word-break:break-word; white-space:pre-wrap;">
+      {@const lineType = getLineType(entry.stream, entry.message)}
+      {@const displayMessage = cleanLogMessage(entry.message)}
+      <div class="log-entry-row log-type-{lineType}">
         {#if timeStr}
-          <span style="opacity:0.45; margin-right:0.75rem; font-size:0.75rem; font-family:var(--font-mono); user-select:none;">{timeStr}</span>
+          <span class="log-timestamp">{timeStr}</span>
         {/if}
-        <span>{entry.message}</span>
+        {#if lineType === 'error'}
+          <span class="log-badge log-badge-error">ERR</span>
+        {:else if lineType === 'warning'}
+          <span class="log-badge log-badge-warn">WARN</span>
+        {/if}
+        <span class="log-text">{displayMessage}</span>
       </div>
     {/each}
     {#if !autoScroll}
@@ -216,6 +283,87 @@
     scroll-behavior: smooth;
   }
 
+  .log-entry-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 2px 6px;
+    margin: 1px 0;
+    border-radius: 4px;
+    word-break: break-word;
+    white-space: pre-wrap;
+    transition: background 0.15s ease;
+  }
+
+  .log-entry-row:hover {
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .log-timestamp {
+    opacity: 0.4;
+    font-size: 0.72rem;
+    font-family: var(--font-mono);
+    user-select: none;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .log-badge {
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 0 4px;
+    border-radius: 3px;
+    line-height: 1.4;
+    user-select: none;
+    flex-shrink: 0;
+    margin-top: 2px;
+    letter-spacing: 0.04em;
+  }
+
+  .log-badge-error {
+    background: rgba(248, 81, 73, 0.25);
+    color: #ff7b72;
+    border: 1px solid rgba(248, 81, 73, 0.5);
+  }
+
+  .log-badge-warn {
+    background: rgba(210, 153, 34, 0.2);
+    color: #e3b341;
+    border: 1px solid rgba(210, 153, 34, 0.4);
+  }
+
+  .log-text {
+    flex: 1;
+  }
+
+  .log-type-error {
+    color: #ff7b72;
+    background: rgba(248, 81, 73, 0.08);
+    border-left: 2px solid #f85149;
+  }
+
+  .log-type-warning {
+    color: #e3b341;
+    background: rgba(210, 153, 34, 0.06);
+    border-left: 2px solid #d29922;
+  }
+
+  .log-type-success {
+    color: #7ee787;
+  }
+
+  .log-type-build {
+    color: #d2a8ff;
+  }
+
+  .log-type-system {
+    color: #79c0ff;
+  }
+
+  .log-type-stdout {
+    color: #e6edf3;
+  }
+
   .scroll-bottom-btn {
     position: sticky;
     bottom: 0.5rem;
@@ -238,21 +386,5 @@
   .scroll-bottom-btn:hover {
     background: #28354d;
     color: #ffffff;
-  }
-
-  :global(.log-line-system) {
-    color: #79c0ff;
-  }
-
-  :global(.log-line-build) {
-    color: #d2a8ff;
-  }
-
-  :global(.log-line-stdout) {
-    color: #e6edf3;
-  }
-
-  :global(.log-line-stderr) {
-    color: #ff7b72;
   }
 </style>
