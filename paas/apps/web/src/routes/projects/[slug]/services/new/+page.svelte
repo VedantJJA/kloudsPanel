@@ -44,6 +44,7 @@
 
   // Studio Active Tab / Step: 'source' | 'stack' | 'config' | 'environment'
   let activeTab = $state<'source' | 'stack' | 'config' | 'environment'>('source');
+  let maxUnlockedStepIndex = $state(0);
 
   // Source Type: 'git_public' | 'git_provider' | 'image'
   let sourceType = $state<'git_public' | 'git_provider' | 'image'>('git_public');
@@ -66,6 +67,63 @@
   // Required Environment Variables Prompt Modal State
   let showEnvPromptModal = $state(false);
   let pendingAction = $state<'blueprint' | 'single' | null>(null);
+
+  const availableSteps = $derived(
+    detectedServices.length > 0
+      ? ['source', 'stack', 'config', 'environment']
+      : ['source', 'config', 'environment']
+  );
+
+  function isStepUnlocked(tabId: 'source' | 'stack' | 'config' | 'environment'): boolean {
+    const idx = availableSteps.indexOf(tabId);
+    return idx >= 0 && idx <= maxUnlockedStepIndex;
+  }
+
+  function canProceedFromCurrentStep(): boolean {
+    if (activeTab === 'source') {
+      if (sourceType === 'git_public' || sourceType === 'git_provider') {
+        return gitRepoUrl.trim().length > 0;
+      }
+      if (sourceType === 'image') {
+        return imageRef.trim().length > 0;
+      }
+      return false;
+    }
+    if (activeTab === 'stack') {
+      return detectedServices.length > 0;
+    }
+    if (activeTab === 'config') {
+      return name.trim().length > 0 && svcSlug.trim().length > 0;
+    }
+    return true;
+  }
+
+  function goToNextStep() {
+    if (!canProceedFromCurrentStep()) {
+      if (activeTab === 'source') {
+        error = 'Please enter or select a valid repository URL or container image to proceed.';
+      } else if (activeTab === 'config') {
+        error = 'Please provide a valid Service Name and Slug to proceed.';
+      }
+      return;
+    }
+    error = null;
+    const currentIdx = availableSteps.indexOf(activeTab);
+    const nextIdx = currentIdx + 1;
+    if (nextIdx < availableSteps.length) {
+      if (nextIdx > maxUnlockedStepIndex) {
+        maxUnlockedStepIndex = nextIdx;
+      }
+      activeTab = availableSteps[nextIdx] as any;
+    }
+  }
+
+  function goToStep(tabId: 'source' | 'stack' | 'config' | 'environment') {
+    if (isStepUnlocked(tabId)) {
+      error = null;
+      activeTab = tabId;
+    }
+  }
 
   function generateRandomSecret(length = 32) {
     const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-';
@@ -876,6 +934,7 @@
           }));
           detectedBlueprintSource = data.blueprintType || 'auto-detected';
           applyDetectedService(detectedServices[0], 0);
+          maxUnlockedStepIndex = Math.max(maxUnlockedStepIndex, 1);
           activeTab = 'stack';
         }
       }
@@ -1171,7 +1230,7 @@
           type="button"
           class="badge" 
           style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; cursor: pointer; font-size: 0.7rem; padding: 2px 8px;"
-          onclick={() => activeTab = 'stack'}
+          onclick={() => goToStep('stack')}
         >
           View Stack
         </button>
@@ -1198,7 +1257,7 @@
       justify-content: center; 
       gap: 6px;
     "
-    onclick={() => activeTab = 'source'}
+    onclick={() => goToStep('source')}
   >
     <FolderGit2 size={15} style="color: {activeTab === 'source' ? 'var(--color-accent)' : 'inherit'};" />
     <span>1. Source & Repo</span>
@@ -1216,14 +1275,21 @@
         background: {activeTab === 'stack' ? 'var(--color-surface-subtle)' : 'transparent'}; 
         border-color: {activeTab === 'stack' ? 'var(--color-accent)' : 'transparent'};
         color: {activeTab === 'stack' ? 'var(--color-ink)' : 'var(--color-ink-muted)'};
+        opacity: {isStepUnlocked('stack') ? '1' : '0.45'};
+        cursor: {isStepUnlocked('stack') ? 'pointer' : 'not-allowed'};
         display: flex; 
         align-items: center; 
         justify-content: center; 
         gap: 6px;
       "
-      onclick={() => activeTab = 'stack'}
+      disabled={!isStepUnlocked('stack')}
+      onclick={() => goToStep('stack')}
     >
-      <Sparkles size={15} style="color: var(--color-accent);" />
+      {#if isStepUnlocked('stack')}
+        <Sparkles size={15} style="color: var(--color-accent);" />
+      {:else}
+        <Lock size={13} style="color: var(--color-ink-muted);" />
+      {/if}
       <span>2. Blueprint Stack ({detectedServices.length})</span>
     </button>
   {/if}
@@ -1239,14 +1305,21 @@
       background: {activeTab === 'config' ? 'var(--color-surface-subtle)' : 'transparent'}; 
       border-color: {activeTab === 'config' ? 'var(--color-accent)' : 'transparent'};
       color: {activeTab === 'config' ? 'var(--color-ink)' : 'var(--color-ink-muted)'};
+      opacity: {isStepUnlocked('config') ? '1' : '0.45'};
+      cursor: {isStepUnlocked('config') ? 'pointer' : 'not-allowed'};
       display: flex; 
       align-items: center; 
       justify-content: center; 
       gap: 6px;
     "
-    onclick={() => activeTab = 'config'}
+    disabled={!isStepUnlocked('config')}
+    onclick={() => goToStep('config')}
   >
-    <Code size={15} style="color: {activeTab === 'config' ? 'var(--color-accent)' : 'inherit'};" />
+    {#if isStepUnlocked('config')}
+      <Code size={15} style="color: {activeTab === 'config' ? 'var(--color-accent)' : 'inherit'};" />
+    {:else}
+      <Lock size={13} style="color: var(--color-ink-muted);" />
+    {/if}
     <span>{detectedServices.length > 0 ? '3' : '2'}. Build & Runtime</span>
   </button>
 
@@ -1261,14 +1334,21 @@
       background: {activeTab === 'environment' ? 'var(--color-surface-subtle)' : 'transparent'}; 
       border-color: {activeTab === 'environment' ? 'var(--color-accent)' : 'transparent'};
       color: {activeTab === 'environment' ? 'var(--color-ink)' : 'var(--color-ink-muted)'};
+      opacity: {isStepUnlocked('environment') ? '1' : '0.45'};
+      cursor: {isStepUnlocked('environment') ? 'pointer' : 'not-allowed'};
       display: flex; 
       align-items: center; 
       justify-content: center; 
       gap: 6px;
     "
-    onclick={() => activeTab = 'environment'}
+    disabled={!isStepUnlocked('environment')}
+    onclick={() => goToStep('environment')}
   >
-    <Sliders size={15} style="color: {activeTab === 'environment' ? 'var(--color-accent)' : 'inherit'};" />
+    {#if isStepUnlocked('environment')}
+      <Sliders size={15} style="color: {activeTab === 'environment' ? 'var(--color-accent)' : 'inherit'};" />
+    {:else}
+      <Lock size={13} style="color: var(--color-ink-muted);" />
+    {/if}
     <span>{detectedServices.length > 0 ? '4' : '3'}. Env & Resources</span>
   </button>
 </div>
@@ -1548,12 +1628,10 @@
         <button 
           type="button" 
           class="btn btn-primary"
-          onclick={() => {
-            if (detectedServices.length > 0) activeTab = 'stack';
-            else activeTab = 'config';
-          }}
+          disabled={!canProceedFromCurrentStep()}
+          onclick={goToNextStep}
         >
-          <span>Next: Configure Service</span>
+          <span>{detectedServices.length > 0 ? 'Next: Blueprint Stack' : 'Next: Configure Service'}</span>
           <ChevronRight size={16} />
         </button>
       </div>
@@ -1696,11 +1774,11 @@
       </div>
 
       <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--color-border); padding-top: 1rem;">
-        <button type="button" class="btn btn-secondary" onclick={() => activeTab = 'source'}>
+        <button type="button" class="btn btn-secondary" onclick={() => goToStep('source')}>
           <ChevronLeft size={16} /> Back to Source
         </button>
-        <button type="button" class="btn btn-primary" onclick={() => activeTab = 'config'}>
-          <span>Customize Active Service</span> <ChevronRight size={16} />
+        <button type="button" class="btn btn-primary" onclick={goToNextStep}>
+          <span>Next: Build & Runtime Config</span> <ChevronRight size={16} />
         </button>
       </div>
     </div>
@@ -1924,10 +2002,10 @@
       </div>
 
       <div style="display: flex; justify-content: space-between; align-items: center;">
-        <button type="button" class="btn btn-secondary" onclick={() => activeTab = detectedServices.length > 0 ? 'stack' : 'source'}>
+        <button type="button" class="btn btn-secondary" onclick={() => goToStep(detectedServices.length > 0 ? 'stack' : 'source')}>
           <ChevronLeft size={16} /> Previous
         </button>
-        <button type="button" class="btn btn-primary" onclick={() => activeTab = 'environment'}>
+        <button type="button" class="btn btn-primary" disabled={!canProceedFromCurrentStep()} onclick={goToNextStep}>
           <span>Next: Environment & Limits</span> <ChevronRight size={16} />
         </button>
       </div>
@@ -2108,7 +2186,7 @@
       </div>
 
       <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--color-border); padding-top: 1rem; flex-wrap: wrap; gap: 0.75rem;">
-        <button type="button" class="btn btn-secondary" onclick={() => activeTab = 'config'}>
+        <button type="button" class="btn btn-secondary" onclick={() => goToStep('config')}>
           <ChevronLeft size={16} /> Back to Build Config
         </button>
 
