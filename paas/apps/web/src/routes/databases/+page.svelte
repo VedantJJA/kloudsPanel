@@ -109,11 +109,12 @@
       </thead>
       <tbody>
         {#each databases as db}
-          <tr style="cursor:pointer;" onclick={() => goto(`/databases/${db.id || db.ID}/overview`)}>
+          {@const dbSlug = db.name ? db.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') : (db.id || db.ID)}
+          <tr style="cursor:pointer;" onclick={() => goto(`/databases/${dbSlug}/overview`)}>
             <td>
               <div style="display:flex; align-items:center; gap:8px;">
                 <FrameworkIcon name={db.engine || db.Engine} size={18} />
-                <a href="/databases/{db.id || db.ID}/overview" style="color:var(--color-ink); text-decoration:none; font-weight:600; font-size:0.875rem;">
+                <a href="/databases/{dbSlug}/overview" style="color:var(--color-ink); text-decoration:none; font-weight:600; font-size:0.875rem;">
                   {db.name || db.Name}
                 </a>
               </div>
@@ -124,7 +125,7 @@
             <td><span class={statusClass(db.runtime_status || db.RuntimeStatus)}>{db.runtime_status || db.RuntimeStatus || 'provisioning'}</span></td>
             <td style="text-align:right;" onclick={(e) => e.stopPropagation()}>
               <div style="display:inline-flex; align-items:center; gap:6px;">
-                <a href="/databases/{db.id || db.ID}/overview" class="btn btn-secondary" style="padding:3px 10px; min-height:28px; font-size:0.75rem;">
+                <a href="/databases/{dbSlug}/overview" class="btn btn-secondary" style="padding:3px 10px; min-height:28px; font-size:0.75rem;">
                   Manage <ArrowRight size={12} />
                 </a>
                 <button 

@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"time"
 
 	"github.com/yourorg/klouds/api/internal/domain"
@@ -411,10 +412,24 @@ func (r *databaseRepo) Create(ctx context.Context, db *domain.Database) error {
 }
 
 func (r *databaseRepo) GetByID(ctx context.Context, id string) (*domain.Database, error) {
+	cleanID := strings.TrimSpace(id)
+	cleanSlug := strings.ToLower(cleanID)
+	hostSlug := cleanSlug
+	if !strings.HasPrefix(hostSlug, "paas-db-") {
+		hostSlug = "paas-db-" + hostSlug
+	}
+
 	row := r.db.QueryRowContext(ctx, `
 		SELECT id,project_id,name,engine,engine_version,image_digest,runtime_status,
 		       internal_hostname,internal_port,database_name,credential_secret_id,resource_json,backup_policy_json,created_at,updated_at
-		FROM databases WHERE id=? OR name=? OR internal_hostname=?`, id, id, id)
+		FROM databases 
+		WHERE id=? 
+		   OR name=? 
+		   OR LOWER(name)=? 
+		   OR internal_hostname=? 
+		   OR internal_hostname=?
+		   OR REPLACE(LOWER(name), '_', '-')=?`,
+		cleanID, cleanID, cleanSlug, cleanID, hostSlug, cleanSlug)
 	d := &domain.Database{}
 	var createdAt, updatedAt string
 	err := row.Scan(&d.ID, &d.ProjectID, &d.Name, &d.Engine, &d.EngineVersion, &d.ImageDigest, &d.RuntimeStatus,

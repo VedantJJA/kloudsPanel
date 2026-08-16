@@ -561,29 +561,41 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 COPY . ./
 RUN %s
 RUN mkdir -p /dist && \
-    if [ -d artifacts/*/dist/public ]; then cp -a artifacts/*/dist/public/. /dist/; \
-    elif [ -d artifacts/*/dist ]; then cp -a artifacts/*/dist/. /dist/; \
-    elif [ -d dist/public ]; then cp -a dist/public/. /dist/; \
-    elif [ -d dist ]; then cp -a dist/. /dist/; \
-    elif [ -d build ]; then cp -a build/. /dist/; \
-    elif [ -d out ]; then cp -a out/. /dist/; \
-    elif [ -d public ]; then cp -a public/. /dist/; \
-    elif [ -d .next/static ]; then cp -a .next/. /dist/; \
-    elif find . -maxdepth 4 -type d -name "dist" | grep -q "dist"; then \
-        target=$(find . -maxdepth 4 -type d -name "dist" | head -1); cp -a "$target"/. /dist/; \
-    elif find . -maxdepth 4 -type d -name "build" | grep -q "build"; then \
-        target=$(find . -maxdepth 4 -type d -name "build" | head -1); cp -a "$target"/. /dist/; \
-    else cp -a . /dist/; fi && \
-    if [ ! -f /dist/index.html ]; then \
-        find /dist -name "index.html" -exec cp {} /dist/ \; 2>/dev/null || true; \
+    FOUND="" && \
+    for candidate in dist/public dist build out public artifacts/*/dist/public artifacts/*/dist packages/*/dist apps/*/dist client/dist frontend/dist; do \
+        if [ -d "$candidate" ] && [ -f "$candidate/index.html" ]; then \
+            FOUND="$candidate"; \
+            break; \
+        fi; \
+    done && \
+    if [ -z "$FOUND" ]; then \
+        FOUND=$(find . -maxdepth 6 -name "index.html" -not -path "*/node_modules/*" -not -path "*/.git/*" -not -path "*/.pnpm/*" -not -path "*/dist/*" -exec dirname {} \; 2>/dev/null | sort | head -1); \
+    fi && \
+    if [ -z "$FOUND" ]; then \
+        for candidate in dist build out public; do \
+            FOUND=$(find . -maxdepth 5 -type d -name "$candidate" -not -path "*/node_modules/*" -not -path "*/.git/*" -not -path "*/.pnpm/*" 2>/dev/null | head -1); \
+            if [ -n "$FOUND" ]; then break; fi; \
+        done; \
+    fi && \
+    if [ -n "$FOUND" ] && [ -d "$FOUND" ]; then \
+        echo "Found web build output directory: $FOUND"; \
+        cp -a "$FOUND"/. /dist/; \
+    else \
+        echo "No build directory found, copying root"; \
+        cp -a . /dist/; \
     fi && \
     if [ ! -f /dist/index.html ]; then \
-        echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>App</title></head><body><div id="root"></div><div id="app"></div></body></html>' > /dist/index.html; \
+        FOUND_HTML=$(find . -maxdepth 6 -name "index.html" -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null | head -1); \
+        if [ -n "$FOUND_HTML" ]; then \
+            cp "$FOUND_HTML" /dist/index.html; \
+        else \
+            echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>App</title></head><body><div id="root"></div><div id="app"></div></body></html>' > /dist/index.html; \
+        fi; \
     fi
 
 FROM nginx:alpine
 RUN rm -rf /etc/nginx/conf.d/default.conf
-RUN printf 'server {\n    listen 80 default_server;\n    listen [::]:80 default_server;\n    server_name _;\n    root /usr/share/nginx/html;\n    index index.html index.htm;\n    gzip on;\n    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript image/svg+xml;\n    location ~* \\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {\n        expires 1y;\n        add_header Cache-Control "public, max-age=31536000, immutable";\n        try_files $uri =404;\n    }\n    location / {\n        try_files $uri $uri/ /index.html;\n    }\n    error_page 404 /index.html;\n}\n' > /etc/nginx/conf.d/default.conf
+RUN printf 'server {\n    listen 80 default_server;\n    listen [::]:80 default_server;\n    server_name _;\n    root /usr/share/nginx/html;\n    index index.html index.htm;\n    include /etc/nginx/mime.types;\n    gzip on;\n    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript image/svg+xml;\n    location / {\n        try_files $uri $uri/ /index.html;\n    }\n    location ~* \\.(?:css|js|map|jpe?g|png|gif|ico|svg|webp|avif|woff2?|ttf|eot)$ {\n        expires 1y;\n        add_header Cache-Control "public, max-age=31536000, immutable";\n        try_files $uri =404;\n    }\n}\n' > /etc/nginx/conf.d/default.conf
 COPY --from=builder /dist /usr/share/nginx/html
 RUN chmod -R 755 /usr/share/nginx/html 2>/dev/null || true
 EXPOSE 80
