@@ -586,14 +586,14 @@
           {#if copiedField === 'ext_uri'}<Check size={13} /> Copied!{:else}<Copy size={13} /> Copy Public URI{/if}
         </button>
       </div>
-      <div style="background: #06070a; color: #79c0ff; font-family: var(--font-mono); font-size: 0.875rem; padding: 0.85rem 1rem; border-radius: var(--radius-md); border: 1px solid var(--color-border); word-break: break-all; margin-bottom: 1rem;">
+      <div style="background: var(--color-code-bg); color: var(--color-info); font-family: var(--font-mono); font-size: 0.875rem; padding: 0.85rem 1rem; border-radius: var(--radius-md); border: 1px solid var(--color-border); word-break: break-all; margin-bottom: 1rem;">
         {parsedMeta.externalConnectionUri}
       </div>
 
       <!-- Quick PSQL / CLI Command -->
       <div style="background: var(--color-surface-subtle); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 0.75rem 1rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
         <div style="font-size: 0.8125rem; font-weight: 600; color: var(--color-ink);">
-          Terminal Command: <span class="font-mono" style="color: #34d399; font-weight: normal; margin-left: 6px;">{cliCommand}</span>
+          Terminal Command: <span class="font-mono" style="color: var(--color-success); font-weight: normal; margin-left: 6px;">{cliCommand}</span>
         </div>
         <button class="btn btn-secondary" style="font-size:0.75rem; padding:3px 10px; min-height:28px;" onclick={() => copyText(cliCommand, 'cli')}>
           {#if copiedField === 'cli'}<Check size={12} /> Copied CLI{:else}<Copy size={12} /> Copy Command{/if}
@@ -617,7 +617,7 @@
           {#if copiedField === 'int_uri'}<Check size={12} /> Copied{:else}<Copy size={12} /> Copy Internal URI{/if}
         </button>
       </div>
-      <div style="background: #06070a; color: #a5d6ff; font-family: var(--font-mono); font-size: 0.8125rem; padding: 0.75rem 1rem; border-radius: var(--radius-md); border: 1px solid var(--color-border); word-break: break-all;">
+      <div style="background: var(--color-code-bg); color: var(--color-info); font-family: var(--font-mono); font-size: 0.8125rem; padding: 0.75rem 1rem; border-radius: var(--radius-md); border: 1px solid var(--color-border); word-break: break-all;">
         {parsedMeta.internalConnectionUri}
       </div>
     </div>
@@ -727,7 +727,7 @@
           class="form-input font-mono"
           bind:value={queryText}
           rows="4"
-          style="width: 100%; resize: vertical; font-size: 0.875rem; background: #0d1117; color: #58a6ff; border-color: #30363d; border-radius: var(--radius-md); padding: 0.75rem 1rem;"
+          style="width: 100%; resize: vertical; font-size: 0.875rem; background: var(--color-input-bg); color: var(--color-ink); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 0.75rem 1rem;"
           placeholder="Enter SQL query or command..."
         ></textarea>
       </div>
@@ -824,10 +824,10 @@
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.75rem;">
         <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
           <div style="font-weight: 700; font-size: 0.9375rem; display: flex; align-items: center; gap: 6px;">
-            <Network size={16} style="color: #ffffff;" /> ER Diagram & Schema Visualizer
+            <Network size={16} style="color: var(--color-ink);" /> ER Diagram & Schema Visualizer
           </div>
           {#if schemaData}
-            <span class="badge" style="background: var(--color-surface-subtle); color: #ffffff; font-weight: 600;">
+            <span class="badge" style="background: var(--color-surface-subtle); color: var(--color-ink); font-weight: 600;">
               {schemaData.table_count || 0} Tables
             </span>
             <span class="badge" style="background: var(--color-success-subtle); color: var(--color-success); font-weight: 600;">
@@ -904,12 +904,12 @@
         {:else if !schemaData || (schemaData.tables && schemaData.tables.length === 0)}
           <!-- Empty State with 1-click sample schema creator -->
           <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center; padding: 2rem;">
-            <div style="width: 44px; height: 44px; border-radius: var(--radius-sm); background: var(--color-surface-subtle); border: 1px solid var(--color-border); color: #ffffff; display: flex; align-items: center; justify-content: center; margin-bottom: 1rem;">
+            <div style="width: 44px; height: 44px; border-radius: var(--radius-sm); background: var(--color-surface-subtle); border: 1px solid var(--color-border); color: var(--color-ink); display: flex; align-items: center; justify-content: center; margin-bottom: 1rem;">
               <Network size={22} />
             </div>
-            <h3 style="color: #fff; margin: 0 0 0.5rem 0; font-size: 1.15rem;">No Tables Found in Database</h3>
-            <p style="color: #94a3b8; font-size: 0.875rem; max-width: 460px; margin-bottom: 1.25rem; line-height: 1.5;">
-              Database <span class="font-mono" style="color:#7dd3fc;">{parsedMeta.databaseName}</span> has no tables created yet. You can load a sample schema or create tables via SQL Studio.
+            <h3 style="color: var(--color-ink); margin: 0 0 0.5rem 0; font-size: 1.15rem;">No Tables Found in Database</h3>
+            <p style="color: var(--color-ink-muted); font-size: 0.875rem; max-width: 460px; margin-bottom: 1.25rem; line-height: 1.5;">
+              Database <span class="font-mono" style="color:var(--color-info);">{parsedMeta.databaseName}</span> has no tables created yet. You can load a sample schema or create tables via SQL Studio.
             </p>
             <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; justify-content: center;">
               <button 
@@ -924,7 +924,7 @@
               <a 
                 href="/databases/{id}/query" 
                 class="btn btn-secondary" 
-                style="background: rgba(255,255,255,0.06); color: #fff; border-color: rgba(255,255,255,0.15); font-size: 0.875rem; padding: 8px 18px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;"
+                style="font-size: 0.875rem; padding: 8px 18px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;"
               >
                 <Terminal size={14} /> Open SQL Studio
               </a>

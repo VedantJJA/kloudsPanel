@@ -18,8 +18,14 @@ function createThemeStore() {
     document.documentElement.setAttribute('data-theme', resolved);
     if (resolved === 'dark') {
       document.documentElement.classList.add('dark');
+      document.documentElement.classList.remove('light');
     } else {
+      document.documentElement.classList.add('light');
       document.documentElement.classList.remove('dark');
+    }
+    const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+    if (metaThemeColor) {
+      metaThemeColor.setAttribute('content', resolved === 'dark' ? '#090a0f' : '#f8fafc');
     }
   }
 

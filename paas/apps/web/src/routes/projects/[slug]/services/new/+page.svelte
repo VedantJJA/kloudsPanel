@@ -1030,7 +1030,7 @@
           text-align: left; 
           padding: 1rem; 
           border: 2px solid {sourceType === 'git_public' ? 'var(--color-accent)' : 'var(--color-border)'}; 
-          background: {sourceType === 'git_public' ? 'rgba(0,166,166,0.05)' : 'var(--color-surface)'};
+          background: {sourceType === 'git_public' ? 'var(--color-surface-subtle)' : 'var(--color-surface)'};
         "
         onclick={() => sourceType = 'git_public'}
       >
@@ -1051,15 +1051,15 @@
           text-align: left; 
           padding: 1rem; 
           border: 2px solid {sourceType === 'git_provider' ? 'var(--color-accent)' : 'var(--color-border)'}; 
-          background: {sourceType === 'git_provider' ? 'rgba(0,166,166,0.05)' : 'var(--color-surface)'};
+          background: {sourceType === 'git_provider' ? 'var(--color-surface-subtle)' : 'var(--color-surface)'};
         "
         onclick={() => sourceType = 'git_provider'}
       >
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
           <div style="display: flex; align-items: center; gap: 0.5rem; font-weight: 600;">
-            <FolderGit2 size={18} style="color: #3b82f6;" /> Linked Git Accounts
+            <FolderGit2 size={18} style="color: var(--color-info);" /> Linked Git Accounts
           </div>
-          <span class="badge" style="background:#e0f2fe; color:#0369a1; font-size: 0.65rem;">GitHub / Bitbucket</span>
+          <span class="badge" style="background:var(--color-info-subtle); color:var(--color-info); font-size: 0.65rem;">GitHub / Bitbucket</span>
         </div>
         <p class="text-xs text-muted" style="margin: 0;">Browse and select repositories from linked accounts.</p>
       </button>
@@ -1072,15 +1072,15 @@
           text-align: left; 
           padding: 1rem; 
           border: 2px solid {sourceType === 'image' ? 'var(--color-accent)' : 'var(--color-border)'}; 
-          background: {sourceType === 'image' ? 'rgba(0,166,166,0.05)' : 'var(--color-surface)'};
+          background: {sourceType === 'image' ? 'var(--color-surface-subtle)' : 'var(--color-surface)'};
         "
         onclick={() => sourceType = 'image'}
       >
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
           <div style="display: flex; align-items: center; gap: 0.5rem; font-weight: 600;">
-            <Server size={18} style="color: #8b5cf6;" /> Container Image
+            <Server size={18} style="color: var(--color-ink-secondary);" /> Container Image
           </div>
-          <span class="badge" style="background:#f3e8ff; color:#6b21a8; font-size: 0.65rem;">Registry</span>
+          <span class="badge" style="background:var(--color-surface-subtle); color:var(--color-ink-secondary); font-size: 0.65rem;">Registry</span>
         </div>
         <p class="text-xs text-muted" style="margin: 0;">Deploy container image directly from Docker Hub or GHCR.</p>
       </button>
