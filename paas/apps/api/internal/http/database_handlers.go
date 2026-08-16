@@ -392,6 +392,7 @@ func (h *Handler) startDatabaseContainer(dbID, dbSlug, containerName, defaultUse
 				"-e", fmt.Sprintf("POSTGRES_USER=%s", defaultUser),
 				"-e", fmt.Sprintf("POSTGRES_PASSWORD=%s", password),
 				"-e", fmt.Sprintf("POSTGRES_DB=%s", dbName),
+				"-e", "PGDATA=/var/lib/postgresql/data/pgdata",
 				"-v", fmt.Sprintf("paas-db-data-%s:/var/lib/postgresql/data", dbSlug),
 				imageTag,
 			}

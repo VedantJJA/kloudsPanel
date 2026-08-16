@@ -712,11 +712,10 @@ func resolveDatabaseVersion(engine, requestedVersion string) (imageTag string, r
 
 	switch engine {
 	case "postgres", "postgresql":
-		if cleanVer != "" {
+		if cleanVer != "" && cleanVer != "auto" {
 			return fmt.Sprintf("postgres:%s-alpine", cleanVer), cleanVer
 		}
-		ver, tag := fetchLatestRegistryTag("postgres", "-alpine", "17")
-		return fmt.Sprintf("postgres:%s", tag), ver
+		return "postgres:16-alpine", "16"
 
 	case "mysql":
 		if cleanVer != "" {

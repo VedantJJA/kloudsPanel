@@ -103,6 +103,9 @@ CMD ["sh", "-c", "%s"]
 			if strings.Contains(bCmd, "npm ci") {
 				bCmd = strings.ReplaceAll(bCmd, "npm ci", "(npm ci || npm install)")
 			}
+			if strings.Contains(bCmd, "pnpm") {
+				bCmd = fmt.Sprintf("pnpm config set supportedArchitectures.os '[\"linux\"]' 2>/dev/null || true; pnpm config set supportedArchitectures.cpu '[\"x64\", \"arm64\"]' 2>/dev/null || true; %s", bCmd)
+			}
 			if strings.Contains(bCmd, "--frozen-lockfile") {
 				bCmd = strings.ReplaceAll(bCmd, "pnpm install --frozen-lockfile", "(pnpm install --frozen-lockfile || pnpm install --no-frozen-lockfile || pnpm install)")
 				bCmd = strings.ReplaceAll(bCmd, "yarn install --frozen-lockfile", "(yarn install --frozen-lockfile || yarn install)")
@@ -111,9 +114,9 @@ CMD ["sh", "-c", "%s"]
 		return fmt.Sprintf(`FROM %s
 WORKDIR /app
 RUN if command -v apt-get >/dev/null 2>&1; then \
-        apt-get update && apt-get install -y --no-install-recommends bash curl git ca-certificates python3 make g++ && rm -rf /var/lib/apt/lists/*; \
+        apt-get update && apt-get install -y --no-install-recommends git ca-certificates curl && rm -rf /var/lib/apt/lists/*; \
     else \
-        apk add --no-cache bash curl git build-base python3; \
+        apk add --no-cache bash curl git; \
     fi && \
     (corepack enable 2>/dev/null || true) && \
     (npm install -g pnpm@latest yarn@latest 2>/dev/null || true)
@@ -542,13 +545,16 @@ CMD ["sh", "-c", "%s"]
 			if strings.Contains(bCmd, "npm ci") {
 				bCmd = strings.ReplaceAll(bCmd, "npm ci", "(npm ci || npm install)")
 			}
+			if strings.Contains(bCmd, "pnpm") {
+				bCmd = fmt.Sprintf("pnpm config set supportedArchitectures.os '[\"linux\"]' 2>/dev/null || true; pnpm config set supportedArchitectures.cpu '[\"x64\", \"arm64\"]' 2>/dev/null || true; %s", bCmd)
+			}
 			if strings.Contains(bCmd, "--frozen-lockfile") {
 				bCmd = strings.ReplaceAll(bCmd, "pnpm install --frozen-lockfile", "(pnpm install --frozen-lockfile || pnpm install --no-frozen-lockfile || pnpm install)")
 				bCmd = strings.ReplaceAll(bCmd, "yarn install --frozen-lockfile", "(yarn install --frozen-lockfile || yarn install)")
 			}
 			return fmt.Sprintf(`FROM node:22-bookworm-slim AS builder
 WORKDIR /app
-RUN apt-get update && apt-get install -y --no-install-recommends bash curl git ca-certificates python3 make g++ && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates curl && rm -rf /var/lib/apt/lists/*
 RUN (corepack enable 2>/dev/null || true) && (npm install -g pnpm@latest yarn@latest 2>/dev/null || true)
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
@@ -595,7 +601,7 @@ RUN mkdir -p /dist && \
 
 FROM nginx:alpine
 RUN rm -rf /etc/nginx/conf.d/default.conf
-RUN printf 'server {\n    listen 80 default_server;\n    listen [::]:80 default_server;\n    server_name _;\n    root /usr/share/nginx/html;\n    index index.html index.htm;\n    include /etc/nginx/mime.types;\n    gzip on;\n    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript image/svg+xml;\n    location / {\n        try_files $uri $uri/ /index.html;\n    }\n    location ~* \\.(?:css|js|map|jpe?g|png|gif|ico|svg|webp|avif|woff2?|ttf|eot)$ {\n        expires 1y;\n        add_header Cache-Control "public, max-age=31536000, immutable";\n        try_files $uri =404;\n    }\n}\n' > /etc/nginx/conf.d/default.conf
+RUN printf 'server {\n    listen 80 default_server;\n    listen [::]:80 default_server;\n    server_name _;\n    root /usr/share/nginx/html;\n    index index.html index.htm;\n    include /etc/nginx/mime.types;\n    default_type application/octet-stream;\n    location / {\n        try_files $uri $uri/ /index.html;\n    }\n    location ~* \\.(?:css|js|mjs|map|jpe?g|png|gif|ico|svg|webp|avif|woff2?|ttf|eot|wasm|json)$ {\n        expires 1y;\n        add_header Cache-Control "public, max-age=31536000, immutable";\n        try_files $uri =404;\n    }\n}\n' > /etc/nginx/conf.d/default.conf
 COPY --from=builder /dist /usr/share/nginx/html
 RUN chmod -R 755 /usr/share/nginx/html 2>/dev/null || true
 EXPOSE 80
