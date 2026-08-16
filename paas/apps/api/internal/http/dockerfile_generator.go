@@ -14,8 +14,9 @@ func detectNodeInstallCommand(buildCmd string) string {
 		return buildCmd
 	}
 	// Default: try to detect at build time via lockfile presence
-	return `if [ -f bun.lockb ]; then bun install --frozen-lockfile; \
-elif [ -f pnpm-lock.yaml ]; then corepack enable && (if [ -f pnpm-workspace.yaml ]; then grep -q 'supportedArchitectures:' pnpm-workspace.yaml || printf '\nsupportedArchitectures:\n  os:\n    - linux\n  cpu:\n    - x64\n    - arm64\n' >> pnpm-workspace.yaml; fi) && (pnpm install --no-frozen-lockfile 2>/dev/null || pnpm install) && (node -e 'const fs=require("fs"),path=require("path"),{execSync}=require("child_process"),pnpmDir="node_modules/.pnpm";if(fs.existsSync(pnpmDir)){const arch=process.arch;for(const d of fs.readdirSync(pnpmDir)){for(const name of["rollup","lightningcss","@swc/core"]){const p=path.join(pnpmDir,d,"node_modules",name),pkgFile=path.join(p,"package.json");if(fs.existsSync(pkgFile)){try{const pkg=JSON.parse(fs.readFileSync(pkgFile,"utf8"));if(pkg.optionalDependencies){for(const[dep,ver]of Object.entries(pkg.optionalDependencies)){if(dep.includes(arch)&&dep.includes("linux")){const targetDir=path.join(pnpmDir,d,"node_modules");if(!fs.existsSync(path.join(targetDir,dep))){console.log("[pnpm-resolver] Installing "+dep+"@"+ver+" into "+d);execSync("npm install --no-save --prefix \""+targetDir+"\" "+dep+"@"+ver,{stdio:"ignore"});if(name==="lightningcss"){const binDir=path.join(targetDir,dep);if(fs.existsSync(binDir)){for(const f of fs.readdirSync(binDir)){if(f.endsWith(".node"))fs.copyFileSync(path.join(binDir,f),path.join(p,f));}}}}}}}}catch(e){}}}}}' 2>/dev/null || true) && (pnpm rebuild 2>/dev/null || true); \
+	syncCmd := "node -e 'const fs=require(\"fs\"),path=require(\"path\");function copyDir(s,d){if(!fs.existsSync(s))return;fs.mkdirSync(d,{recursive:true});for(const item of fs.readdirSync(s)){const sp=path.join(s,item),dp=path.join(d,item);try{if(fs.lstatSync(sp).isDirectory())copyDir(sp,dp);else fs.copyFileSync(sp,dp);}catch(e){}}}const pnpmDir=\"node_modules/.pnpm\";if(fs.existsSync(pnpmDir)){for(const d of fs.readdirSync(pnpmDir)){const target=path.join(pnpmDir,d,\"node_modules\");if(fs.existsSync(target)){copyDir(\"node_modules/@rollup\",path.join(target,\"@rollup\"));copyDir(\"node_modules/lightningcss-linux-arm64-gnu\",path.join(target,\"lightningcss-linux-arm64-gnu\"));copyDir(\"node_modules/lightningcss-linux-x64-gnu\",path.join(target,\"lightningcss-linux-x64-gnu\"));const lcss=path.join(target,\"lightningcss\");if(fs.existsSync(lcss)){for(const f of[\"lightningcss.linux-arm64-gnu.node\",\"lightningcss.linux-x64-gnu.node\"]){for(const cand of[\"node_modules/lightningcss-linux-arm64-gnu/\"+f,\"node_modules/lightningcss-linux-x64-gnu/\"+f]){if(fs.existsSync(cand)){try{fs.copyFileSync(cand,path.join(lcss,f));}catch(e){}}}}}}}}'"
+	return fmt.Sprintf(`if [ -f bun.lockb ]; then bun install --frozen-lockfile; \
+elif [ -f pnpm-lock.yaml ]; then corepack enable && (if [ -f pnpm-workspace.yaml ]; then grep -q 'supportedArchitectures:' pnpm-workspace.yaml || printf '\nsupportedArchitectures:\n  os:\n    - linux\n  cpu:\n    - x64\n    - arm64\n' >> pnpm-workspace.yaml; fi) && (pnpm install --no-frozen-lockfile 2>/dev/null || pnpm install) && (npm install --no-save @rollup/rollup-linux-arm64-gnu @rollup/rollup-linux-x64-gnu lightningcss-linux-arm64-gnu lightningcss-linux-x64-gnu 2>/dev/null || true) && (%s 2>/dev/null || true) && (pnpm rebuild 2>/dev/null || true); \
 elif [ -f yarn.lock ]; then corepack enable && (yarn install --frozen-lockfile || yarn install); \
 elif [ -f package-lock.json ]; then (npm ci || npm install); \
 elif [ -f package.json ]; then npm install; fi && \
@@ -24,7 +25,7 @@ if grep -q '"build":' package.json 2>/dev/null; then \
   elif [ -f pnpm-lock.yaml ]; then pnpm run build; \
   elif [ -f yarn.lock ]; then yarn build; \
   else npm run build; fi; \
-fi`
+fi`, syncCmd)
 }
 
 // detectPythonInstallCommand returns the install command based on dependency file presence.
@@ -106,12 +107,12 @@ CMD ["sh", "-c", "%s"]
 			}
 			if strings.Contains(bCmd, "pnpm") {
 				usesBash = true
-				nodeResolver := "node -e 'const fs=require(\"fs\"),path=require(\"path\"),{execSync}=require(\"child_process\"),pnpmDir=\"node_modules/.pnpm\";if(fs.existsSync(pnpmDir)){const arch=process.arch;for(const d of fs.readdirSync(pnpmDir)){for(const name of[\"rollup\",\"lightningcss\",\"@swc/core\"]){const p=path.join(pnpmDir,d,\"node_modules\",name),pkgFile=path.join(p,\"package.json\");if(fs.existsSync(pkgFile)){try{const pkg=JSON.parse(fs.readFileSync(pkgFile,\"utf8\"));if(pkg.optionalDependencies){for(const[dep,ver]of Object.entries(pkg.optionalDependencies)){if(dep.includes(arch)&&dep.includes(\"linux\")){const targetDir=path.join(pnpmDir,d,\"node_modules\");if(!fs.existsSync(path.join(targetDir,dep))){console.log(\"[pnpm-resolver] Installing \"+dep+\"@\"+ver+\" into \"+d);execSync(\"npm install --no-save --prefix \\\"\"+targetDir+\"\\\" \"+dep+\"@\"+ver,{stdio:\"ignore\"});if(name===\"lightningcss\"){const binDir=path.join(targetDir,dep);if(fs.existsSync(binDir)){for(const f of fs.readdirSync(binDir)){if(f.endsWith(\".node\"))fs.copyFileSync(path.join(binDir,f),path.join(p,f));}}}}}}}}catch(e){}}}}}'"
+				syncScript := "node -e 'const fs=require(\"fs\"),path=require(\"path\");function copyDir(s,d){if(!fs.existsSync(s))return;fs.mkdirSync(d,{recursive:true});for(const item of fs.readdirSync(s)){const sp=path.join(s,item),dp=path.join(d,item);try{if(fs.lstatSync(sp).isDirectory())copyDir(sp,dp);else fs.copyFileSync(sp,dp);}catch(e){}}}const pnpmDir=\"node_modules/.pnpm\";if(fs.existsSync(pnpmDir)){for(const d of fs.readdirSync(pnpmDir)){const target=path.join(pnpmDir,d,\"node_modules\");if(fs.existsSync(target)){copyDir(\"node_modules/@rollup\",path.join(target,\"@rollup\"));copyDir(\"node_modules/lightningcss-linux-arm64-gnu\",path.join(target,\"lightningcss-linux-arm64-gnu\"));copyDir(\"node_modules/lightningcss-linux-x64-gnu\",path.join(target,\"lightningcss-linux-x64-gnu\"));const lcss=path.join(target,\"lightningcss\");if(fs.existsSync(lcss)){for(const f of[\"lightningcss.linux-arm64-gnu.node\",\"lightningcss.linux-x64-gnu.node\"]){for(const cand of[\"node_modules/lightningcss-linux-arm64-gnu/\"+f,\"node_modules/lightningcss-linux-x64-gnu/\"+f]){if(fs.existsSync(cand)){try{fs.copyFileSync(cand,path.join(lcss,f));}catch(e){}}}}}}}}'"
 				archSetup := "if [ -f pnpm-workspace.yaml ]; then grep -q 'supportedArchitectures:' pnpm-workspace.yaml || printf '\\nsupportedArchitectures:\\n  os:\\n    - linux\\n  cpu:\\n    - x64\\n    - arm64\\n' >> pnpm-workspace.yaml; fi; printf 'supported-architectures.os[]=linux\\nsupported-architectures.cpu[]=x64\\nsupported-architectures.cpu[]=arm64\\n' >> .npmrc 2>/dev/null || true; pnpm config set verify-store-integrity false 2>/dev/null || true"
 				bCmd = fmt.Sprintf("%s; %s", archSetup, bCmd)
 				const pnpmFrozenSentinel = "__PNPM_INSTALL_FROZEN__"
 				bCmd = strings.ReplaceAll(bCmd, "pnpm install --frozen-lockfile", pnpmFrozenSentinel)
-				installStep := fmt.Sprintf("{ pnpm install --no-frozen-lockfile --prefer-frozen-lockfile=false 2>/dev/null || pnpm install --no-frozen-lockfile 2>/dev/null || pnpm install; } && (%s 2>/dev/null || true) && (pnpm rebuild 2>/dev/null || true)", nodeResolver)
+				installStep := fmt.Sprintf("{ pnpm install --no-frozen-lockfile --prefer-frozen-lockfile=false 2>/dev/null || pnpm install --no-frozen-lockfile 2>/dev/null || pnpm install; } && (npm install --no-save @rollup/rollup-linux-arm64-gnu @rollup/rollup-linux-x64-gnu lightningcss-linux-arm64-gnu lightningcss-linux-x64-gnu 2>/dev/null || true) && (%s 2>/dev/null || true) && (pnpm rebuild 2>/dev/null || true)", syncScript)
 				bCmd = strings.ReplaceAll(bCmd, "pnpm install", installStep)
 				bCmd = strings.ReplaceAll(bCmd, pnpmFrozenSentinel, installStep)
 			}
@@ -129,6 +130,7 @@ CMD ["sh", "-c", "%s"]
 		return fmt.Sprintf(`FROM %s
 WORKDIR /app
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ENV NODE_PATH=/app/node_modules
 RUN if command -v apt-get >/dev/null 2>&1; then \
         apt-get update && apt-get install -y --no-install-recommends git ca-certificates curl bash && rm -rf /var/lib/apt/lists/*; \
     else \
@@ -565,12 +567,12 @@ CMD ["sh", "-c", "%s"]
 				bCmd = strings.ReplaceAll(bCmd, "npm ci", "{ npm ci || npm install; }")
 			}
 			if strings.Contains(bCmd, "pnpm") {
-				nodeResolver2 := "node -e 'const fs=require(\"fs\"),path=require(\"path\"),{execSync}=require(\"child_process\"),pnpmDir=\"node_modules/.pnpm\";if(fs.existsSync(pnpmDir)){const arch=process.arch;for(const d of fs.readdirSync(pnpmDir)){for(const name of[\"rollup\",\"lightningcss\",\"@swc/core\"]){const p=path.join(pnpmDir,d,\"node_modules\",name),pkgFile=path.join(p,\"package.json\");if(fs.existsSync(pkgFile)){try{const pkg=JSON.parse(fs.readFileSync(pkgFile,\"utf8\"));if(pkg.optionalDependencies){for(const[dep,ver]of Object.entries(pkg.optionalDependencies)){if(dep.includes(arch)&&dep.includes(\"linux\")){const targetDir=path.join(pnpmDir,d,\"node_modules\");if(!fs.existsSync(path.join(targetDir,dep))){console.log(\"[pnpm-resolver] Installing \"+dep+\"@\"+ver+\" into \"+d);execSync(\"npm install --no-save --prefix \\\"\"+targetDir+\"\\\" \"+dep+\"@\"+ver,{stdio:\"ignore\"});if(name===\"lightningcss\"){const binDir=path.join(targetDir,dep);if(fs.existsSync(binDir)){for(const f of fs.readdirSync(binDir)){if(f.endsWith(\".node\"))fs.copyFileSync(path.join(binDir,f),path.join(p,f));}}}}}}}}catch(e){}}}}}'"
+				syncScript2 := "node -e 'const fs=require(\"fs\"),path=require(\"path\");function copyDir(s,d){if(!fs.existsSync(s))return;fs.mkdirSync(d,{recursive:true});for(const item of fs.readdirSync(s)){const sp=path.join(s,item),dp=path.join(d,item);try{if(fs.lstatSync(sp).isDirectory())copyDir(sp,dp);else fs.copyFileSync(sp,dp);}catch(e){}}}const pnpmDir=\"node_modules/.pnpm\";if(fs.existsSync(pnpmDir)){for(const d of fs.readdirSync(pnpmDir)){const target=path.join(pnpmDir,d,\"node_modules\");if(fs.existsSync(target)){copyDir(\"node_modules/@rollup\",path.join(target,\"@rollup\"));copyDir(\"node_modules/lightningcss-linux-arm64-gnu\",path.join(target,\"lightningcss-linux-arm64-gnu\"));copyDir(\"node_modules/lightningcss-linux-x64-gnu\",path.join(target,\"lightningcss-linux-x64-gnu\"));const lcss=path.join(target,\"lightningcss\");if(fs.existsSync(lcss)){for(const f of[\"lightningcss.linux-arm64-gnu.node\",\"lightningcss.linux-x64-gnu.node\"]){for(const cand of[\"node_modules/lightningcss-linux-arm64-gnu/\"+f,\"node_modules/lightningcss-linux-x64-gnu/\"+f]){if(fs.existsSync(cand)){try{fs.copyFileSync(cand,path.join(lcss,f));}catch(e){}}}}}}}}'"
 				archSetup2 := "if [ -f pnpm-workspace.yaml ]; then grep -q 'supportedArchitectures:' pnpm-workspace.yaml || printf '\\nsupportedArchitectures:\\n  os:\\n    - linux\\n  cpu:\\n    - x64\\n    - arm64\\n' >> pnpm-workspace.yaml; fi; printf 'supported-architectures.os[]=linux\\nsupported-architectures.cpu[]=x64\\nsupported-architectures.cpu[]=arm64\\n' >> .npmrc 2>/dev/null || true; pnpm config set verify-store-integrity false 2>/dev/null || true"
 				bCmd = fmt.Sprintf("%s; %s", archSetup2, bCmd)
 				const pnpmFrozenSentinel2 = "__PNPM_INSTALL_FROZEN2__"
 				bCmd = strings.ReplaceAll(bCmd, "pnpm install --frozen-lockfile", pnpmFrozenSentinel2)
-				installStep2 := fmt.Sprintf("{ pnpm install --no-frozen-lockfile --prefer-frozen-lockfile=false 2>/dev/null || pnpm install --no-frozen-lockfile 2>/dev/null || pnpm install; } && (%s 2>/dev/null || true) && (pnpm rebuild 2>/dev/null || true)", nodeResolver2)
+				installStep2 := fmt.Sprintf("{ pnpm install --no-frozen-lockfile --prefer-frozen-lockfile=false 2>/dev/null || pnpm install --no-frozen-lockfile 2>/dev/null || pnpm install; } && (npm install --no-save @rollup/rollup-linux-arm64-gnu @rollup/rollup-linux-x64-gnu lightningcss-linux-arm64-gnu lightningcss-linux-x64-gnu 2>/dev/null || true) && (%s 2>/dev/null || true) && (pnpm rebuild 2>/dev/null || true)", syncScript2)
 				bCmd = strings.ReplaceAll(bCmd, "pnpm install", installStep2)
 				bCmd = strings.ReplaceAll(bCmd, pnpmFrozenSentinel2, installStep2)
 			}
@@ -583,6 +585,7 @@ CMD ["sh", "-c", "%s"]
 			return fmt.Sprintf(`FROM node:22-bookworm-slim AS builder
 WORKDIR /app
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ENV NODE_PATH=/app/node_modules
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates curl bash && rm -rf /var/lib/apt/lists/*
 RUN (corepack enable 2>/dev/null || true) && (npm install -g pnpm@latest yarn@latest 2>/dev/null || true)
 RUN mkdir -p /root/.config/pnpm && \
