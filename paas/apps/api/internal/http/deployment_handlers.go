@@ -163,14 +163,24 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 			if b, ok := resMap["gitBranch"].(string); ok {
 				gitBranch = b
 			}
-			if bc, ok := resMap["buildCommand"].(string); ok {
-				buildCommand = bc
+			if bc, ok := resMap["buildCommand"].(string); ok && strings.TrimSpace(bc) != "" {
+				buildCommand = strings.TrimSpace(bc)
+			} else if bc, ok := resMap["build_command"].(string); ok && strings.TrimSpace(bc) != "" {
+				buildCommand = strings.TrimSpace(bc)
+			} else if bc, ok := resMap["buildCmd"].(string); ok && strings.TrimSpace(bc) != "" {
+				buildCommand = strings.TrimSpace(bc)
 			}
-			if sc, ok := resMap["startCommand"].(string); ok {
-				startCommand = sc
+			if sc, ok := resMap["startCommand"].(string); ok && strings.TrimSpace(sc) != "" {
+				startCommand = strings.TrimSpace(sc)
+			} else if sc, ok := resMap["start_command"].(string); ok && strings.TrimSpace(sc) != "" {
+				startCommand = strings.TrimSpace(sc)
+			} else if sc, ok := resMap["startCmd"].(string); ok && strings.TrimSpace(sc) != "" {
+				startCommand = strings.TrimSpace(sc)
 			}
-			if p, ok := resMap["presetId"].(string); ok {
-				presetId = p
+			if p, ok := resMap["presetId"].(string); ok && strings.TrimSpace(p) != "" {
+				presetId = strings.TrimSpace(p)
+			} else if p, ok := resMap["preset"].(string); ok && strings.TrimSpace(p) != "" {
+				presetId = strings.TrimSpace(p)
 			}
 			if envs, ok := resMap["env"].(map[string]any); ok {
 				for k, v := range envs {
@@ -956,6 +966,48 @@ func (h *Handler) handleTriggerDeployment(c fiber.Ctx) error {
 	s, err := h.store.Services().GetByID(c.Context(), serviceID)
 	if err != nil || s == nil {
 		return c.Status(404).JSON(fiber.Map{"error": fmt.Sprintf("Service '%s' not found", serviceID)})
+	}
+
+	// Parse optional deployment overrides from body
+	var req struct {
+		BuildCommand   *string `json:"buildCommand"`
+		StartCommand   *string `json:"startCommand"`
+		GitBranch      *string `json:"gitBranch"`
+		RuntimeVersion *string `json:"runtimeVersion"`
+		PresetID       *string `json:"presetId"`
+		ResourceJSON   *string `json:"resourceJson"`
+	}
+	if err := c.Bind().JSON(&req); err == nil {
+		var resMap map[string]any
+		if req.ResourceJSON != nil && *req.ResourceJSON != "" {
+			_ = json.Unmarshal([]byte(*req.ResourceJSON), &resMap)
+		} else if s.ResourceJSON != "" {
+			_ = json.Unmarshal([]byte(s.ResourceJSON), &resMap)
+		}
+		if resMap == nil {
+			resMap = make(map[string]any)
+		}
+		if req.BuildCommand != nil {
+			resMap["buildCommand"] = *req.BuildCommand
+			resMap["build_command"] = *req.BuildCommand
+		}
+		if req.StartCommand != nil {
+			resMap["startCommand"] = *req.StartCommand
+			resMap["start_command"] = *req.StartCommand
+		}
+		if req.GitBranch != nil && *req.GitBranch != "" {
+			resMap["gitBranch"] = *req.GitBranch
+		}
+		if req.RuntimeVersion != nil {
+			resMap["runtimeVersion"] = *req.RuntimeVersion
+		}
+		if req.PresetID != nil && *req.PresetID != "" {
+			resMap["presetId"] = *req.PresetID
+		}
+		if b, err := json.Marshal(resMap); err == nil {
+			s.ResourceJSON = string(b)
+			_ = h.store.Services().Update(c.Context(), s)
+		}
 	}
 
 	var userID *string

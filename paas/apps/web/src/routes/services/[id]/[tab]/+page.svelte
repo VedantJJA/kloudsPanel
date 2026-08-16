@@ -488,8 +488,51 @@
     actionLoading = true;
     bannerNotice = null;
     try {
+      // If user modified settings on the page, persist them automatically before deploying
+      if (settingsDirty) {
+        let currentR: any = {};
+        try {
+          currentR = JSON.parse(service.resource_json || service.ResourceJSON || '{}');
+        } catch {}
+        currentR.buildCommand = settingsBuildCmd;
+        currentR.build_command = settingsBuildCmd;
+        currentR.startCommand = settingsStartCmd;
+        currentR.start_command = settingsStartCmd;
+        currentR.rootDirectory = settingsRootDir;
+        currentR.rootDir = settingsRootDir;
+        currentR.gitBranch = settingsBranch;
+        currentR.gitRepoUrl = settingsRepoUrl;
+        currentR.presetId = settingsPreset;
+        currentR.runtimeVersion = settingsRuntimeVersion === 'auto' ? '' : settingsRuntimeVersion;
+        currentR.mem_limit = settingsMemoryLimit;
+        currentR.cpu_limit = settingsCPULimit;
+
+        const targetId = service?.id || id;
+        await fetch(`/api/v1/services/${targetId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            name: settingsName,
+            internalPort: Number(settingsPort),
+            autoDeploy: settingsAutoDeploy,
+            resourceJson: JSON.stringify(currentR)
+          })
+        });
+        settingsDirty = false;
+      }
+
       const targetId = service?.id || id;
-      const res = await fetch(`/api/v1/services/${targetId}/deploy`, { method: 'POST', credentials: 'include' });
+      const res = await fetch(`/api/v1/services/${targetId}/deploy`, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          buildCommand: settingsBuildCmd || undefined,
+          startCommand: settingsStartCmd || undefined,
+          gitBranch: settingsBranch || undefined
+        })
+      });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
         bannerNotice = { type: 'error', message: d.error || 'Failed to trigger deployment' };
@@ -809,8 +852,11 @@
         currentR = JSON.parse(service.resource_json || service.ResourceJSON || '{}');
       } catch {}
       currentR.buildCommand = settingsBuildCmd;
+      currentR.build_command = settingsBuildCmd;
       currentR.startCommand = settingsStartCmd;
+      currentR.start_command = settingsStartCmd;
       currentR.rootDirectory = settingsRootDir;
+      currentR.rootDir = settingsRootDir;
       currentR.gitBranch = settingsBranch;
       currentR.gitRepoUrl = settingsRepoUrl;
       currentR.presetId = settingsPreset;

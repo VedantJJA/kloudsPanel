@@ -145,11 +145,20 @@ func (h *Handler) handleUpdateService(c fiber.Ctx) error {
 		return err
 	}
 	var req struct {
-		Name         string                     `json:"name"`
-		DesiredState domain.ServiceDesiredState `json:"desiredState"`
-		InternalPort *int                       `json:"internalPort"`
-		AutoDeploy   *bool                      `json:"autoDeploy"`
-		ResourceJSON string                     `json:"resourceJson"`
+		Name           string                     `json:"name"`
+		DesiredState   domain.ServiceDesiredState `json:"desiredState"`
+		InternalPort   *int                       `json:"internalPort"`
+		AutoDeploy     *bool                      `json:"autoDeploy"`
+		ResourceJSON   string                     `json:"resourceJson"`
+		BuildCommand   *string                    `json:"buildCommand"`
+		StartCommand   *string                    `json:"startCommand"`
+		GitBranch      *string                    `json:"gitBranch"`
+		GitRepoURL     *string                    `json:"gitRepoUrl"`
+		PresetID       *string                    `json:"presetId"`
+		RuntimeVersion *string                    `json:"runtimeVersion"`
+		RootDir        *string                    `json:"rootDirectory"`
+		MemLimit       *string                    `json:"mem_limit"`
+		CPULimit       *string                    `json:"cpu_limit"`
 	}
 	if err := c.Bind().JSON(&req); err == nil {
 		if req.Name != "" {
@@ -164,8 +173,50 @@ func (h *Handler) handleUpdateService(c fiber.Ctx) error {
 		if req.AutoDeploy != nil {
 			s.AutoDeploy = *req.AutoDeploy
 		}
+
+		var resMap map[string]any
 		if req.ResourceJSON != "" {
-			s.ResourceJSON = req.ResourceJSON
+			_ = json.Unmarshal([]byte(req.ResourceJSON), &resMap)
+		} else if s.ResourceJSON != "" {
+			_ = json.Unmarshal([]byte(s.ResourceJSON), &resMap)
+		}
+		if resMap == nil {
+			resMap = make(map[string]any)
+		}
+
+		if req.BuildCommand != nil {
+			resMap["buildCommand"] = *req.BuildCommand
+			resMap["build_command"] = *req.BuildCommand
+		}
+		if req.StartCommand != nil {
+			resMap["startCommand"] = *req.StartCommand
+			resMap["start_command"] = *req.StartCommand
+		}
+		if req.GitBranch != nil {
+			resMap["gitBranch"] = *req.GitBranch
+		}
+		if req.GitRepoURL != nil {
+			resMap["gitRepoUrl"] = *req.GitRepoURL
+		}
+		if req.PresetID != nil {
+			resMap["presetId"] = *req.PresetID
+		}
+		if req.RuntimeVersion != nil {
+			resMap["runtimeVersion"] = *req.RuntimeVersion
+		}
+		if req.RootDir != nil {
+			resMap["rootDirectory"] = *req.RootDir
+			resMap["rootDir"] = *req.RootDir
+		}
+		if req.MemLimit != nil {
+			resMap["mem_limit"] = *req.MemLimit
+		}
+		if req.CPULimit != nil {
+			resMap["cpu_limit"] = *req.CPULimit
+		}
+
+		if mergedBytes, err := json.Marshal(resMap); err == nil {
+			s.ResourceJSON = string(mergedBytes)
 		}
 		_ = h.store.Services().Update(c.Context(), s)
 	}
