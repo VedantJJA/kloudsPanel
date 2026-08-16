@@ -97,28 +97,40 @@ CMD ["sh", "-c", "%s"]
 			sCmd = "npm start || node index.js || node server.js || node app.js || node dist/index.js || node dist/server.js"
 		}
 		bCmd := buildCmd
+		usesBash := false
 		if bCmd == "" {
 			bCmd = detectNodeInstallCommand("")
 		} else {
 			if strings.Contains(bCmd, "npm ci") {
-				bCmd = strings.ReplaceAll(bCmd, "npm ci", "(npm ci || npm install)")
+				bCmd = strings.ReplaceAll(bCmd, "npm ci", "{ npm ci || npm install; }")
 			}
 			if strings.Contains(bCmd, "pnpm") {
+				usesBash = true
 				bCmd = fmt.Sprintf("pnpm config set supportedArchitectures.os '[\"linux\"]' 2>/dev/null || true; pnpm config set supportedArchitectures.cpu '[\"x64\", \"arm64\"]' 2>/dev/null || true; pnpm config set verify-store-integrity false 2>/dev/null || true; %s", bCmd)
-				bCmd = strings.ReplaceAll(bCmd, "pnpm install --frozen-lockfile", "(pnpm install --no-frozen-lockfile --force 2>/dev/null || pnpm install)")
-				bCmd = strings.ReplaceAll(bCmd, "pnpm install", "(pnpm install --no-frozen-lockfile --force 2>/dev/null || pnpm install) && (pnpm add -w -D @rollup/rollup-linux-arm64-gnu @rollup/rollup-linux-x64-gnu 2>/dev/null || npm install --no-save @rollup/rollup-linux-arm64-gnu @rollup/rollup-linux-x64-gnu 2>/dev/null || true)")
+				// Replace --frozen-lockfile variant first with a sentinel to avoid double-matching
+				const pnpmFrozenSentinel = "__PNPM_INSTALL_FROZEN__"
+				bCmd = strings.ReplaceAll(bCmd, "pnpm install --frozen-lockfile", pnpmFrozenSentinel)
+				// Replace plain 'pnpm install' (not already replaced)
+				bCmd = strings.ReplaceAll(bCmd, "pnpm install", "{ pnpm install --no-frozen-lockfile --force 2>/dev/null || pnpm install; } && { pnpm add -w -D @rollup/rollup-linux-arm64-gnu @rollup/rollup-linux-x64-gnu 2>/dev/null || npm install --no-save @rollup/rollup-linux-arm64-gnu @rollup/rollup-linux-x64-gnu 2>/dev/null || true; }")
+				// Restore sentinel to its final form
+				bCmd = strings.ReplaceAll(bCmd, pnpmFrozenSentinel, "{ pnpm install --no-frozen-lockfile --force 2>/dev/null || pnpm install; }")
 			}
 			if strings.Contains(bCmd, "npm") {
 				bCmd = fmt.Sprintf("npm config set audit false 2>/dev/null || true; npm config set fund false 2>/dev/null || true; npm config set progress false 2>/dev/null || true; %s", bCmd)
 			}
 			if strings.Contains(bCmd, "--frozen-lockfile") {
-				bCmd = strings.ReplaceAll(bCmd, "yarn install --frozen-lockfile", "(yarn install --frozen-lockfile || yarn install)")
+				bCmd = strings.ReplaceAll(bCmd, "yarn install --frozen-lockfile", "{ yarn install --frozen-lockfile || yarn install; }")
 			}
+		}
+		runCmd := "sh"
+		if usesBash {
+			runCmd = "bash"
 		}
 		return fmt.Sprintf(`FROM %s
 WORKDIR /app
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN if command -v apt-get >/dev/null 2>&1; then \
-        apt-get update && apt-get install -y --no-install-recommends git ca-certificates curl && rm -rf /var/lib/apt/lists/*; \
+        apt-get update && apt-get install -y --no-install-recommends git ca-certificates curl bash && rm -rf /var/lib/apt/lists/*; \
     else \
         apk add --no-cache bash curl git; \
     fi && \
@@ -128,8 +140,8 @@ COPY . /app
 RUN %s
 ENV PORT=%d HOST=0.0.0.0 NODE_ENV=production
 EXPOSE %d%s%s
-CMD ["sh", "-c", "%s"]
-`, imageTag, bCmd, port, port, nonRoot, healthcheck, sCmd)
+CMD ["%s", "-c", "%s"]
+`, imageTag, bCmd, port, port, nonRoot, healthcheck, runCmd, sCmd)
 
 	// --- Go / Golang ---------------------------------------------------------
 	case "go", "golang":
@@ -547,22 +559,25 @@ CMD ["sh", "-c", "%s"]
 		bCmd := buildCmd
 		if bCmd != "" {
 			if strings.Contains(bCmd, "npm ci") {
-				bCmd = strings.ReplaceAll(bCmd, "npm ci", "(npm ci || npm install)")
+				bCmd = strings.ReplaceAll(bCmd, "npm ci", "{ npm ci || npm install; }")
 			}
 			if strings.Contains(bCmd, "pnpm") {
 				bCmd = fmt.Sprintf("pnpm config set supportedArchitectures.os '[\"linux\"]' 2>/dev/null || true; pnpm config set supportedArchitectures.cpu '[\"x64\", \"arm64\"]' 2>/dev/null || true; pnpm config set verify-store-integrity false 2>/dev/null || true; %s", bCmd)
-				bCmd = strings.ReplaceAll(bCmd, "pnpm install --frozen-lockfile", "(pnpm install --no-frozen-lockfile --force 2>/dev/null || pnpm install)")
-				bCmd = strings.ReplaceAll(bCmd, "pnpm install", "(pnpm install --no-frozen-lockfile --force 2>/dev/null || pnpm install) && (pnpm add -w -D @rollup/rollup-linux-arm64-gnu @rollup/rollup-linux-x64-gnu 2>/dev/null || npm install --no-save @rollup/rollup-linux-arm64-gnu @rollup/rollup-linux-x64-gnu 2>/dev/null || true)")
+				const pnpmFrozenSentinel2 = "__PNPM_INSTALL_FROZEN2__"
+				bCmd = strings.ReplaceAll(bCmd, "pnpm install --frozen-lockfile", pnpmFrozenSentinel2)
+				bCmd = strings.ReplaceAll(bCmd, "pnpm install", "{ pnpm install --no-frozen-lockfile --force 2>/dev/null || pnpm install; } && { pnpm add -w -D @rollup/rollup-linux-arm64-gnu @rollup/rollup-linux-x64-gnu 2>/dev/null || npm install --no-save @rollup/rollup-linux-arm64-gnu @rollup/rollup-linux-x64-gnu 2>/dev/null || true; }")
+				bCmd = strings.ReplaceAll(bCmd, pnpmFrozenSentinel2, "{ pnpm install --no-frozen-lockfile --force 2>/dev/null || pnpm install; }")
 			}
 			if strings.Contains(bCmd, "npm") {
 				bCmd = fmt.Sprintf("npm config set audit false 2>/dev/null || true; npm config set fund false 2>/dev/null || true; npm config set progress false 2>/dev/null || true; %s", bCmd)
 			}
 			if strings.Contains(bCmd, "--frozen-lockfile") {
-				bCmd = strings.ReplaceAll(bCmd, "yarn install --frozen-lockfile", "(yarn install --frozen-lockfile || yarn install)")
+				bCmd = strings.ReplaceAll(bCmd, "yarn install --frozen-lockfile", "{ yarn install --frozen-lockfile || yarn install; }")
 			}
 			return fmt.Sprintf(`FROM node:22-bookworm-slim AS builder
 WORKDIR /app
-RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates curl && rm -rf /var/lib/apt/lists/*
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates curl bash && rm -rf /var/lib/apt/lists/*
 RUN (corepack enable 2>/dev/null || true) && (npm install -g pnpm@latest yarn@latest @rollup/rollup-linux-arm64-gnu @rollup/rollup-linux-x64-gnu 2>/dev/null || true)
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
