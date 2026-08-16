@@ -105,9 +105,10 @@ CMD ["sh", "-c", "%s"]
 			}
 			if strings.Contains(bCmd, "pnpm") {
 				bCmd = fmt.Sprintf("pnpm config set supportedArchitectures.os '[\"linux\"]' 2>/dev/null || true; pnpm config set supportedArchitectures.cpu '[\"x64\", \"arm64\"]' 2>/dev/null || true; %s", bCmd)
+				bCmd = strings.ReplaceAll(bCmd, "pnpm install --frozen-lockfile", "(pnpm install --no-frozen-lockfile --force 2>/dev/null || pnpm install)")
+				bCmd = strings.ReplaceAll(bCmd, "pnpm install", "(pnpm install --no-frozen-lockfile --force 2>/dev/null || pnpm install) && (pnpm add -w -D @rollup/rollup-linux-arm64-gnu @rollup/rollup-linux-x64-gnu 2>/dev/null || npm install --no-save @rollup/rollup-linux-arm64-gnu @rollup/rollup-linux-x64-gnu 2>/dev/null || true)")
 			}
 			if strings.Contains(bCmd, "--frozen-lockfile") {
-				bCmd = strings.ReplaceAll(bCmd, "pnpm install --frozen-lockfile", "(pnpm install --frozen-lockfile || pnpm install --no-frozen-lockfile || pnpm install)")
 				bCmd = strings.ReplaceAll(bCmd, "yarn install --frozen-lockfile", "(yarn install --frozen-lockfile || yarn install)")
 			}
 		}
@@ -119,7 +120,7 @@ RUN if command -v apt-get >/dev/null 2>&1; then \
         apk add --no-cache bash curl git; \
     fi && \
     (corepack enable 2>/dev/null || true) && \
-    (npm install -g pnpm@latest yarn@latest 2>/dev/null || true)
+    (npm install -g pnpm@latest yarn@latest @rollup/rollup-linux-arm64-gnu @rollup/rollup-linux-x64-gnu 2>/dev/null || true)
 COPY . /app
 RUN %s
 ENV PORT=%d HOST=0.0.0.0 NODE_ENV=production
@@ -547,15 +548,16 @@ CMD ["sh", "-c", "%s"]
 			}
 			if strings.Contains(bCmd, "pnpm") {
 				bCmd = fmt.Sprintf("pnpm config set supportedArchitectures.os '[\"linux\"]' 2>/dev/null || true; pnpm config set supportedArchitectures.cpu '[\"x64\", \"arm64\"]' 2>/dev/null || true; %s", bCmd)
+				bCmd = strings.ReplaceAll(bCmd, "pnpm install --frozen-lockfile", "(pnpm install --no-frozen-lockfile --force 2>/dev/null || pnpm install)")
+				bCmd = strings.ReplaceAll(bCmd, "pnpm install", "(pnpm install --no-frozen-lockfile --force 2>/dev/null || pnpm install) && (pnpm add -w -D @rollup/rollup-linux-arm64-gnu @rollup/rollup-linux-x64-gnu 2>/dev/null || npm install --no-save @rollup/rollup-linux-arm64-gnu @rollup/rollup-linux-x64-gnu 2>/dev/null || true)")
 			}
 			if strings.Contains(bCmd, "--frozen-lockfile") {
-				bCmd = strings.ReplaceAll(bCmd, "pnpm install --frozen-lockfile", "(pnpm install --frozen-lockfile || pnpm install --no-frozen-lockfile || pnpm install)")
 				bCmd = strings.ReplaceAll(bCmd, "yarn install --frozen-lockfile", "(yarn install --frozen-lockfile || yarn install)")
 			}
 			return fmt.Sprintf(`FROM node:22-bookworm-slim AS builder
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates curl && rm -rf /var/lib/apt/lists/*
-RUN (corepack enable 2>/dev/null || true) && (npm install -g pnpm@latest yarn@latest 2>/dev/null || true)
+RUN (corepack enable 2>/dev/null || true) && (npm install -g pnpm@latest yarn@latest @rollup/rollup-linux-arm64-gnu @rollup/rollup-linux-x64-gnu 2>/dev/null || true)
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
 ARG API_URL
