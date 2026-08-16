@@ -154,6 +154,12 @@
   let submitting = $state(false);
   let error = $state<string | null>(null);
 
+  // Runtime Version & Security Resource limits
+  let runtimeVersion = $state('auto');
+  let memoryLimit = $state('512m');
+  let cpuLimit = $state('1.0');
+  let pidsLimit = $state(256);
+
   type ServicePreset = {
     id: string;
     title: string;
@@ -168,14 +174,15 @@
     iconSvg?: string;
     defaultBuild?: string;
     defaultStart?: string;
+    versions: Array<{ value: string; label: string; default?: boolean }>;
   };
 
   const presets: ServicePreset[] = [
-    // Web / Dynamic Runtimes
+    // ─── Web / Dynamic Runtimes ─────────────────────────────────────────────
     {
       id: 'node',
-      title: 'Node.js (Next.js / Express / Nest)',
-      description: 'Fullstack JavaScript/TypeScript apps with Node 20 & npm/pnpm/yarn',
+      title: 'Node.js (Next.js / Express / Nest / Remix / Astro)',
+      description: 'Fullstack JavaScript/TypeScript apps with Node.js & npm/pnpm/yarn/bun',
       category: 'web',
       kind: 'web',
       image: 'node:20-alpine',
@@ -183,104 +190,365 @@
       badge: 'JavaScript/TS',
       iconColor: '#22c55e',
       iconText: 'Node',
-      iconSvg: '/icons/nodejs.svg',
       defaultBuild: 'npm install && npm run build',
-      defaultStart: 'npm start'
+      defaultStart: 'npm start',
+      versions: [
+        { value: 'auto', label: 'Auto-Detect (.node-version / package.json)', default: true },
+        { value: '22', label: 'Node.js 22 (Current)' },
+        { value: '20', label: 'Node.js 20 (LTS)' },
+        { value: '18', label: 'Node.js 18 (LTS)' },
+        { value: '16', label: 'Node.js 16 (Legacy)' }
+      ]
     },
     {
       id: 'python',
-      title: 'Python (FastAPI / Flask / Django)',
-      description: 'WSGI / ASGI applications with requirements.txt or Pipfile',
+      title: 'Python (FastAPI / Flask / Django / Celery)',
+      description: 'ASGI / WSGI applications with requirements.txt, poetry, pipenv or uv',
       category: 'web',
       kind: 'web',
-      image: 'python:3.11-slim',
+      image: 'python:3.12-slim',
       port: 5000,
-      badge: 'Python 3.11',
+      badge: 'Python',
       iconColor: '#3b82f6',
       iconText: 'Py',
-      iconSvg: '/icons/python.svg',
       defaultBuild: 'pip install -r requirements.txt',
-      defaultStart: 'gunicorn app:app --bind 0.0.0.0:5000 --workers 2'
+      defaultStart: 'gunicorn app:app --bind 0.0.0.0:5000 --workers 2',
+      versions: [
+        { value: 'auto', label: 'Auto-Detect (.python-version / runtime.txt)', default: true },
+        { value: '3.12', label: 'Python 3.12 (Recommended)' },
+        { value: '3.11', label: 'Python 3.11' },
+        { value: '3.10', label: 'Python 3.10' },
+        { value: '3.9', label: 'Python 3.9' }
+      ]
     },
     {
       id: 'go',
-      title: 'Go (Fiber / Gin / Chi / Echo)',
-      description: 'Ultra-fast compiled Go binary web services',
+      title: 'Go (Fiber / Gin / Chi / Echo / Standard HTTP)',
+      description: 'Ultra-fast compiled Go binary web services with zero runtime dependencies',
       category: 'web',
       kind: 'web',
-      image: 'golang:1.22-alpine',
+      image: 'golang:1.23-alpine',
       port: 8080,
-      badge: 'Go 1.22',
+      badge: 'Go',
       iconColor: '#06b6d4',
       iconText: 'Go',
-      iconSvg: '/icons/golang.svg',
       defaultBuild: 'go build -o server .',
-      defaultStart: './server'
+      defaultStart: './server',
+      versions: [
+        { value: 'auto', label: 'Auto-Detect (go.mod)', default: true },
+        { value: '1.23', label: 'Go 1.23 (Latest)' },
+        { value: '1.22', label: 'Go 1.22' },
+        { value: '1.21', label: 'Go 1.21' }
+      ]
     },
     {
       id: 'rust',
-      title: 'Rust (Actix / Axum / Rocket)',
-      description: 'High-performance Rust web services built with Cargo',
+      title: 'Rust (Actix / Axum / Rocket / Warp)',
+      description: 'High-performance memory-safe Rust services compiled via Cargo release mode',
       category: 'web',
       kind: 'web',
-      image: 'rust:1.77-alpine',
+      image: 'rust:1.82-alpine',
       port: 8080,
       badge: 'Rust Cargo',
       iconColor: '#f97316',
       iconText: 'Rust',
-      iconSvg: '/icons/rust.svg',
       defaultBuild: 'cargo build --release',
-      defaultStart: './target/release/app'
+      defaultStart: './app/server',
+      versions: [
+        { value: 'auto', label: 'Auto-Detect (rust-toolchain.toml)', default: true },
+        { value: '1.82', label: 'Rust 1.82 (Latest)' },
+        { value: '1.80', label: 'Rust 1.80' },
+        { value: '1.78', label: 'Rust 1.78' }
+      ]
     },
     {
       id: 'java',
-      title: 'Java (Spring Boot / Quarkus)',
-      description: 'JVM application built with Maven or Gradle wrapper',
+      title: 'Java (Spring Boot / Quarkus / Micronaut)',
+      description: 'JVM application built with Maven or Gradle wrapper with multi-stage build',
       category: 'web',
       kind: 'web',
       image: 'eclipse-temurin:21-jdk-alpine',
       port: 8080,
-      badge: 'Java 21',
+      badge: 'Java Temurin',
       iconColor: '#ef4444',
       iconText: 'Java',
-      iconSvg: '/icons/java.svg',
       defaultBuild: './mvnw clean package -DskipTests',
-      defaultStart: 'java -jar target/*.jar'
+      defaultStart: 'java -jar target/*.jar',
+      versions: [
+        { value: 'auto', label: 'Auto-Detect (.java-version / pom.xml)', default: true },
+        { value: '21', label: 'Java 21 (LTS / Recommended)' },
+        { value: '17', label: 'Java 17 (LTS)' },
+        { value: '11', label: 'Java 11 (LTS)' }
+      ]
     },
     {
       id: 'php',
-      title: 'PHP (Laravel / Symfony)',
-      description: 'PHP 8.3 Apache runtime with composer package management',
+      title: 'PHP (Laravel / Symfony / WordPress)',
+      description: 'PHP Apache + Composer runtime with opcache and MySQL/Postgres drivers',
       category: 'web',
       kind: 'web',
       image: 'php:8.3-apache',
       port: 80,
-      badge: 'PHP 8.3',
+      badge: 'PHP Apache',
       iconColor: '#8b5cf6',
       iconText: 'PHP',
-      iconSvg: '/icons/php.svg',
       defaultBuild: 'composer install --no-dev --optimize-autoloader',
-      defaultStart: 'apache2-foreground'
+      defaultStart: 'apache2-foreground',
+      versions: [
+        { value: 'auto', label: 'Auto-Detect (composer.json)', default: true },
+        { value: '8.3', label: 'PHP 8.3 (Latest)' },
+        { value: '8.2', label: 'PHP 8.2' },
+        { value: '8.1', label: 'PHP 8.1' }
+      ]
     },
     {
       id: 'ruby',
-      title: 'Ruby on Rails / Sinatra',
-      description: 'Rails web application with bundler and Puma server',
+      title: 'Ruby (Rails / Sinatra / Puma)',
+      description: 'Rails web application with Bundler and Puma application server',
       category: 'web',
       kind: 'web',
       image: 'ruby:3.3-alpine',
       port: 3000,
-      badge: 'Ruby 3.3',
+      badge: 'Ruby Rails',
       iconColor: '#e11d48',
       iconText: 'Ruby',
-      iconSvg: '/icons/ruby.svg',
       defaultBuild: 'bundle install && rails assets:precompile',
-      defaultStart: 'bundle exec puma -C config/puma.rb'
+      defaultStart: 'bundle exec puma -C config/puma.rb',
+      versions: [
+        { value: 'auto', label: 'Auto-Detect (.ruby-version / Gemfile)', default: true },
+        { value: '3.3', label: 'Ruby 3.3 (Latest)' },
+        { value: '3.2', label: 'Ruby 3.2' }
+      ]
+    },
+    {
+      id: 'elixir',
+      title: 'Elixir (Phoenix / Plug)',
+      description: 'Fault-tolerant concurrent services on the BEAM VM with Mix package manager',
+      category: 'web',
+      kind: 'web',
+      image: 'elixir:1.17-alpine',
+      port: 4000,
+      badge: 'Elixir Phoenix',
+      iconColor: '#4e2a8e',
+      iconText: 'Elixir',
+      defaultBuild: 'mix deps.get --only prod && mix compile',
+      defaultStart: 'mix phx.server',
+      versions: [
+        { value: 'auto', label: 'Auto-Detect (.elixir-version / mix.exs)', default: true },
+        { value: '1.17', label: 'Elixir 1.17 (OTP 26)' },
+        { value: '1.16', label: 'Elixir 1.16' }
+      ]
+    },
+    {
+      id: 'deno',
+      title: 'Deno (Fresh / Hono / Oak)',
+      description: 'Secure TypeScript, JavaScript and WebAssembly runtime with zero setup',
+      category: 'web',
+      kind: 'web',
+      image: 'denoland/deno:alpine',
+      port: 8000,
+      badge: 'Deno Runtime',
+      iconColor: '#000000',
+      iconText: 'Deno',
+      defaultBuild: 'deno cache main.ts',
+      defaultStart: 'deno run --allow-net --allow-env --allow-read main.ts',
+      versions: [
+        { value: 'auto', label: 'Auto-Detect (deno.json)', default: true },
+        { value: 'latest', label: 'Deno (Latest)' },
+        { value: '2.0', label: 'Deno 2.0' },
+        { value: '1.45', label: 'Deno 1.45' }
+      ]
+    },
+    {
+      id: 'bun',
+      title: 'Bun (Elysia / Hono / Next.js)',
+      description: 'All-in-one JavaScript toolkit & fast runtime with native TypeScript support',
+      category: 'web',
+      kind: 'web',
+      image: 'oven/bun:alpine',
+      port: 3000,
+      badge: 'Bun All-In-One',
+      iconColor: '#fbf0df',
+      iconText: 'Bun',
+      defaultBuild: 'bun install --frozen-lockfile',
+      defaultStart: 'bun run start',
+      versions: [
+        { value: 'auto', label: 'Auto-Detect (bunfig.toml / package.json)', default: true },
+        { value: 'latest', label: 'Bun (Latest)' },
+        { value: '1.1', label: 'Bun 1.1' }
+      ]
+    },
+    {
+      id: 'dotnet',
+      title: '.NET / C# (ASP.NET Core / Web API)',
+      description: 'High-performance cross-platform enterprise web applications and APIs',
+      category: 'web',
+      kind: 'web',
+      image: 'mcr.microsoft.com/dotnet/sdk:8.0-alpine',
+      port: 5000,
+      badge: '.NET Core',
+      iconColor: '#512bd4',
+      iconText: '.NET',
+      defaultBuild: 'dotnet restore && dotnet publish -c Release -o /app/publish',
+      defaultStart: 'dotnet /app/publish/*.dll',
+      versions: [
+        { value: 'auto', label: 'Auto-Detect (global.json / .csproj)', default: true },
+        { value: '8.0', label: '.NET 8.0 (LTS / Recommended)' },
+        { value: '9.0', label: '.NET 9.0' }
+      ]
+    },
+    {
+      id: 'scala',
+      title: 'Scala (sbt / Play / Akka / Http4s)',
+      description: 'Functional and object-oriented JVM services compiled with sbt',
+      category: 'web',
+      kind: 'web',
+      image: 'sbtscala/scala-sbt:eclipse-temurin-jammy-21.0.6_7_1.10.11_3.6.4',
+      port: 9000,
+      badge: 'Scala sbt',
+      iconColor: '#dc322f',
+      iconText: 'Scala',
+      defaultBuild: 'sbt stage',
+      defaultStart: './target/universal/stage/bin/*',
+      versions: [
+        { value: 'auto', label: 'Auto-Detect (build.sbt)', default: true },
+        { value: '21', label: 'Java 21 (Temurin)' },
+        { value: '17', label: 'Java 17 (Temurin)' }
+      ]
+    },
+    {
+      id: 'kotlin',
+      title: 'Kotlin (Ktor / Spring Boot / Micronaut)',
+      description: 'Modern concise server-side Kotlin applications built with Gradle',
+      category: 'web',
+      kind: 'web',
+      image: 'eclipse-temurin:21-jdk-alpine',
+      port: 8080,
+      badge: 'Kotlin Gradle',
+      iconColor: '#7f52ff',
+      iconText: 'Kotlin',
+      defaultBuild: './gradlew build -x test',
+      defaultStart: 'java -jar build/libs/*.jar',
+      versions: [
+        { value: 'auto', label: 'Auto-Detect (build.gradle.kts)', default: true },
+        { value: '21', label: 'Kotlin (Java 21 LTS)' },
+        { value: '17', label: 'Kotlin (Java 17 LTS)' }
+      ]
+    },
+    {
+      id: 'swift',
+      title: 'Swift (Vapor / Hummingbird)',
+      description: 'Server-side Swift web framework with async/await and non-blocking I/O',
+      category: 'web',
+      kind: 'web',
+      image: 'swift:5.10-jammy',
+      port: 8080,
+      badge: 'Swift Vapor',
+      iconColor: '#f05138',
+      iconText: 'Swift',
+      defaultBuild: 'swift build -c release',
+      defaultStart: '/app/Run serve --env production --hostname 0.0.0.0 --port 8080',
+      versions: [
+        { value: 'auto', label: 'Auto-Detect (Package.swift)', default: true },
+        { value: '5.10', label: 'Swift 5.10 (Jammy)' },
+        { value: '5.9', label: 'Swift 5.9' }
+      ]
+    },
+    {
+      id: 'haskell',
+      title: 'Haskell (Servant / Yesod / Scotty)',
+      description: 'Purely functional web APIs built with Stack or Cabal',
+      category: 'web',
+      kind: 'web',
+      image: 'haskell:9.8-slim',
+      port: 8080,
+      badge: 'Haskell GHC',
+      iconColor: '#5d4f85',
+      iconText: 'Haskell',
+      defaultBuild: 'stack build --copy-bins',
+      defaultStart: '/app/server',
+      versions: [
+        { value: 'auto', label: 'Auto-Detect (stack.yaml / cabal)', default: true },
+        { value: '9.8', label: 'GHC 9.8' },
+        { value: '9.6', label: 'GHC 9.6' }
+      ]
+    },
+    {
+      id: 'clojure',
+      title: 'Clojure (Ring / Compojure / Kit)',
+      description: 'Dynamic functional Lisp dialect targeting the Java Virtual Machine',
+      category: 'web',
+      kind: 'web',
+      image: 'clojure:temurin-21-lein-alpine',
+      port: 3000,
+      badge: 'Clojure Lein',
+      iconColor: '#5881d8',
+      iconText: 'Clojure',
+      defaultBuild: 'lein uberjar',
+      defaultStart: 'java -jar target/*-standalone.jar',
+      versions: [
+        { value: 'auto', label: 'Auto-Detect (project.clj / deps.edn)', default: true },
+        { value: '21', label: 'Temurin 21 Lein' }
+      ]
+    },
+    {
+      id: 'crystal',
+      title: 'Crystal (Kemal / Lucky / Spider-Gazelle)',
+      description: 'C-like speed with Ruby-like syntax and static type checking',
+      category: 'web',
+      kind: 'web',
+      image: 'crystallang/crystal:latest',
+      port: 3000,
+      badge: 'Crystal Shards',
+      iconColor: '#000000',
+      iconText: 'Crystal',
+      defaultBuild: 'shards install && crystal build src/*.cr --release -o app',
+      defaultStart: './app',
+      versions: [
+        { value: 'auto', label: 'Auto-Detect (shard.yml)', default: true },
+        { value: 'latest', label: 'Crystal (Latest)' }
+      ]
+    },
+    {
+      id: 'zig',
+      title: 'Zig (HTTP / Native Backend)',
+      description: 'General-purpose programming language and toolchain for robust software',
+      category: 'web',
+      kind: 'web',
+      image: 'archlinux:latest',
+      port: 8080,
+      badge: 'Zig Native',
+      iconColor: '#f7a41d',
+      iconText: 'Zig',
+      defaultBuild: 'zig build -Doptimize=ReleaseFast',
+      defaultStart: './zig-out/bin/server',
+      versions: [
+        { value: 'auto', label: 'Auto-Detect (build.zig.zon)', default: true },
+        { value: 'latest', label: 'Zig (Latest)' }
+      ]
+    },
+    {
+      id: 'dart',
+      title: 'Dart (Shelf / dart_frog / Server)',
+      description: 'Client-optimized language for fast apps on any platform with AOT compilation',
+      category: 'web',
+      kind: 'web',
+      image: 'dart:stable',
+      port: 8080,
+      badge: 'Dart Shelf',
+      iconColor: '#0175c2',
+      iconText: 'Dart',
+      defaultBuild: 'dart pub get && dart compile exe bin/server.dart -o server',
+      defaultStart: './server',
+      versions: [
+        { value: 'auto', label: 'Auto-Detect (pubspec.yaml)', default: true },
+        { value: 'stable', label: 'Dart (Stable)' }
+      ]
     },
     {
       id: 'dockerfile',
       title: 'Custom Dockerfile',
-      description: 'Use the Dockerfile located in your repository directory',
+      description: 'Use the Dockerfile located in your repository directory (Hardened & Scanned)',
       category: 'web',
       kind: 'web',
       image: 'custom',
@@ -288,16 +556,18 @@
       badge: 'Docker',
       iconColor: '#0284c7',
       iconText: 'Docker',
-      iconSvg: '/icons/docker.svg',
       defaultBuild: 'docker build -t app .',
-      defaultStart: 'docker run app'
+      defaultStart: 'docker run app',
+      versions: [
+        { value: 'custom', label: 'Custom Dockerfile', default: true }
+      ]
     },
 
-    // Static Sites
+    // ─── Static Sites ───────────────────────────────────────────────────────
     {
       id: 'static-spa',
-      title: 'Static SPA (React / Vite / Vue / Svelte)',
-      description: 'Single page applications compiled to static HTML/CSS/JS',
+      title: 'Static SPA (React / Vite / Vue / SvelteKit / Astro / HTML)',
+      description: 'Single page applications compiled to static assets served by high-speed Nginx',
       category: 'static',
       kind: 'static',
       image: 'nginx:alpine',
@@ -305,13 +575,15 @@
       badge: 'Static / SPA',
       iconColor: '#0ea5e9',
       iconText: 'SPA',
-      iconSvg: '/icons/react.svg',
       defaultBuild: 'npm install && npm run build',
-      defaultStart: 'nginx -g "daemon off;"'
+      defaultStart: 'nginx -g "daemon off;"',
+      versions: [
+        { value: 'auto', label: 'Static Asset Ingress (Nginx)', default: true }
+      ]
     },
     {
       id: 'nginx',
-      title: 'Nginx Static Server',
+      title: 'Nginx Static Web Server',
       description: 'High-performance static file serving and reverse proxying',
       category: 'static',
       kind: 'static',
@@ -320,16 +592,18 @@
       badge: 'Web Server',
       iconColor: '#10b981',
       iconText: 'Nginx',
-      iconSvg: '/icons/nginx.svg',
       defaultBuild: '',
-      defaultStart: 'nginx -g "daemon off;"'
+      defaultStart: 'nginx -g "daemon off;"',
+      versions: [
+        { value: 'auto', label: 'Nginx Alpine', default: true }
+      ]
     },
 
-    // Background Workers & Cron
+    // ─── Background Workers & Cron ──────────────────────────────────────────
     {
       id: 'worker',
       title: 'Background Worker',
-      description: 'Continuous queue consumer, event listener, or background task',
+      description: 'Continuous queue consumer, event listener, Celery, BullMQ, or worker task',
       category: 'worker',
       kind: 'worker',
       image: 'node:20-alpine',
@@ -338,12 +612,18 @@
       iconColor: '#6366f1',
       iconText: 'Worker',
       defaultBuild: 'npm install',
-      defaultStart: 'npm run worker'
+      defaultStart: 'npm run worker',
+      versions: [
+        { value: 'auto', label: 'Auto-Detect Worker Runtime', default: true },
+        { value: 'node', label: 'Node.js Worker' },
+        { value: 'python', label: 'Python Celery / RQ Worker' },
+        { value: 'go', label: 'Go Worker Daemon' }
+      ]
     },
     {
       id: 'cron-job',
       title: 'Scheduled Cron Job',
-      description: 'Periodic task executed on a recurring cron schedule',
+      description: 'Periodic task executed on an automated recurring cron schedule',
       category: 'worker',
       kind: 'cron',
       image: 'alpine:latest',
@@ -351,7 +631,12 @@
       badge: 'Cron',
       iconColor: '#d97706',
       iconText: 'Cron',
-      defaultStart: 'echo "Running scheduled job"'
+      defaultStart: 'echo "Running scheduled job"',
+      versions: [
+        { value: 'auto', label: 'Auto-Detect Runtime', default: true },
+        { value: 'node', label: 'Node.js Script' },
+        { value: 'python', label: 'Python Script' }
+      ]
     }
   ];
 
@@ -607,6 +892,7 @@
     internalPort = p.port || 80;
     buildCommand = p.defaultBuild || '';
     startCommand = p.defaultStart || '';
+    runtimeVersion = p.versions?.find(v => v.default)?.value || 'auto';
 
     // For static sites, automatically clean -backend / -api / -server / -frontend suffixes so the site has its clean primary name
     if (p.kind === 'static' || p.id === 'static-spa' || p.id === 'nginx') {
@@ -665,6 +951,10 @@
         rootDirectory: rootDirectory,
         sourceType: sourceType,
         presetId: selectedPreset?.id ?? 'custom',
+        runtimeVersion: runtimeVersion === 'auto' ? '' : runtimeVersion,
+        mem_limit: memoryLimit,
+        cpu_limit: cpuLimit,
+        pids_limit: pidsLimit,
         image: imageRef,
         buildCommand: buildCommand,
         startCommand: startCommand,
@@ -1457,8 +1747,8 @@
         </div>
       </div>
 
-      <!-- Port and Kind -->
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.5rem;">
+      <!-- Port and Base Image -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.25rem;">
         <div class="form-group" style="margin:0;">
           <label for="port-input" class="form-label">Internal Port</label>
           <input 
@@ -1480,10 +1770,80 @@
             id="image-ref-input" 
             type="text" 
             class="form-input font-mono" 
-            placeholder="python:3.11-slim" 
+            placeholder="node:20-alpine" 
             bind:value={imageRef} 
             required 
           />
+        </div>
+      </div>
+
+      <!-- Dynamic Runtime Version Selection -->
+      {#if selectedPreset?.versions && selectedPreset.versions.length > 1}
+        <div style="background: var(--color-canvas); padding: 1rem 1.25rem; border-radius: var(--radius-md); border: 1px solid var(--color-border); margin-bottom: 1.25rem;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+            <div>
+              <label for="runtime-version-select" class="form-label" style="margin: 0; font-size: 0.875rem;">
+                {selectedPreset.title} Runtime Version
+              </label>
+              <p class="text-xs text-muted" style="margin: 2px 0 0 0;">
+                Choose an explicit version or let kloudsPanel auto-detect from repository manifest files (.node-version, go.mod, etc.).
+              </p>
+            </div>
+          </div>
+          <select id="runtime-version-select" class="form-select font-mono text-sm" bind:value={runtimeVersion}>
+            {#each selectedPreset.versions as v}
+              <option value={v.value}>{v.label}</option>
+            {/each}
+          </select>
+        </div>
+      {/if}
+
+      <!-- Container Resource Limits & Security Hardening Box -->
+      <div style="background: var(--color-canvas); padding: 1.25rem; border-radius: var(--radius-md); border: 1px solid var(--color-border); margin-bottom: 1.5rem;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <ShieldCheck size={18} style="color: var(--color-accent);" />
+            <span style="font-size: 0.875rem; font-weight: 700;">Resource Limits & Security Hardening</span>
+          </div>
+          <span class="badge" style="background: rgba(16,185,129,0.15); color: #065f46; font-size: 0.7rem;">
+            🛡️ Non-Root Sandbox Active
+          </span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 0.75rem;">
+          <div class="form-group" style="margin: 0;">
+            <label for="mem-limit-select" class="form-label" style="font-size: 0.8125rem;">Memory Limit</label>
+            <select id="mem-limit-select" class="form-select font-mono text-xs" bind:value={memoryLimit}>
+              <option value="256m">256 MB (Micro)</option>
+              <option value="512m">512 MB (Default Standard)</option>
+              <option value="1g">1 GB (Medium)</option>
+              <option value="2g">2 GB (High Performance)</option>
+              <option value="4g">4 GB (Extra Large)</option>
+              <option value="8g">8 GB (Maximum)</option>
+            </select>
+          </div>
+
+          <div class="form-group" style="margin: 0;">
+            <label for="cpu-limit-select" class="form-label" style="font-size: 0.8125rem;">CPU Limit</label>
+            <select id="cpu-limit-select" class="form-select font-mono text-xs" bind:value={cpuLimit}>
+              <option value="0.5">0.5 Cores (Eco)</option>
+              <option value="1.0">1.0 Core (Default Standard)</option>
+              <option value="2.0">2.0 Cores (High Throughput)</option>
+              <option value="4.0">4.0 Cores (Maximum)</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem;">
+          <span class="badge" style="background: var(--color-surface); border: 1px solid var(--color-border); font-size: 0.7rem;">
+            🔒 Process Limit: {pidsLimit} PIDs (Fork-Bomb Protected)
+          </span>
+          <span class="badge" style="background: var(--color-surface); border: 1px solid var(--color-border); font-size: 0.7rem;">
+            👤 User 1001 (Non-Root Execution)
+          </span>
+          <span class="badge" style="background: var(--color-surface); border: 1px solid var(--color-border); font-size: 0.7rem;">
+            🛡️ Linux Capabilities Dropped
+          </span>
         </div>
       </div>
 

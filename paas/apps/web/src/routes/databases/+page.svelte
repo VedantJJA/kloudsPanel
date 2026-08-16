@@ -2,6 +2,7 @@
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
   import { Database, Plus, Loader2, Trash2 } from 'lucide-svelte';
+  import FrameworkIcon from '$lib/components/icons/FrameworkIcon.svelte';
 
   let databases = $state<any[]>([]);
   let loading = $state(true);
@@ -110,9 +111,12 @@
         {#each databases as db}
           <tr style="cursor:pointer;" onclick={() => goto(`/databases/${db.id || db.ID}/overview`)}>
             <td style="font-weight:600;">
-              <a href="/databases/{db.id || db.ID}/overview" style="color:var(--color-ink); text-decoration:none; font-weight:700;">
-                {db.name || db.Name}
-              </a>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <FrameworkIcon name={db.engine || db.Engine} size={20} />
+                <a href="/databases/{db.id || db.ID}/overview" style="color:var(--color-ink); text-decoration:none; font-weight:700;">
+                  {db.name || db.Name}
+                </a>
+              </div>
             </td>
             <td><span class="badge" style="background:#e0f2fe; color:#0369a1; text-transform:uppercase; font-weight:700;">{db.engine || db.Engine}</span></td>
             <td><span class="font-mono text-xs">{db.internal_hostname || db.InternalHostname || '-'}</span></td>

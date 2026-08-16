@@ -45,6 +45,9 @@ type ParsedRenderService struct {
 	EnvVars           map[string]string `json:"env_vars"`
 	RequiredEnvVars   []string          `json:"required_env_vars,omitempty"`
 	Routes            []ParsedRoute     `json:"routes,omitempty"`
+	RuntimeVersion    string            `json:"runtime_version,omitempty"`
+	MemoryLimit       string            `json:"memory_limit,omitempty"`
+	CPULimit          string            `json:"cpu_limit,omitempty"`
 }
 
 type ParsedRenderResult struct {
@@ -90,8 +93,9 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 					engine = "clickhouse"
 				}
 				res.Databases = append(res.Databases, fiber.Map{
-					"name":   currentSvc.Name,
-					"engine": engine,
+					"name":    currentSvc.Name,
+					"engine":  engine,
+					"version": currentSvc.RuntimeVersion,
 				})
 			} else {
 				res.Services = append(res.Services, *currentSvc)
@@ -255,6 +259,31 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 					currentSvc.Kind = "database"
 				}
 			}
+		} else if !inEnvVars && (strings.HasPrefix(trimmed, "version:") || strings.HasPrefix(trimmed, "runtime_version:")) {
+			// Parse version: "20" or version: "3.12" for runtime version selection
+			parts := strings.SplitN(trimmed, ":", 2)
+			if len(parts) > 1 {
+				val := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
+				if val != "" {
+					currentSvc.RuntimeVersion = sanitizeVersionString(val)
+				}
+			}
+		} else if !inEnvVars && (strings.HasPrefix(trimmed, "mem_limit:") || strings.HasPrefix(trimmed, "memory:") || strings.HasPrefix(trimmed, "memory_limit:")) {
+			parts := strings.SplitN(trimmed, ":", 2)
+			if len(parts) > 1 {
+				val := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
+				if val != "" {
+					currentSvc.MemoryLimit = sanitizeResourceLimit(val)
+				}
+			}
+		} else if !inEnvVars && (strings.HasPrefix(trimmed, "cpu_limit:") || strings.HasPrefix(trimmed, "cpus:") || strings.HasPrefix(trimmed, "cpu:")) {
+			parts := strings.SplitN(trimmed, ":", 2)
+			if len(parts) > 1 {
+				val := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
+				if val != "" {
+					currentSvc.CPULimit = sanitizeResourceLimit(val)
+				}
+			}
 		} else if !inEnvVars && (strings.HasPrefix(trimmed, "env:") || strings.HasPrefix(trimmed, "runtime:") || strings.HasPrefix(trimmed, "engine:")) {
 			parts := strings.SplitN(trimmed, ":", 2)
 			if len(parts) > 1 && strings.TrimSpace(parts[1]) != "" {
@@ -263,7 +292,7 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 				switch strings.ToLower(val) {
 				case "python":
 					currentSvc.Preset = "python"
-					currentSvc.Image = "python:3.11-slim"
+					currentSvc.Image = "python:3.12-slim"
 					currentSvc.InternalPort = 5000
 				case "node", "nodejs":
 					currentSvc.Preset = "node"
@@ -271,11 +300,11 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 					currentSvc.InternalPort = 3000
 				case "go", "golang":
 					currentSvc.Preset = "go"
-					currentSvc.Image = "golang:1.22-alpine"
+					currentSvc.Image = "golang:1.23-alpine"
 					currentSvc.InternalPort = 8080
 				case "rust":
 					currentSvc.Preset = "rust"
-					currentSvc.Image = "rust:1.77-alpine"
+					currentSvc.Image = "rust:1.82-alpine"
 					currentSvc.InternalPort = 8080
 				case "java":
 					currentSvc.Preset = "java"
@@ -289,6 +318,54 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 					currentSvc.Preset = "ruby"
 					currentSvc.Image = "ruby:3.3-alpine"
 					currentSvc.InternalPort = 3000
+				case "elixir", "phoenix":
+					currentSvc.Preset = "elixir"
+					currentSvc.Image = "elixir:1.17-alpine"
+					currentSvc.InternalPort = 4000
+				case "deno":
+					currentSvc.Preset = "deno"
+					currentSvc.Image = "denoland/deno:alpine"
+					currentSvc.InternalPort = 8000
+				case "bun":
+					currentSvc.Preset = "bun"
+					currentSvc.Image = "oven/bun:alpine"
+					currentSvc.InternalPort = 3000
+				case "dotnet", "csharp", "aspnet", ".net":
+					currentSvc.Preset = "dotnet"
+					currentSvc.Image = "mcr.microsoft.com/dotnet/sdk:8.0-alpine"
+					currentSvc.InternalPort = 5000
+				case "scala", "sbt":
+					currentSvc.Preset = "scala"
+					currentSvc.Image = "eclipse-temurin:21-jdk-alpine"
+					currentSvc.InternalPort = 9000
+				case "kotlin", "ktor":
+					currentSvc.Preset = "kotlin"
+					currentSvc.Image = "eclipse-temurin:21-jdk-alpine"
+					currentSvc.InternalPort = 8080
+				case "swift", "vapor":
+					currentSvc.Preset = "swift"
+					currentSvc.Image = "swift:5.10-jammy"
+					currentSvc.InternalPort = 8080
+				case "haskell":
+					currentSvc.Preset = "haskell"
+					currentSvc.Image = "haskell:9.8-slim"
+					currentSvc.InternalPort = 3000
+				case "clojure":
+					currentSvc.Preset = "clojure"
+					currentSvc.Image = "clojure:temurin-21-lein-alpine"
+					currentSvc.InternalPort = 3000
+				case "crystal":
+					currentSvc.Preset = "crystal"
+					currentSvc.Image = "crystallang/crystal:latest"
+					currentSvc.InternalPort = 3000
+				case "zig":
+					currentSvc.Preset = "zig"
+					currentSvc.Image = "alpine:latest"
+					currentSvc.InternalPort = 8080
+				case "dart":
+					currentSvc.Preset = "dart"
+					currentSvc.Image = "dart:stable"
+					currentSvc.InternalPort = 8080
 				case "docker", "dockerfile":
 					currentSvc.Preset = "dockerfile"
 					currentSvc.Image = "custom"
@@ -847,7 +924,7 @@ func detectFrameworkFromTree(repoPath string, treeFiles map[string]bool, fetchRa
 					startCommand = "npm start"
 				}
 				internalPort = 3000
-			} else if deps["nuxt"] || deps["@nuxt/kit"] {
+			} else if deps["nuxt"] || deps["@nuxt/kit"] || deps["nuxt3"] {
 				preset = "nodejs"
 				kind = "web"
 				if buildCommand == "" {
@@ -863,13 +940,52 @@ func detectFrameworkFromTree(repoPath string, treeFiles map[string]bool, fetchRa
 				}
 				startCommand = "node build/index.js"
 				internalPort = 3000
-			} else if deps["astro"] {
+			} else if deps["@remix-run/node"] || deps["@remix-run/react"] {
+				preset = "nodejs"
+				kind = "web"
+				if buildCommand == "" {
+					buildCommand = "npm run build"
+				}
+				if startCommand == "" {
+					startCommand = "npm start"
+				}
+				internalPort = 3000
+			} else if deps["gatsby"] {
 				preset = "static-spa"
 				kind = "static"
 				if buildCommand == "" {
 					buildCommand = "npm run build"
 				}
 				internalPort = 80
+			} else if deps["@angular/core"] {
+				preset = "static-spa"
+				kind = "static"
+				if buildCommand == "" {
+					buildCommand = "npm run build"
+				}
+				internalPort = 80
+			} else if deps["solid-js"] || deps["solid-start"] {
+				preset = "static-spa"
+				kind = "static"
+				if buildCommand == "" {
+					buildCommand = "npm run build"
+				}
+				internalPort = 80
+			} else if deps["astro"] {
+				// Astro can be SSR or static; default to static but check for SSR adapter
+				preset = "static-spa"
+				kind = "static"
+				if deps["@astrojs/node"] || deps["@astrojs/deno"] {
+					preset = "nodejs"
+					kind = "web"
+					internalPort = 3000
+				}
+				if buildCommand == "" {
+					buildCommand = "npm run build"
+				}
+				if kind == "static" {
+					internalPort = 80
+				}
 			} else if deps["vite"] {
 				preset = "static-spa"
 				kind = "static"
@@ -884,7 +1000,21 @@ func detectFrameworkFromTree(repoPath string, treeFiles map[string]bool, fetchRa
 					buildCommand = "npm run build"
 				}
 				internalPort = 80
-			} else if deps["express"] || deps["fastify"] || deps["@nestjs/core"] || deps["koa"] {
+			} else if deps["hono"] {
+				preset = "nodejs"
+				kind = "web"
+				internalPort = 3000
+				if startCommand == "" {
+					startCommand = "node dist/index.js || node index.js"
+				}
+			} else if deps["elysia"] || deps["@elysiajs/eden"] {
+				preset = "bun"
+				kind = "web"
+				internalPort = 3000
+				if startCommand == "" {
+					startCommand = "bun run src/index.ts || bun run index.ts"
+				}
+			} else if deps["express"] || deps["fastify"] || deps["@nestjs/core"] || deps["koa"] || deps["hapi"] || deps["@hapi/hapi"] || deps["restify"] || deps["polka"] {
 				preset = "nodejs"
 				kind = "web"
 				internalPort = 3000
@@ -912,7 +1042,7 @@ func detectFrameworkFromTree(repoPath string, treeFiles map[string]bool, fetchRa
 		}
 
 		// 2. Python Ecosystem
-		if hasFile(prefix+"requirements.txt") || hasFile(prefix+"pyproject.toml") || hasFile(prefix+"Pipfile") {
+		if hasFile(prefix+"requirements.txt") || hasFile(prefix+"pyproject.toml") || hasFile(prefix+"Pipfile") || hasFile(prefix+"poetry.lock") || hasFile(prefix+"pdm.lock") {
 			reqContent := fetchRaw(prefix + "requirements.txt")
 			pyprojectContent := fetchRaw(prefix + "pyproject.toml")
 			combined := strings.ToLower(reqContent + "\n" + pyprojectContent)
@@ -930,6 +1060,21 @@ func detectFrameworkFromTree(repoPath string, treeFiles map[string]bool, fetchRa
 			} else if strings.Contains(combined, "django") {
 				buildCommand = "python manage.py collectstatic --noinput || true"
 				startCommand = "gunicorn config.wsgi:application --bind 0.0.0.0:$PORT || python manage.py runserver 0.0.0.0:$PORT"
+				internalPort = 8000
+			} else if strings.Contains(combined, "starlette") {
+				startCommand = "uvicorn main:app --host 0.0.0.0 --port $PORT || python main.py"
+				internalPort = 8000
+			} else if strings.Contains(combined, "sanic") {
+				startCommand = "sanic server.app --host 0.0.0.0 --port $PORT || python server.py"
+				internalPort = 8000
+			} else if strings.Contains(combined, "tornado") {
+				startCommand = "python app.py || python server.py || python main.py"
+				internalPort = 8888
+			} else if strings.Contains(combined, "aiohttp") {
+				startCommand = "python app.py || python server.py || python main.py"
+				internalPort = 8080
+			} else if strings.Contains(combined, "litestar") {
+				startCommand = "litestar run --host 0.0.0.0 --port $PORT || uvicorn app:app --host 0.0.0.0 --port $PORT"
 				internalPort = 8000
 			}
 
@@ -1039,7 +1184,169 @@ func detectFrameworkFromTree(repoPath string, treeFiles map[string]bool, fetchRa
 			}
 		}
 
-		// 9. Plain Static HTML
+		// 9. Elixir / Phoenix
+		if hasFile(prefix + "mix.exs") {
+			return &ParsedRenderService{
+				Name:            defaultName,
+				Kind:            "web",
+				Preset:          "elixir",
+				RootDir:         rootDir,
+				StartCommand:    "mix phx.server || mix run --no-halt",
+				InternalPort:    4000,
+				AutoDeploy:      true,
+				EnvVars:         envMap,
+				RequiredEnvVars: reqKeys,
+			}
+		}
+
+		// 10. Deno
+		if hasFile(prefix+"deno.json") || hasFile(prefix+"deno.jsonc") {
+			return &ParsedRenderService{
+				Name:            defaultName,
+				Kind:            "web",
+				Preset:          "deno",
+				RootDir:         rootDir,
+				StartCommand:    "deno run --allow-net --allow-env --allow-read main.ts",
+				InternalPort:    8000,
+				AutoDeploy:      true,
+				EnvVars:         envMap,
+				RequiredEnvVars: reqKeys,
+			}
+		}
+
+		// 11. .NET / C#
+		{
+			hasDotnet := false
+			for path := range treeFiles {
+				if strings.HasPrefix(path, prefix) && (strings.HasSuffix(path, ".csproj") || strings.HasSuffix(path, ".fsproj") || strings.HasSuffix(path, ".sln")) {
+					hasDotnet = true
+					break
+				}
+			}
+			if hasDotnet {
+				return &ParsedRenderService{
+					Name:            defaultName,
+					Kind:            "web",
+					Preset:          "dotnet",
+					RootDir:         rootDir,
+					BuildCommand:    "dotnet publish -c Release -o /app/publish",
+					InternalPort:    5000,
+					AutoDeploy:      true,
+					EnvVars:         envMap,
+					RequiredEnvVars: reqKeys,
+				}
+			}
+		}
+
+		// 12. Scala / sbt
+		if hasFile(prefix + "build.sbt") {
+			return &ParsedRenderService{
+				Name:            defaultName,
+				Kind:            "web",
+				Preset:          "scala",
+				RootDir:         rootDir,
+				BuildCommand:    "sbt stage || sbt assembly",
+				InternalPort:    9000,
+				AutoDeploy:      true,
+				EnvVars:         envMap,
+				RequiredEnvVars: reqKeys,
+			}
+		}
+
+		// 13. Crystal
+		if hasFile(prefix + "shard.yml") {
+			return &ParsedRenderService{
+				Name:            defaultName,
+				Kind:            "web",
+				Preset:          "crystal",
+				RootDir:         rootDir,
+				BuildCommand:    "shards install && crystal build src/*.cr --release -o app",
+				StartCommand:    "./app",
+				InternalPort:    3000,
+				AutoDeploy:      true,
+				EnvVars:         envMap,
+				RequiredEnvVars: reqKeys,
+			}
+		}
+
+		// 14. Swift / Vapor
+		if hasFile(prefix + "Package.swift") {
+			return &ParsedRenderService{
+				Name:            defaultName,
+				Kind:            "web",
+				Preset:          "swift",
+				RootDir:         rootDir,
+				BuildCommand:    "swift build -c release",
+				InternalPort:    8080,
+				AutoDeploy:      true,
+				EnvVars:         envMap,
+				RequiredEnvVars: reqKeys,
+			}
+		}
+
+		// 15. Dart
+		if hasFile(prefix + "pubspec.yaml") {
+			return &ParsedRenderService{
+				Name:            defaultName,
+				Kind:            "web",
+				Preset:          "dart",
+				RootDir:         rootDir,
+				BuildCommand:    "dart pub get && dart compile exe bin/server.dart -o server",
+				StartCommand:    "./server",
+				InternalPort:    8080,
+				AutoDeploy:      true,
+				EnvVars:         envMap,
+				RequiredEnvVars: reqKeys,
+			}
+		}
+
+		// 16. Clojure
+		if hasFile(prefix+"project.clj") || hasFile(prefix+"deps.edn") {
+			return &ParsedRenderService{
+				Name:            defaultName,
+				Kind:            "web",
+				Preset:          "clojure",
+				RootDir:         rootDir,
+				BuildCommand:    "lein uberjar",
+				StartCommand:    "java -jar target/*-standalone.jar",
+				InternalPort:    3000,
+				AutoDeploy:      true,
+				EnvVars:         envMap,
+				RequiredEnvVars: reqKeys,
+			}
+		}
+
+		// 17. Haskell
+		if hasFile(prefix+"stack.yaml") || hasFile(prefix+"cabal.project") {
+			return &ParsedRenderService{
+				Name:            defaultName,
+				Kind:            "web",
+				Preset:          "haskell",
+				RootDir:         rootDir,
+				BuildCommand:    "stack build || cabal build",
+				InternalPort:    3000,
+				AutoDeploy:      true,
+				EnvVars:         envMap,
+				RequiredEnvVars: reqKeys,
+			}
+		}
+
+		// 18. Zig
+		if hasFile(prefix + "build.zig") {
+			return &ParsedRenderService{
+				Name:            defaultName,
+				Kind:            "web",
+				Preset:          "zig",
+				RootDir:         rootDir,
+				BuildCommand:    "zig build -Doptimize=ReleaseSafe",
+				InternalPort:    8080,
+				AutoDeploy:      true,
+				EnvVars:         envMap,
+				RequiredEnvVars: reqKeys,
+			}
+		}
+
+		// 19. Plain Static HTML (last resort)
 		if hasFile(prefix + "index.html") {
 			return &ParsedRenderService{
 				Name:            defaultName,
@@ -1062,9 +1369,17 @@ func detectFrameworkFromTree(repoPath string, treeFiles map[string]bool, fetchRa
 	}
 
 	// 2. Check Monorepo Subdirectories if root is empty or has standard monorepo folders
-	commonDirs := []string{"frontend", "backend", "client", "server", "web", "api", "app", "apps/web", "apps/api", "packages/client", "packages/server"}
+	commonDirs := []string{"frontend", "backend", "client", "server", "web", "api", "app", "apps/web", "apps/api", "apps/frontend", "apps/backend", "packages/client", "packages/server", "services/api", "services/web"}
+	monorepoManifests := []string{"package.json", "requirements.txt", "pyproject.toml", "go.mod", "Cargo.toml", "pom.xml", "build.gradle", "build.gradle.kts", "Gemfile", "composer.json", "mix.exs", "deno.json", "pubspec.yaml", "shard.yml", "Dockerfile"}
 	for _, dir := range commonDirs {
-		if hasFile(dir+"/package.json") || hasFile(dir+"/requirements.txt") || hasFile(dir+"/go.mod") || hasFile(dir+"/Dockerfile") {
+		hasManifest := false
+		for _, mf := range monorepoManifests {
+			if hasFile(dir + "/" + mf) {
+				hasManifest = true
+				break
+			}
+		}
+		if hasManifest {
 			// Avoid adding duplicate if root already captured this directory
 			alreadyAdded := false
 			for _, s := range result.Services {
@@ -1147,7 +1462,12 @@ func (h *Handler) handleDeployBlueprint(c fiber.Ctx) error {
 			continue
 		}
 
-		dbRec, err := h.provisionDatabaseInternal(c.Context(), project.ID, dbName, engine)
+		dbVersion := fmt.Sprintf("%v", dbInfo["version"])
+		if dbVersion == "<nil>" {
+			dbVersion = ""
+		}
+
+		dbRec, err := h.provisionDatabaseInternal(c.Context(), project.ID, dbName, engine, dbVersion, "", "")
 		if err == nil && dbRec != nil {
 			createdDatabases = append(createdDatabases, dbRec)
 			var meta struct {
@@ -1288,14 +1608,18 @@ func (h *Handler) handleDeployBlueprint(c fiber.Ctx) error {
 		}
 
 		resMap := map[string]any{
-			"gitRepoUrl":    req.RepoURL,
-			"gitBranch":     branch,
-			"rootDir":       svcInfo.RootDir,
-			"rootDirectory": svcInfo.RootDir,
-			"buildCommand":  svcInfo.BuildCommand,
-			"startCommand":  svcInfo.StartCommand,
-			"presetId":      svcInfo.Preset,
-			"env":           resolvedEnv,
+			"gitRepoUrl":     req.RepoURL,
+			"gitBranch":      branch,
+			"rootDir":        svcInfo.RootDir,
+			"rootDirectory":  svcInfo.RootDir,
+			"buildCommand":   svcInfo.BuildCommand,
+			"startCommand":   svcInfo.StartCommand,
+			"presetId":       svcInfo.Preset,
+			"runtimeVersion": svcInfo.RuntimeVersion,
+			"mem_limit":      svcInfo.MemoryLimit,
+			"cpu_limit":      svcInfo.CPULimit,
+			"routes":         svcInfo.Routes,
+			"env":            resolvedEnv,
 		}
 		resJSON, _ := json.Marshal(resMap)
 		s.ResourceJSON = string(resJSON)

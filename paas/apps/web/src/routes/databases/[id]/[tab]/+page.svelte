@@ -37,6 +37,7 @@
     Share2,
     Plus
   } from 'lucide-svelte';
+  import FrameworkIcon from '$lib/components/icons/FrameworkIcon.svelte';
 
   const { id, tab } = $derived($page.params);
   const tabs = ['overview', 'query', 'visualizer', 'logs', 'settings'];
@@ -516,10 +517,11 @@
       <p class="text-xs text-muted" style="margin-bottom:0.25rem;">
         <a href="/databases">Databases</a> /
       </p>
-      <div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap;">
+      <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+        <FrameworkIcon name={database?.engine} size={28} />
         <h1 class="page-title" style="margin:0;">{database?.name}</h1>
         <span class="badge" style="background:#e0f2fe; color:#0369a1; text-transform:uppercase; font-weight:700;">
-          {database?.engine} {database?.engine_version}
+          {database?.engine} {database?.engine_version || ''}
         </span>
         <span class={statusClass(database?.runtime_status || 'provisioning')}>
           {#if (database?.runtime_status || '').toLowerCase() === 'restarting' || (database?.runtime_status || '').toLowerCase() === 'starting' || (database?.runtime_status || '').toLowerCase() === 'provisioning'}

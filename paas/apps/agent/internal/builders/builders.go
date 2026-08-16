@@ -150,9 +150,14 @@ type ManualDriver struct{}
 func NewManualDriver() *ManualDriver { return &ManualDriver{} }
 
 func (d *ManualDriver) Validate(req BuildRequest) error {
-	validStacks := map[string]bool{"python": true, "node": true, "go": true, "rust": true, "static": true}
+	validStacks := map[string]bool{
+		"python": true, "node": true, "go": true, "rust": true, "static": true,
+		"java": true, "php": true, "ruby": true, "elixir": true, "deno": true,
+		"bun": true, "dotnet": true, "scala": true, "kotlin": true, "swift": true,
+		"crystal": true, "dart": true,
+	}
 	if !validStacks[req.ManualStack] {
-		return fmt.Errorf("manual: invalid stack %q; must be one of python, node, go, rust, static", req.ManualStack)
+		return fmt.Errorf("manual: invalid stack %q; must be one of python, node, go, rust, static, java, php, ruby, elixir, deno, bun, dotnet, scala, kotlin, swift, crystal, dart", req.ManualStack)
 	}
 	return nil
 }
@@ -174,11 +179,23 @@ func generateManualDockerfile(stack, buildCmd, startCmd string) string {
 	}
 	sc := startCmd
 	templates := map[string]string{
-		"node":   fmt.Sprintf("FROM node:22-alpine\nWORKDIR /app\nCOPY package*.json ./\nRUN npm ci --production\nCOPY . .\nRUN %s\nCMD [\"%s\"]", bc, orDefault(sc, "node index.js")),
-		"python": fmt.Sprintf("FROM python:3.13-slim\nWORKDIR /app\nCOPY requirements*.txt ./\nRUN pip install -r requirements.txt\nCOPY . .\nCMD [\"%s\"]", orDefault(sc, "python main.py")),
-		"go":     "FROM golang:1.26-alpine AS build\nWORKDIR /app\nCOPY go.* .\nRUN go mod download\nCOPY . .\nRUN go build -o /app/main .\nFROM alpine:3.21\nCOPY --from=build /app/main /main\nCMD [\"/main\"]",
-		"rust":   "FROM rust:1.87-alpine AS build\nWORKDIR /app\nCOPY . .\nRUN cargo build --release\nFROM alpine:3.21\nCOPY --from=build /app/target/release/app /app\nCMD [\"/app\"]",
-		"static": "FROM nginx:alpine\nCOPY . /usr/share/nginx/html\n",
+		"node":    fmt.Sprintf("FROM node:20-alpine\nWORKDIR /app\nCOPY package*.json ./\nRUN npm ci --production\nCOPY . .\nRUN %s\nCMD [\"%s\"]", bc, orDefault(sc, "node index.js")),
+		"python":  fmt.Sprintf("FROM python:3.12-slim\nWORKDIR /app\nCOPY requirements*.txt ./\nRUN pip install --no-cache-dir -r requirements.txt 2>/dev/null || true\nCOPY . .\nCMD [\"%s\"]", orDefault(sc, "python main.py")),
+		"go":      "FROM golang:1.23-alpine AS build\nWORKDIR /app\nCOPY go.mod go.sum ./\nRUN go mod download\nCOPY . .\nRUN CGO_ENABLED=0 go build -o /app/main .\nFROM alpine:3.21\nRUN apk add --no-cache ca-certificates\nCOPY --from=build /app/main /main\nCMD [\"/main\"]",
+		"rust":    "FROM rust:1.82-alpine AS build\nWORKDIR /app\nRUN apk add --no-cache musl-dev\nCOPY . .\nRUN cargo build --release && cp $(find target/release -maxdepth 1 -type f -executable | head -1) /app/server\nFROM alpine:3.21\nRUN apk add --no-cache libgcc ca-certificates\nCOPY --from=build /app/server /app/server\nCMD [\"/app/server\"]",
+		"java":    fmt.Sprintf("FROM eclipse-temurin:21-jdk-alpine AS build\nWORKDIR /app\nCOPY . .\nRUN %s\nFROM eclipse-temurin:21-jre-alpine\nWORKDIR /app\nCOPY --from=build /app /app\nCMD [\"sh\", \"-c\", \"%s\"]", orDefault(bc, "if [ -f pom.xml ]; then mvn clean package -DskipTests; elif [ -f build.gradle ]; then ./gradlew build -x test; fi"), orDefault(sc, "java -jar target/*.jar || java -jar build/libs/*.jar")),
+		"php":     fmt.Sprintf("FROM php:8.3-apache\nWORKDIR /var/www/html\nRUN docker-php-ext-install pdo pdo_mysql\nCOPY . /var/www/html/\nRUN %s\nRUN a2enmod rewrite\nCMD [\"%s\"]", orDefault(bc, "true"), orDefault(sc, "apache2-foreground")),
+		"ruby":    fmt.Sprintf("FROM ruby:3.3-alpine\nWORKDIR /app\nRUN apk add --no-cache build-base\nCOPY Gemfile Gemfile.lock ./\nRUN bundle install --without development test\nCOPY . .\nCMD [\"sh\", \"-c\", \"%s\"]", orDefault(sc, "bundle exec puma || ruby app.rb")),
+		"elixir":  fmt.Sprintf("FROM elixir:1.17-alpine\nWORKDIR /app\nENV MIX_ENV=prod\nCOPY mix.exs mix.lock ./\nRUN mix local.hex --force && mix local.rebar --force && mix deps.get\nCOPY . .\nRUN %s\nCMD [\"sh\", \"-c\", \"%s\"]", orDefault(bc, "mix compile"), orDefault(sc, "mix phx.server || mix run --no-halt")),
+		"deno":    fmt.Sprintf("FROM denoland/deno:alpine\nWORKDIR /app\nCOPY . .\nRUN %s\nCMD [\"sh\", \"-c\", \"%s\"]", orDefault(bc, "deno cache main.ts 2>/dev/null || true"), orDefault(sc, "deno run --allow-net --allow-env --allow-read main.ts")),
+		"bun":     fmt.Sprintf("FROM oven/bun:alpine\nWORKDIR /app\nCOPY package*.json bun.lockb ./\nRUN bun install\nCOPY . .\nRUN %s\nCMD [\"sh\", \"-c\", \"%s\"]", orDefault(bc, "true"), orDefault(sc, "bun run start || bun run index.ts")),
+		"dotnet":  fmt.Sprintf("FROM mcr.microsoft.com/dotnet/sdk:8.0-alpine AS build\nWORKDIR /app\nCOPY . .\nRUN %s\nFROM mcr.microsoft.com/dotnet/aspnet:8.0-alpine\nCOPY --from=build /app/publish /app\nCMD [\"sh\", \"-c\", \"%s\"]", orDefault(bc, "dotnet publish -c Release -o /app/publish"), orDefault(sc, "dotnet $(find /app -name '*.dll' -maxdepth 1 | head -1)")),
+		"scala":   fmt.Sprintf("FROM eclipse-temurin:21-jdk-alpine AS build\nWORKDIR /app\nCOPY . .\nRUN %s\nFROM eclipse-temurin:21-jre-alpine\nCOPY --from=build /app/target /app/target\nCMD [\"sh\", \"-c\", \"%s\"]", orDefault(bc, "sbt stage || sbt assembly"), orDefault(sc, "java -jar target/universal/stage/lib/*.jar")),
+		"kotlin":  fmt.Sprintf("FROM eclipse-temurin:21-jdk-alpine AS build\nWORKDIR /app\nCOPY . .\nRUN %s\nFROM eclipse-temurin:21-jre-alpine\nCOPY --from=build /app/build/libs/*.jar /app/\nCMD [\"sh\", \"-c\", \"%s\"]", orDefault(bc, "./gradlew build -x test"), orDefault(sc, "java -jar /app/*-all.jar || java -jar /app/*.jar")),
+		"swift":   fmt.Sprintf("FROM swift:5.10-jammy AS build\nWORKDIR /app\nCOPY . .\nRUN %s && cp $(find .build/release -maxdepth 1 -type f -executable | head -1) /app/Run\nFROM ubuntu:22.04\nCOPY --from=build /app/Run /app/Run\nCMD [\"/app/Run\"]", orDefault(bc, "swift build -c release")),
+		"crystal": fmt.Sprintf("FROM crystallang/crystal:latest AS build\nWORKDIR /app\nCOPY . .\nRUN %s\nFROM ubuntu:22.04\nCOPY --from=build /app/app /app/app\nCMD [\"/app/app\"]", orDefault(bc, "shards install && crystal build src/*.cr --release -o app")),
+		"dart":    fmt.Sprintf("FROM dart:stable AS build\nWORKDIR /app\nCOPY . .\nRUN %s\nFROM alpine:3.21\nRUN apk add --no-cache libgcc gcompat\nCOPY --from=build /app/server /app/server\nCMD [\"/app/server\"]", orDefault(bc, "dart pub get && dart compile exe bin/server.dart -o server")),
+		"static":  "FROM nginx:alpine\nCOPY . /usr/share/nginx/html\n",
 	}
 	if t, ok := templates[stack]; ok {
 		return t

@@ -21,6 +21,22 @@ var (
 	sessionTokens = make(map[string]SessionInfo)
 )
 
+func init() {
+	go func() {
+		ticker := time.NewTicker(15 * time.Minute)
+		for range ticker.C {
+			now := time.Now()
+			sessionMu.Lock()
+			for t, info := range sessionTokens {
+				if info.ExpiresAt.Before(now) {
+					delete(sessionTokens, t)
+				}
+			}
+			sessionMu.Unlock()
+		}
+	}()
+}
+
 // ─── Auth Middleware ──────────────────────────────────────────────────────────
 
 func (h *Handler) requireSession(c fiber.Ctx) error {

@@ -29,6 +29,7 @@
     Code,
     Download
   } from 'lucide-svelte';
+  import FrameworkIcon from '$lib/components/icons/FrameworkIcon.svelte';
 
   const { id, tab } = $derived($page.params);
 
@@ -441,6 +442,9 @@
           if (!settingsDirty) {
             settingsName = service.name || service.Name || '';
             settingsPreset = r.presetId || service.kind || 'node';
+            settingsRuntimeVersion = r.runtimeVersion || 'auto';
+            settingsMemoryLimit = r.mem_limit || '512m';
+            settingsCPULimit = r.cpu_limit || '1.0';
             settingsBuildCmd = r.buildCommand || '';
             settingsStartCmd = r.startCommand || '';
             settingsRootDir = r.rootDirectory || r.rootDir || '.';
@@ -780,6 +784,9 @@
   let settingsPort = $state<number>(80);
   let settingsAutoDeploy = $state(true);
   let settingsPreset = $state('node');
+  let settingsRuntimeVersion = $state('auto');
+  let settingsMemoryLimit = $state('512m');
+  let settingsCPULimit = $state('1.0');
   let settingsSaving = $state(false);
   let settingsSaved = $state(false);
   let settingsError = $state('');
@@ -802,6 +809,9 @@
       currentR.gitBranch = settingsBranch;
       currentR.gitRepoUrl = settingsRepoUrl;
       currentR.presetId = settingsPreset;
+      currentR.runtimeVersion = settingsRuntimeVersion === 'auto' ? '' : settingsRuntimeVersion;
+      currentR.mem_limit = settingsMemoryLimit;
+      currentR.cpu_limit = settingsCPULimit;
 
       const targetId = service?.id || id;
       const res = await fetch(`/api/v1/services/${targetId}`, {
@@ -856,6 +866,14 @@
   const isRunning = $derived((service?.runtime_status || service?.RuntimeStatus) === 'running');
   const statusBadge = $derived(service?.runtime_status || service?.RuntimeStatus || 'draft');
   const endpointUrl = $derived(service?.endpoint_url || (service?.domain ? `https://${service.domain}` : null));
+  const parsedResource = $derived.by(() => {
+    try {
+      if (service?.resource_json || service?.ResourceJSON) {
+        return JSON.parse(service.resource_json || service.ResourceJSON);
+      }
+    } catch {}
+    return {};
+  });
 </script>
 
 <svelte:head>
@@ -885,6 +903,7 @@
         {/if}
       </p>
       <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+        <FrameworkIcon name={parsedResource.presetId || service?.kind || 'node'} size={26} />
         <h1 class="page-title" style="margin:0;">{service?.name || service?.Name}</h1>
         <span class="badge badge-{statusBadge}">{statusBadge}</span>
         {#if endpointUrl && (service?.kind === 'web' || service?.kind === 'static')}
@@ -990,8 +1009,14 @@
     <!-- Stat cards grid -->
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:1rem; margin-bottom:1.5rem;">
       <div class="card" style="padding:1.25rem;">
-        <div class="text-xs text-muted" style="margin-bottom:0.25rem;">Service Kind</div>
-        <div style="font-size:1.125rem; font-weight:600; text-transform:capitalize;">{service?.kind || service?.Kind || 'web'}</div>
+        <div class="text-xs text-muted" style="margin-bottom:0.25rem;">Runtime & Version</div>
+        <div style="font-size:1.05rem; font-weight:600; text-transform:capitalize; display:flex; align-items:center; gap:6px;">
+          <FrameworkIcon name={parsedResource.presetId || service?.kind || 'node'} size={18} />
+          <span>{parsedResource.presetId || service?.kind || 'node'}</span>
+          <span class="badge font-mono" style="font-size:0.7rem; background:rgba(0,0,0,0.05); font-weight:500;">
+            {parsedResource.runtimeVersion ? `v${parsedResource.runtimeVersion}` : 'Auto-Detect'}
+          </span>
+        </div>
       </div>
       <div class="card" style="padding:1.25rem;">
         <div class="text-xs text-muted" style="margin-bottom:0.25rem;">Runtime Status</div>
@@ -1000,10 +1025,22 @@
         </div>
       </div>
 
+      <div class="card" style="padding:1.25rem;">
+        <div class="text-xs text-muted" style="margin-bottom:0.25rem;">Container Sandbox Limits</div>
+        <div style="font-size:0.9375rem; font-weight:600; display:flex; align-items:center; gap:6px; margin-top:2px;">
+          <span class="badge font-mono" style="background:rgba(0,166,166,0.1); color:var(--color-accent); font-size:0.75rem;">
+            {parsedResource.mem_limit || '512m'} RAM
+          </span>
+          <span class="badge font-mono" style="background:rgba(0,166,166,0.1); color:var(--color-accent); font-size:0.75rem;">
+            {parsedResource.cpu_limit || '1.0'} CPU
+          </span>
+        </div>
+      </div>
+
       {#if (service?.kind || service?.Kind) === 'cron'}
         <div class="card" style="padding:1.25rem;">
           <div class="text-xs text-muted" style="margin-bottom:0.25rem;">Cron Schedule</div>
-          <div style="font-size:1rem; font-weight:600; font-family:var(--font-mono)">{parsedRes.cronSchedule || '0 * * * *'}</div>
+          <div style="font-size:1rem; font-weight:600; font-family:var(--font-mono)">{parsedResource.cronSchedule || '0 * * * *'}</div>
         </div>
       {:else if (service?.kind || service?.Kind) === 'worker'}
         <div class="card" style="padding:1.25rem;">
@@ -1712,7 +1749,7 @@
           </div>
         {/if}
 
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem; margin-bottom: 1.25rem;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.25rem; margin-bottom: 1.25rem;">
           <div class="form-group" style="margin: 0;">
             <label class="form-label" for="settings-name">Service Name</label>
             <input 
@@ -1733,16 +1770,80 @@
               bind:value={settingsPreset} 
               onchange={() => settingsDirty = true}
             >
-              <option value="node">Node.js (Next.js / Express / Nest / Remix)</option>
-              <option value="python">Python (FastAPI / Flask / Django)</option>
-              <option value="go">Go (Fiber / Gin / Chi)</option>
-              <option value="rust">Rust (Actix / Axum / Cargo)</option>
+              <option value="node">Node.js (Next.js / Express / Nest / Remix / Astro)</option>
+              <option value="python">Python (FastAPI / Flask / Django / Celery)</option>
+              <option value="go">Go (Fiber / Gin / Chi / Echo)</option>
+              <option value="rust">Rust (Actix / Axum / Rocket / Cargo)</option>
               <option value="java">Java (Spring Boot / Maven / Gradle)</option>
-              <option value="php">PHP (Laravel / Apache / Nginx)</option>
-              <option value="ruby">Ruby on Rails</option>
+              <option value="php">PHP (Laravel / Symfony / Apache)</option>
+              <option value="ruby">Ruby on Rails / Puma</option>
+              <option value="elixir">Elixir (Phoenix / Plug)</option>
+              <option value="deno">Deno (Fresh / Hono / Oak)</option>
+              <option value="bun">Bun (Elysia / Hono / Next.js)</option>
+              <option value="dotnet">.NET / C# (ASP.NET Core)</option>
+              <option value="scala">Scala (sbt / Play / Akka)</option>
+              <option value="kotlin">Kotlin (Ktor / Spring Boot)</option>
+              <option value="swift">Swift (Vapor / Hummingbird)</option>
+              <option value="haskell">Haskell (Servant / Yesod)</option>
+              <option value="clojure">Clojure (Ring / Leiningen)</option>
+              <option value="crystal">Crystal (Kemal / Lucky)</option>
+              <option value="zig">Zig (HTTP / Native)</option>
+              <option value="dart">Dart (Shelf / Server)</option>
               <option value="static">Static Site (SPA / React / Vite / HTML)</option>
               <option value="dockerfile">Custom Dockerfile</option>
+              <option value="worker">Background Worker Daemon</option>
+              <option value="cron">Scheduled Cron Job</option>
             </select>
+          </div>
+
+          <div class="form-group" style="margin: 0;">
+            <label class="form-label" for="settings-runtime-version">Runtime Version</label>
+            <input 
+              id="settings-runtime-version" 
+              type="text" 
+              class="form-input font-mono text-sm" 
+              placeholder="auto (e.g. 20, 3.12, 1.23)" 
+              bind:value={settingsRuntimeVersion} 
+              oninput={() => settingsDirty = true} 
+            />
+            <p class="text-xs text-muted" style="margin-top: 4px;">Set <code>auto</code> to auto-detect from project files or specify an explicit version tag.</p>
+          </div>
+        </div>
+
+        <!-- Security & Resource Limits Configuration Box in Settings -->
+        <div style="background: var(--color-canvas); padding: 1.25rem; border-radius: var(--radius-md); border: 1px solid var(--color-border); margin-bottom: 1.25rem;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <ShieldCheck size={18} style="color: var(--color-accent);" />
+              <span style="font-size: 0.875rem; font-weight: 700;">Sandbox Resource Limits & Security</span>
+            </div>
+            <span class="badge" style="background: rgba(16,185,129,0.15); color: #065f46; font-size: 0.7rem;">
+              🛡️ Non-Root Sandbox Active
+            </span>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group" style="margin: 0;">
+              <label for="settings-mem-limit" class="form-label" style="font-size: 0.8125rem;">Memory Limit</label>
+              <select id="settings-mem-limit" class="form-select font-mono text-xs" bind:value={settingsMemoryLimit} onchange={() => settingsDirty = true}>
+                <option value="256m">256 MB (Micro)</option>
+                <option value="512m">512 MB (Standard)</option>
+                <option value="1g">1 GB (Medium)</option>
+                <option value="2g">2 GB (High Performance)</option>
+                <option value="4g">4 GB (Extra Large)</option>
+                <option value="8g">8 GB (Maximum)</option>
+              </select>
+            </div>
+
+            <div class="form-group" style="margin: 0;">
+              <label for="settings-cpu-limit" class="form-label" style="font-size: 0.8125rem;">CPU Limit</label>
+              <select id="settings-cpu-limit" class="form-select font-mono text-xs" bind:value={settingsCPULimit} onchange={() => settingsDirty = true}>
+                <option value="0.5">0.5 Cores (Eco)</option>
+                <option value="1.0">1.0 Core (Standard)</option>
+                <option value="2.0">2.0 Cores (High Throughput)</option>
+                <option value="4.0">4.0 Cores (Maximum)</option>
+              </select>
+            </div>
           </div>
         </div>
 

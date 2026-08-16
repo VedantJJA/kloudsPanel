@@ -15,6 +15,17 @@ import (
 	"github.com/yourorg/klouds/api/internal/domain"
 )
 
+// ─── Deployment Helpers ───────────────────────────────────────────────────────
+
+// failDeployment marks both the deployment and service as failed and logs the reason.
+func (h *Handler) failDeployment(service *domain.Service, dep *domain.Deployment, reason string) {
+	appendLog(service.ID, dep.ID, "stderr", reason)
+	dep.Status = domain.DeploymentFailed
+	_ = h.store.Deployments().Update(context.Background(), dep)
+	service.RuntimeStatus = domain.ServiceStatusFailed
+	_ = h.store.Services().Update(context.Background(), service)
+}
+
 // ─── Real Deployment Execution Engine ─────────────────────────────────────────
 
 func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deployment, rootDomain string) {
@@ -23,7 +34,29 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 	clearLogs(serviceID, depID)
 	appendLog(serviceID, depID, "system", fmt.Sprintf("[platform] Deployment #%d triggered for service '%s' (%s)", dep.Sequence, service.Name, service.Slug))
 
+	// Security: Validate slug before using in container names/paths
+	if err := ValidateSlug(service.Slug); err != nil {
+		h.failDeployment(service, dep, fmt.Sprintf("[security] Invalid service slug: %v", err))
+		return
+	}
+
+	// Build security profile from service resource config
 	var resMap map[string]any
+	if service.ResourceJSON != "" {
+		_ = json.Unmarshal([]byte(service.ResourceJSON), &resMap)
+	}
+	if resMap == nil {
+		resMap = make(map[string]any)
+	}
+	secProfile := BuildSecurityProfile(resMap)
+
+	// Track runtime version for dynamic resolution
+	var runtimeVersion string
+	if v, ok := resMap["runtimeVersion"].(string); ok && v != "" {
+		runtimeVersion = v
+		appendLog(serviceID, depID, "system", fmt.Sprintf("[version] User-specified runtime version: %s", runtimeVersion))
+	}
+
 	var gitRepoUrl, gitBranch, buildCommand, startCommand, presetId string
 	var envMap = make(map[string]string)
 
@@ -109,11 +142,7 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 			}
 		}
 		if pullErr != nil {
-			appendLog(serviceID, depID, "stderr", fmt.Sprintf("[docker-image] Failed to pull image: %v", pullErr))
-			dep.Status = domain.DeploymentFailed
-			_ = h.store.Deployments().Update(context.Background(), dep)
-			service.RuntimeStatus = domain.ServiceStatusFailed
-			_ = h.store.Services().Update(context.Background(), service)
+			h.failDeployment(service, dep, fmt.Sprintf("[docker-image] Failed to pull image: %v", pullErr))
 			return
 		}
 		imageTag = dockerImageName
@@ -135,11 +164,7 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 		}
 
 		if err != nil {
-			appendLog(serviceID, depID, "stderr", fmt.Sprintf("[git] Error cloning repository: %v", err))
-			dep.Status = domain.DeploymentFailed
-			_ = h.store.Deployments().Update(context.Background(), dep)
-			service.RuntimeStatus = domain.ServiceStatusFailed
-			_ = h.store.Services().Update(context.Background(), service)
+			h.failDeployment(service, dep, fmt.Sprintf("[git] Error cloning repository: %v", err))
 			return
 		}
 		appendLog(serviceID, depID, "system", "[git] Repository checkout complete.")
@@ -232,6 +257,16 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 						if svc.Preset != "" && (presetId == "" || presetId == "web" || presetId == "custom") {
 							presetId = svc.Preset
 						}
+						if runtimeVersion == "" && svc.RuntimeVersion != "" {
+							runtimeVersion = svc.RuntimeVersion
+							appendLog(serviceID, depID, "system", fmt.Sprintf("[blueprint] Found runtime version in blueprint: %s", runtimeVersion))
+						}
+						if svc.MemoryLimit != "" {
+							secProfile.MemoryLimit = svc.MemoryLimit
+						}
+						if svc.CPULimit != "" {
+							secProfile.CPULimit = svc.CPULimit
+						}
 						for k, v := range svc.EnvVars {
 							if _, exists := envMap[k]; !exists {
 								envMap[k] = v
@@ -243,16 +278,23 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 		}
 
 		// Step 3: Universal Fallback Engine & Manifests Check
-		// 3a. Check Procfile
+		// 3a. Check Procfile (web, worker)
 		procfilePath := filepath.Join(contextDir, "Procfile")
 		if pBytes, err := os.ReadFile(procfilePath); err == nil {
 			for _, pLine := range strings.Split(string(pBytes), "\n") {
 				pLine = strings.TrimSpace(pLine)
-				if strings.HasPrefix(pLine, "web:") {
+				if service.Kind == domain.ServiceKindWorker && strings.HasPrefix(pLine, "worker:") {
+					extractedCmd := strings.TrimSpace(strings.TrimPrefix(pLine, "worker:"))
+					if startCommand == "" {
+						startCommand = extractedCmd
+						appendLog(serviceID, depID, "system", fmt.Sprintf("[procfile] Found Procfile worker start command: %s", startCommand))
+					}
+					break
+				} else if strings.HasPrefix(pLine, "web:") {
 					extractedCmd := strings.TrimSpace(strings.TrimPrefix(pLine, "web:"))
 					if startCommand == "" {
 						startCommand = extractedCmd
-						appendLog(serviceID, depID, "system", fmt.Sprintf("[procfile] Found Procfile start command: %s", startCommand))
+						appendLog(serviceID, depID, "system", fmt.Sprintf("[procfile] Found Procfile web start command: %s", startCommand))
 					}
 					break
 				}
@@ -262,20 +304,18 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 		// 3b. Monorepo Subfolder Auto-Discovery if root has no project manifest
 		if contextDir == workspaceDir && rootDirectory == "" {
 			subFolders := []string{"web", "frontend", "client", "ui", "api", "backend", "server", "app", "src/backend", "src/frontend"}
+			manifests := []string{"package.json", "requirements.txt", "pyproject.toml", "go.mod", "Cargo.toml", "pom.xml", "build.gradle", "build.gradle.kts", "Gemfile", "composer.json", "mix.exs", "deno.json", "pubspec.yaml", "shard.yml", "Dockerfile"}
 			for _, sub := range subFolders {
 				subPath := filepath.Join(workspaceDir, sub)
 				if info, err := os.Stat(subPath); err == nil && info.IsDir() {
-					if _, err := os.Stat(filepath.Join(subPath, "package.json")); err == nil {
-						contextDir = subPath
-						appendLog(serviceID, depID, "system", fmt.Sprintf("[universal-builder] Auto-discovered project in subfolder: /%s", sub))
-						break
-					} else if _, err := os.Stat(filepath.Join(subPath, "requirements.txt")); err == nil {
-						contextDir = subPath
-						appendLog(serviceID, depID, "system", fmt.Sprintf("[universal-builder] Auto-discovered project in subfolder: /%s", sub))
-						break
-					} else if _, err := os.Stat(filepath.Join(subPath, "go.mod")); err == nil {
-						contextDir = subPath
-						appendLog(serviceID, depID, "system", fmt.Sprintf("[universal-builder] Auto-discovered project in subfolder: /%s", sub))
+					for _, mf := range manifests {
+						if _, err := os.Stat(filepath.Join(subPath, mf)); err == nil {
+							contextDir = subPath
+							appendLog(serviceID, depID, "system", fmt.Sprintf("[universal-builder] Auto-discovered project in subfolder: /%s (found %s)", sub, mf))
+							break
+						}
+					}
+					if contextDir != workspaceDir {
 						break
 					}
 				}
@@ -284,43 +324,62 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 
 		// 3c. Auto-detect runtime from repository files
 		if presetId == "" || presetId == "web" || presetId == "custom" {
-			if _, err := os.Stat(filepath.Join(contextDir, "requirements.txt")); err == nil {
-				presetId = "python"
-				if port == 80 {
-					port = 5000
+			type runtimeDetection struct {
+				file   string
+				preset string
+				port   int
+			}
+			detections := []runtimeDetection{
+				// Check more specific markers first
+				{"deno.json", "deno", 8000},
+				{"deno.jsonc", "deno", 8000},
+				{"bun.lockb", "bun", 3000},
+				{"bunfig.toml", "bun", 3000},
+				{"mix.exs", "elixir", 4000},
+				{"requirements.txt", "python", 5000},
+				{"pyproject.toml", "python", 5000},
+				{"Pipfile", "python", 5000},
+				{"package.json", "node", 3000},
+				{"go.mod", "go", 8080},
+				{"Cargo.toml", "rust", 8080},
+				{"pom.xml", "java", 8080},
+				{"build.gradle", "java", 8080},
+				{"build.gradle.kts", "kotlin", 8080},
+				{"build.sbt", "scala", 9000},
+				{"Gemfile", "ruby", 3000},
+				{"composer.json", "php", 80},
+				{"Package.swift", "swift", 8080},
+				{"shard.yml", "crystal", 3000},
+				{"pubspec.yaml", "dart", 8080},
+				{"build.zig", "zig", 8080},
+				{"index.html", "static", 80},
+			}
+			for _, d := range detections {
+				if _, err := os.Stat(filepath.Join(contextDir, d.file)); err == nil {
+					presetId = d.preset
+					if port == 80 && d.port != 80 {
+						port = d.port
+					}
+					break
 				}
-			} else if _, err := os.Stat(filepath.Join(contextDir, "pyproject.toml")); err == nil {
-				presetId = "python"
-				if port == 80 {
-					port = 5000
+			}
+			// Check for .NET projects (*.csproj, *.fsproj)
+			if presetId == "" || presetId == "web" || presetId == "custom" {
+				if entries, err := os.ReadDir(contextDir); err == nil {
+					for _, e := range entries {
+						if strings.HasSuffix(e.Name(), ".csproj") || strings.HasSuffix(e.Name(), ".fsproj") || strings.HasSuffix(e.Name(), ".sln") {
+							presetId = "dotnet"
+							if port == 80 {
+								port = 5000
+							}
+							break
+						}
+					}
 				}
-			} else if _, err := os.Stat(filepath.Join(contextDir, "package.json")); err == nil {
-				presetId = "node"
-				if port == 80 {
-					port = 3000
-				}
-			} else if _, err := os.Stat(filepath.Join(contextDir, "go.mod")); err == nil {
-				presetId = "go"
-				if port == 80 {
-					port = 8080
-				}
-			} else if _, err := os.Stat(filepath.Join(contextDir, "Cargo.toml")); err == nil {
-				presetId = "rust"
-				if port == 80 {
-					port = 8080
-				}
-			} else if _, err := os.Stat(filepath.Join(contextDir, "pom.xml")); err == nil {
-				presetId = "java"
-				if port == 80 {
-					port = 8080
-				}
-			} else if _, err := os.Stat(filepath.Join(contextDir, "index.html")); err == nil {
-				presetId = "static"
 			}
 		}
 
 		// Project-wide auto-wiring for all dynamic service URLs & database URIs
-		var backendProxyDirective string
 		if projectServices, err := h.store.Services().ListForProject(context.Background(), service.ProjectID); err == nil {
 			var primaryBackend *domain.Service
 			for _, otherSvc := range projectServices {
@@ -498,9 +557,34 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 
 		dockerfilePath := filepath.Join(contextDir, "Dockerfile")
 		if _, err := os.Stat(dockerfilePath); os.IsNotExist(err) {
-			appendLog(serviceID, depID, "build", fmt.Sprintf("[builder] Generating runtime Dockerfile (preset: %s, port: %d)", presetId, port))
-			dfContent := generateDockerfileForPreset(presetId, buildCommand, startCommand, port, backendProxyDirective)
+			// Auto-detect version from project files if not specified
+			if runtimeVersion == "" {
+				resolved := resolveRuntimeVersion(presetId, contextDir, "")
+				runtimeVersion = resolved.Version
+				if resolved.Source == "project-file" {
+					appendLog(serviceID, depID, "system", fmt.Sprintf("[version] Auto-detected %s version %s from %s", presetId, resolved.Version, resolved.DetectedFrom))
+				} else {
+					appendLog(serviceID, depID, "system", fmt.Sprintf("[version] Using default %s version %s", presetId, resolved.Version))
+				}
+			}
+			appendLog(serviceID, depID, "build", fmt.Sprintf("[builder] Generating runtime Dockerfile (preset: %s, port: %d, version: %s)", presetId, port, runtimeVersion))
+			dfContent := generateDockerfileForPreset(presetId, buildCommand, startCommand, port, runtimeVersion)
 			_ = os.WriteFile(dockerfilePath, []byte(dfContent), 0644)
+		} else {
+			// User-provided Dockerfile — scan for dangerous patterns
+			if dfBytes, err := os.ReadFile(dockerfilePath); err == nil {
+				warnings, dangers := ScanDockerfileForDangers(string(dfBytes))
+				for _, w := range warnings {
+					appendLog(serviceID, depID, "system", fmt.Sprintf("[security] %s", w))
+				}
+				if len(dangers) > 0 {
+					for _, d := range dangers {
+						appendLog(serviceID, depID, "stderr", fmt.Sprintf("[security] %s", d))
+					}
+					h.failDeployment(service, dep, "[security] Dockerfile contains blocked patterns. Remove privileged/host-network directives.")
+					return
+				}
+			}
 		}
 
 		// Step 5: Build Container Image with Docker
@@ -518,11 +602,7 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 			}
 		}
 		if err != nil {
-			appendLog(serviceID, depID, "stderr", fmt.Sprintf("[builder] Build failed: %v", err))
-			dep.Status = domain.DeploymentFailed
-			_ = h.store.Deployments().Update(context.Background(), dep)
-			service.RuntimeStatus = domain.ServiceStatusFailed
-			_ = h.store.Services().Update(context.Background(), service)
+			h.failDeployment(service, dep, fmt.Sprintf("[builder] Build failed: %v", err))
 			return
 		}
 		appendLog(serviceID, depID, "build", "Container image built successfully.")
@@ -530,7 +610,7 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 
 	// Step 5: Stop previous container and run the new container
 	containerName := fmt.Sprintf("paas-svc-%s", service.Slug)
-	appendLog(serviceID, depID, "runtime", fmt.Sprintf("[runtime] Deploying container '%s' on network platform-control...", containerName))
+	appendLog(serviceID, depID, "runtime", fmt.Sprintf("[runtime] Deploying container '%s' on network platform-control (mem: %s, cpu: %s)...", containerName, secProfile.MemoryLimit, secProfile.CPULimit))
 
 	_ = exec.Command("docker", "network", "create", "platform-control").Run()
 	_ = exec.Command("docker", "rm", "-f", containerName).Run()
@@ -540,6 +620,12 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 		"--name", containerName,
 		"--network", "platform-control",
 		"--restart", "unless-stopped",
+	}
+
+	// Append security hardening flags
+	runArgs = append(runArgs, ContainerSecurityArgs(secProfile)...)
+
+	runArgs = append(runArgs,
 		"-e", fmt.Sprintf("PORT=%d", port),
 		"-e", "HOST=0.0.0.0",
 		"-e", "FLASK_RUN_HOST=0.0.0.0",
@@ -558,7 +644,7 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 		"--label", fmt.Sprintf("traefik.http.routers.%s.entrypoints=websecure", service.Slug),
 		"--label", fmt.Sprintf("traefik.http.routers.%s.tls.certresolver=letsencrypt", service.Slug),
 		"--label", fmt.Sprintf("traefik.http.services.%s.loadbalancer.server.port=%d", service.Slug, port),
-	}
+	)
 
 	for k, v := range envMap {
 		runArgs = append(runArgs, "-e", fmt.Sprintf("%s=%s", k, v))
@@ -574,11 +660,7 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 		}
 	}
 	if err != nil {
-		appendLog(serviceID, depID, "stderr", fmt.Sprintf("[runtime] Failed to launch container: %v", err))
-		dep.Status = domain.DeploymentFailed
-		_ = h.store.Deployments().Update(context.Background(), dep)
-		service.RuntimeStatus = domain.ServiceStatusFailed
-		_ = h.store.Services().Update(context.Background(), service)
+		h.failDeployment(service, dep, fmt.Sprintf("[runtime] Failed to launch container: %v", err))
 		return
 	}
 

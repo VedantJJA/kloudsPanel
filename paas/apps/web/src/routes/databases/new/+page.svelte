@@ -1,7 +1,8 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
-  import { ArrowLeft, Save, Loader2, Database, Check } from 'lucide-svelte';
+  import { ArrowLeft, Save, Loader2, Database, Check, ShieldCheck, KeyRound, Sparkles } from 'lucide-svelte';
+  import FrameworkIcon from '$lib/components/icons/FrameworkIcon.svelte';
 
   let workspaces = $state<any[]>([]);
   let projects = $state<any[]>([]);
@@ -10,17 +11,97 @@
   let projectId = $state('');
   let name = $state('');
   let engine = $state('postgres');
+  let selectedVersion = $state('16');
+  let customPassword = $state('');
+  let useAutoPassword = $state(true);
   
   let loading = $state(false);
   let error = $state<string | null>(null);
 
-  const engines = [
-    { id: 'postgres', name: 'PostgreSQL 16', desc: 'Powerful object-relational SQL database', color: '#336791', port: 5432 },
-    { id: 'mysql', name: 'MySQL 8.0', desc: 'Fast and reliable relational database', color: '#00758F', port: 3306 },
-    { id: 'redis', name: 'Redis 7.2', desc: 'In-memory key-value cache and message broker', color: '#D82C20', port: 6379 },
-    { id: 'mongodb', name: 'MongoDB 7.0', desc: 'Flexible document NoSQL database', color: '#47A248', port: 27017 },
-    { id: 'clickhouse', name: 'ClickHouse 24.3', desc: 'Ultra-fast analytical columnar database', color: '#F3B400', port: 8123 },
+  interface EngineOption {
+    id: string;
+    name: string;
+    desc: string;
+    color: string;
+    port: number;
+    versions: Array<{ value: string; label: string; default?: boolean }>;
+  }
+
+  const engines: EngineOption[] = [
+    {
+      id: 'postgres',
+      name: 'PostgreSQL',
+      desc: 'Powerful object-relational SQL database with extensions support',
+      color: '#336791',
+      port: 5432,
+      versions: [
+        { value: '17', label: 'v17 (Latest)' },
+        { value: '16', label: 'v16 (Recommended / Stable)', default: true },
+        { value: '15', label: 'v15' },
+        { value: '14', label: 'v14' },
+        { value: '13', label: 'v13 (Legacy)' }
+      ]
+    },
+    {
+      id: 'mysql',
+      name: 'MySQL',
+      desc: 'Fast, reliable and ubiquitous relational database',
+      color: '#00758F',
+      port: 3306,
+      versions: [
+        { value: '9.0', label: 'v9.0 (Innovation)' },
+        { value: '8.4', label: 'v8.4 (LTS)' },
+        { value: '8.0', label: 'v8.0 (Recommended)', default: true },
+        { value: '5.7', label: 'v5.7 (Legacy)' }
+      ]
+    },
+    {
+      id: 'redis',
+      name: 'Redis',
+      desc: 'Ultra-fast in-memory key-value store, cache and message broker',
+      color: '#DC382D',
+      port: 6379,
+      versions: [
+        { value: '7.4', label: 'v7.4 (Latest)' },
+        { value: '7.2', label: 'v7.2 (Recommended / Stable)', default: true },
+        { value: '7.0', label: 'v7.0' },
+        { value: '6.2', label: 'v6.2 (Legacy)' }
+      ]
+    },
+    {
+      id: 'mongodb',
+      name: 'MongoDB',
+      desc: 'Flexible document-oriented JSON/BSON NoSQL database',
+      color: '#47A248',
+      port: 27017,
+      versions: [
+        { value: '8.0', label: 'v8.0 (Latest)' },
+        { value: '7.0', label: 'v7.0 (Recommended)', default: true },
+        { value: '6.0', label: 'v6.0' },
+        { value: '5.0', label: 'v5.0' }
+      ]
+    },
+    {
+      id: 'clickhouse',
+      name: 'ClickHouse',
+      desc: 'Ultra-fast analytical columnar database for real-time big data',
+      color: '#F3B400',
+      port: 8123,
+      versions: [
+        { value: '24.8', label: 'v24.8 (Latest)' },
+        { value: '24.3', label: 'v24.3 (LTS / Recommended)', default: true },
+        { value: '23.8', label: 'v23.8 (LTS)' }
+      ]
+    }
   ];
+
+  const currentEngineObj = $derived(engines.find(e => e.id === engine) || engines[0]);
+
+  // When engine changes, switch to its default version
+  $effect(() => {
+    const defaultVer = currentEngineObj.versions.find(v => v.default)?.value || currentEngineObj.versions[0]?.value || '';
+    selectedVersion = defaultVer;
+  });
 
   onMount(async () => {
     try {
@@ -67,16 +148,26 @@
     error = null;
     
     try {
+      const payload: any = {
+        projectId,
+        name,
+        engine,
+        version: selectedVersion
+      };
+      if (!useAutoPassword && customPassword.trim()) {
+        payload.password = customPassword.trim();
+      }
+
       const res = await fetch('/api/v1/databases', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ projectId, name, engine })
+        body: JSON.stringify(payload)
       });
       
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.detail || data.message || 'Failed to create database');
+        throw new Error(data.detail || data.message || data.error || 'Failed to create database');
       }
       
       const db = await res.json();
@@ -107,12 +198,12 @@
     </button>
     <div>
       <h1 class="page-title">Provision Managed Database</h1>
-      <p class="page-subtitle">Deploy a dedicated database instance with high availability and internal networking.</p>
+      <p class="page-subtitle">Deploy a dedicated database instance with version selection, automatic high availability, and isolated private networking.</p>
     </div>
   </div>
 </div>
 
-<div class="card" style="max-width: 680px; margin-bottom: 3rem;">
+<div class="card" style="max-width: 720px; margin-bottom: 3rem;">
   <form onsubmit={createDatabase}>
     
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.25rem;">
@@ -138,12 +229,12 @@
     </div>
 
     <div class="form-group" style="margin-bottom: 1.5rem;">
-      <label for="db-name-input" class="form-label">Database Name</label>
+      <label for="db-name-input" class="form-label">Database Name / Identifier</label>
       <input 
         id="db-name-input" 
         type="text" 
         class="form-input" 
-        placeholder="e.g. production-db, auth-cache" 
+        placeholder="e.g. production-db, auth-cache, user-store" 
         bind:value={name} 
         required 
         pattern="[a-z0-9-]+"
@@ -152,7 +243,7 @@
     </div>
 
     <!-- Engine Selection Cards -->
-    <div style="margin-bottom: 1.75rem;">
+    <div style="margin-bottom: 1.5rem;">
       <label for="db-engine-cards-container" class="form-label" style="margin-bottom: 0.75rem;">Select Database Engine</label>
       <div id="db-engine-cards-container" style="display: grid; grid-template-columns: 1fr; gap: 0.75rem;">
         {#each engines as eng}
@@ -163,7 +254,7 @@
             style="
               cursor: pointer;
               text-align: left;
-              padding: 0.85rem 1rem;
+              padding: 0.85rem 1.15rem;
               border: 2px solid {isSelected ? 'var(--color-accent)' : 'var(--color-border)'};
               background: {isSelected ? 'rgba(0,166,166,0.04)' : 'var(--color-surface)'};
               display: flex;
@@ -174,8 +265,8 @@
             onclick={() => engine = eng.id}
           >
             <div style="display: flex; align-items: center; gap: 0.85rem;">
-              <div style="display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: var(--radius-md); background: {eng.color}15; color: {eng.color};">
-                <Database size={20} />
+              <div style="display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: var(--radius-md); background: {eng.color}15;">
+                <FrameworkIcon name={eng.id} size={24} />
               </div>
               <div>
                 <div style="font-size: 0.9375rem; font-weight: 600; color: var(--color-ink);">{eng.name}</div>
@@ -195,6 +286,55 @@
       </div>
     </div>
 
+    <!-- Dynamic Version Selection Box -->
+    <div style="padding: 1.25rem; background: var(--color-canvas); border: 1px solid var(--color-border); border-radius: var(--radius-md); margin-bottom: 1.5rem;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
+        <div>
+          <label for="engine-version-select" class="form-label" style="margin: 0; font-size: 0.875rem;">
+            {currentEngineObj.name} Engine Version
+          </label>
+          <p class="text-xs text-muted" style="margin: 2px 0 0 0;">Select the exact engine version to deploy inside the hardened container sandbox.</p>
+        </div>
+      </div>
+
+      <select id="engine-version-select" class="form-input font-mono text-sm" bind:value={selectedVersion}>
+        {#each currentEngineObj.versions as v}
+          <option value={v.value}>{v.label}</option>
+        {/each}
+      </select>
+    </div>
+
+    <!-- Security & Password Credentials Box -->
+    <div style="padding: 1.25rem; background: var(--color-canvas); border: 1px solid var(--color-border); border-radius: var(--radius-md); margin-bottom: 1.5rem;">
+      <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+        <ShieldCheck size={18} style="color: var(--color-accent);" />
+        <span style="font-size: 0.875rem; font-weight: 600;">Security & Credentials</span>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+        <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8125rem; cursor: pointer;">
+          <input type="radio" name="pwd_mode" checked={useAutoPassword} onchange={() => useAutoPassword = true} />
+          <span><strong>Auto-generate strong cryptographic password</strong> (128-bit entropy, Recommended)</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8125rem; cursor: pointer;">
+          <input type="radio" name="pwd_mode" checked={!useAutoPassword} onchange={() => useAutoPassword = false} />
+          <span>Set custom master password</span>
+        </label>
+
+        {#if !useAutoPassword}
+          <div style="margin-top: 0.5rem;">
+            <input 
+              type="password" 
+              class="form-input font-mono text-sm" 
+              placeholder="Enter secure master password..." 
+              bind:value={customPassword}
+              required={!useAutoPassword}
+            />
+          </div>
+        {/if}
+      </div>
+    </div>
+
     {#if error}
       <div class="alert alert-error" style="margin-bottom: 1.5rem; background: #fee2e2; border: 1px solid #fca5a5; color: #991b1b; padding: 0.75rem 1rem; border-radius: var(--radius-md); font-size: 0.875rem;">
         {error}
@@ -211,7 +351,7 @@
           Provisioning Database...
         {:else}
           <Save size={16} style="margin-right: 0.5rem;" />
-          Create Database
+          Create {currentEngineObj.name} Database
         {/if}
       </button>
     </div>

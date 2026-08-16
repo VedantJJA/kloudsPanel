@@ -3,12 +3,23 @@
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
   import { Loader2, Rocket, Wrench, Database, X, Save, Trash2, Plus, Server, Globe, ExternalLink } from 'lucide-svelte';
+  import FrameworkIcon from '$lib/components/icons/FrameworkIcon.svelte';
 
   const { slug } = $derived($page.params);
   let project = $state<any>(null);
   let services = $state<any[]>([]);
   let databases = $state<any[]>([]);
   let loading = $state(true);
+
+  function getPreset(svc: any): string {
+    try {
+      if (svc.resource_json || svc.ResourceJSON) {
+        const r = JSON.parse(svc.resource_json || svc.ResourceJSON);
+        if (r.presetId) return r.presetId;
+      }
+    } catch {}
+    return svc.kind || svc.Kind || 'node';
+  }
 
   async function loadProjectData() {
     try {
@@ -197,9 +208,12 @@
             {@const svcSlug = svc.slug || svc.Slug}
             <tr>
               <td>
-                <a href="/services/{svcId}/overview" style="font-weight:600; color:var(--color-ink); font-size: 0.9375rem;">
-                  {svc.name || svc.Name}
-                </a>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <FrameworkIcon name={getPreset(svc)} size={20} />
+                  <a href="/services/{svcId}/overview" style="font-weight:600; color:var(--color-ink); font-size: 0.9375rem;">
+                    {svc.name || svc.Name}
+                  </a>
+                </div>
               </td>
               <td><span class="badge" style="background:#f1f5f9; color:#334155; text-transform:capitalize;">{svc.kind || svc.Kind || 'web'}</span></td>
               <td>
@@ -282,9 +296,12 @@
             {@const dbId = db.id || db.ID}
             <tr>
               <td>
-                <a href="/databases/{dbId}/overview" style="font-weight:600; color:var(--color-ink);">
-                  {db.name || db.Name}
-                </a>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <FrameworkIcon name={db.engine || db.Engine} size={20} />
+                  <a href="/databases/{dbId}/overview" style="font-weight:600; color:var(--color-ink);">
+                    {db.name || db.Name}
+                  </a>
+                </div>
               </td>
               <td><span class="badge" style="background:#e0f2fe; color:#0369a1; text-transform:uppercase;">{db.engine || db.Engine}</span></td>
               <td><span class="font-mono text-xs">{db.internal_hostname || db.InternalHostname || '-'}</span></td>
