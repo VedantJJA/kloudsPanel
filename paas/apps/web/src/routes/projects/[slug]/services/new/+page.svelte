@@ -176,7 +176,7 @@
   };
 
   const presets: ServicePreset[] = [
-    // ─── Web / Dynamic Runtimes ─────────────────────────────────────────────
+    // --- Web / Dynamic Runtimes ---------------------------------------------
     {
       id: 'node',
       title: 'Node.js (Next.js / Express / Nest / Remix / Astro)',
@@ -561,7 +561,7 @@
       ]
     },
 
-    // ─── Static Sites ───────────────────────────────────────────────────────
+    // --- Static Sites -------------------------------------------------------
     {
       id: 'static-spa',
       title: 'Static SPA (React / Vite / Vue / SvelteKit / Astro / HTML)',
@@ -597,7 +597,7 @@
       ]
     },
 
-    // ─── Background Workers & Cron ──────────────────────────────────────────
+    // --- Background Workers & Cron ------------------------------------------
     {
       id: 'worker',
       title: 'Background Worker',
@@ -799,7 +799,7 @@
     } else if (svc.env && Object.keys(svc.env).length > 0) {
       envVars = Object.entries(svc.env).map(([k, v]) => ({ key: k, value: String(v) }));
     }
-    yamlParsedInfo = `✓ Configured "${name}" (${svc.kind.toUpperCase()} • ${svc.env || svc.preset} in ${rootDirectory === '.' ? 'root' : '/' + rootDirectory} on port :${internalPort})`;
+    yamlParsedInfo = `Configured "${name}" (${svc.kind.toUpperCase()} | ${svc.env || svc.preset} in ${rootDirectory === '.' ? 'root' : '/' + rootDirectory} on port :${internalPort})`;
   }
 
   function requestDeployBlueprint() {
@@ -1278,7 +1278,7 @@
                     <div style="min-width: 0; overflow: hidden; margin-right: 8px;">
                       <div style="font-weight: 700; font-size: 0.8125rem; color: var(--color-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{s.name}</div>
                       <div class="text-xs text-muted" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                        {s.kind} • {s.env || s.preset || 'custom'} {s.root_dir ? `• /${s.root_dir}` : ''} • :{s.internal_port}
+                        {s.kind} | {s.env || s.preset || 'custom'} {s.root_dir ? `| /${s.root_dir}` : ''} | :{s.internal_port}
                       </div>
                     </div>
                     <span class="badge" style="background: rgba(16,185,129,0.2); color: #065f46; font-size: 0.7rem; flex-shrink: 0;">
@@ -1493,7 +1493,7 @@
                     <div>
                       <div style="font-weight: 700; font-size: 0.8125rem; color: var(--color-ink);">{s.name}</div>
                       <div class="text-xs text-muted">
-                        {s.kind} • {s.env || s.preset || 'custom'} {s.root_dir ? `• /${s.root_dir}` : ''} • :{s.internal_port}
+                        {s.kind} | {s.env || s.preset || 'custom'} {s.root_dir ? `| /${s.root_dir}` : ''} | :{s.internal_port}
                       </div>
                     </div>
                     <span class="badge" style="background: rgba(16,185,129,0.2); color: #065f46; font-size: 0.7rem;">
@@ -1787,8 +1787,8 @@
             <ShieldCheck size={18} style="color: var(--color-accent);" />
             <span style="font-size: 0.875rem; font-weight: 700;">Resource Limits & Security Hardening</span>
           </div>
-          <span class="badge" style="background: rgba(16,185,129,0.15); color: #065f46; font-size: 0.7rem;">
-            🛡️ Non-Root Sandbox Active
+          <span class="badge" style="background: var(--color-success-subtle); color: var(--color-success); font-size: 0.7rem; display: flex; align-items: center; gap: 4px;">
+            <ShieldCheck size={12} /> Non-Root Sandbox Active
           </span>
         </div>
 
@@ -1817,14 +1817,14 @@
         </div>
 
         <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem;">
-          <span class="badge" style="background: var(--color-surface); border: 1px solid var(--color-border); font-size: 0.7rem;">
-            🔒 Process Limit: {pidsLimit} PIDs (Fork-Bomb Protected)
+          <span class="badge" style="background: var(--color-surface); border: 1px solid var(--color-border); font-size: 0.7rem; display: flex; align-items: center; gap: 4px;">
+            <Lock size={11} /> Process Limit: {pidsLimit} PIDs (Fork-Bomb Protected)
           </span>
-          <span class="badge" style="background: var(--color-surface); border: 1px solid var(--color-border); font-size: 0.7rem;">
-            👤 User 1001 (Non-Root Execution)
+          <span class="badge" style="background: var(--color-surface); border: 1px solid var(--color-border); font-size: 0.7rem; display: flex; align-items: center; gap: 4px;">
+            <Sliders size={11} /> User 1001 (Non-Root Execution)
           </span>
-          <span class="badge" style="background: var(--color-surface); border: 1px solid var(--color-border); font-size: 0.7rem;">
-            🛡️ Linux Capabilities Dropped
+          <span class="badge" style="background: var(--color-surface); border: 1px solid var(--color-border); font-size: 0.7rem; display: flex; align-items: center; gap: 4px;">
+            <ShieldCheck size={11} /> Linux Capabilities Dropped
           </span>
         </div>
       </div>

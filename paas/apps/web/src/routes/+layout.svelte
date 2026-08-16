@@ -23,7 +23,7 @@
   {@html `<script>
     try {
       var t = localStorage.getItem('klouds_theme');
-      var dark = t === 'dark' || ((!t || t === 'system') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      var dark = t !== 'light';
       if (dark) {
         document.documentElement.setAttribute('data-theme', 'dark');
         document.documentElement.classList.add('dark');

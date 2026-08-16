@@ -2,7 +2,7 @@
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
-  import { Loader2, Rocket, Wrench, Database, X, Save, Trash2, Plus, Server, Globe, ExternalLink } from 'lucide-svelte';
+  import { Loader2, Rocket, Wrench, Database, X, Save, Trash2, Plus, Server, Globe, ExternalLink, ArrowRight } from 'lucide-svelte';
   import FrameworkIcon from '$lib/components/icons/FrameworkIcon.svelte';
 
   const slug = $derived($page.params.slug);
@@ -145,57 +145,57 @@
 
 {#if loading}
   <div class="empty-state">
-    <div class="animate-spin text-muted" style="margin-bottom:1rem"><Loader2 size={48} /></div>
+    <div class="animate-spin text-muted" style="margin-bottom:1rem"><Loader2 size={36} /></div>
     <p>Loading project...</p>
   </div>
 {:else}
   <div class="page-header">
     <div>
-      <div class="page-breadcrumbs" style="display:flex; align-items:center; gap:6px; font-size:0.8125rem; margin-bottom:0.5rem;">
-        <a href="/workspaces" style="color:var(--color-accent); text-decoration:none;">Workspaces</a>
-        <span style="color:var(--color-ink-muted);">/</span>
+      <div class="page-breadcrumbs">
+        <a href="/workspaces">Workspaces</a>
+        <span>/</span>
         {#if project?.workspace_slug || project?.WorkspaceSlug || project?.workspace_id || project?.WorkspaceID}
-          <a href="/workspaces/{project.workspace_slug || project.WorkspaceSlug || project.workspace_id || project.WorkspaceID}" style="color:var(--color-accent); text-decoration:none;">
+          <a href="/workspaces/{project.workspace_slug || project.WorkspaceSlug || project.workspace_id || project.WorkspaceID}">
             {project.workspace_name || project.WorkspaceName || 'Workspace'}
           </a>
-          <span style="color:var(--color-ink-muted);">/</span>
+          <span>/</span>
         {/if}
-        <span style="color:var(--color-ink-secondary); font-weight:500;">{project?.name || project?.Name || slug}</span>
+        <span>{project?.name || project?.Name || slug}</span>
       </div>
       <h1 class="page-title">{project?.name || project?.Name || slug}</h1>
-      <p class="page-subtitle">{project?.description ?? 'Project environments & deployments'}</p>
+      <p class="page-subtitle">{project?.description || 'Project environments and deployed services'}</p>
     </div>
-    <div style="display:flex; gap:0.75rem; align-items:center;">
-      <button class="btn btn-secondary" style="color:var(--color-error); border-color:var(--color-border);" onclick={deleteProject}>
-        <Trash2 size={16} /> Delete Project
+    <div style="display:flex; gap:0.6rem; align-items:center;">
+      <button class="btn btn-secondary" style="color:var(--color-danger); border-color:var(--color-border);" onclick={deleteProject}>
+        <Trash2 size={14} /> Delete Project
       </button>
       <button class="btn btn-primary" onclick={() => goto(`/projects/${slug}/services/new`)}>
-        <Rocket size={16} /> Deploy Service
+        <Rocket size={15} /> Deploy Service
       </button>
     </div>
   </div>
 
-  <!-- Services -->
-  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem;">
-    <h2 style="font-size:1.125rem; font-weight:600; color:var(--color-ink); margin:0;">Services ({services.length})</h2>
+  <!-- Services Section -->
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.75rem;">
+    <h2 style="font-size:1rem; font-weight:600; color:var(--color-ink); margin:0;">Services ({services.length})</h2>
     {#if services.length > 0}
-      <button class="btn btn-primary" style="padding:0.35rem 0.85rem; font-size:0.8125rem;" onclick={() => goto(`/projects/${slug}/services/new`)}>
-        <Plus size={14} /> New Service
+      <button class="btn btn-secondary" style="padding:4px 10px; font-size:0.75rem; min-height:30px;" onclick={() => goto(`/projects/${slug}/services/new`)}>
+        <Plus size={13} /> New Service
       </button>
     {/if}
   </div>
 
   {#if services.length === 0}
-    <div class="empty-state" style="padding:2.5rem; background:var(--color-surface); border:1px solid var(--color-border); border-radius:var(--radius-lg); margin-bottom:2.5rem;">
-      <div class="empty-state-icon"><Wrench size={48} /></div>
+    <div class="empty-state" style="margin-bottom:2rem;">
+      <div class="empty-state-icon"><Wrench size={36} /></div>
       <h3>No services deployed yet</h3>
       <p>Deploy Node.js, Python, Go, Java, Rust, PHP, Static sites, Workers, or custom Docker images.</p>
-      <button class="btn btn-primary" onclick={() => goto(`/projects/${slug}/services/new`)} style="margin-top:1rem">
-        <Rocket size={16} /> Deploy First Service
+      <button class="btn btn-primary" onclick={() => goto(`/projects/${slug}/services/new`)} style="margin-top:0.75rem">
+        <Rocket size={14} /> Deploy First Service
       </button>
     </div>
   {:else}
-    <div class="table-wrapper" style="margin-bottom:2.5rem;">
+    <div class="table-wrapper" style="margin-bottom:2rem;">
       <table>
         <thead>
           <tr>
@@ -211,20 +211,20 @@
           {#each services as svc}
             {@const svcId = svc.id || svc.ID}
             {@const svcSlug = svc.slug || svc.Slug}
-            <tr>
+            <tr style="cursor:pointer;" onclick={() => goto(`/services/${svcId}/overview`)}>
               <td>
                 <div style="display:flex; align-items:center; gap:8px;">
-                  <FrameworkIcon name={getPreset(svc)} size={20} />
-                  <a href="/services/{svcId}/overview" style="font-weight:600; color:var(--color-ink); font-size: 0.9375rem;">
+                  <FrameworkIcon name={getPreset(svc)} size={18} />
+                  <a href="/services/{svcId}/overview" style="font-weight:600; color:var(--color-ink); font-size:0.875rem;">
                     {svc.name || svc.Name}
                   </a>
                 </div>
               </td>
-              <td><span class="badge" style="background:#f1f5f9; color:#334155; text-transform:capitalize;">{svc.kind || svc.Kind || 'web'}</span></td>
+              <td><span class="badge" style="background:var(--color-surface-subtle); color:var(--color-ink-secondary); text-transform:capitalize;">{svc.kind || svc.Kind || 'web'}</span></td>
               <td>
                 <span class={statusClass(svc.runtime_status || svc.RuntimeStatus)}>
                   {#if (svc.runtime_status || svc.RuntimeStatus) === 'deploying'}
-                    <span class="animate-spin" style="display:inline-block; margin-right:4px;">⟳</span>
+                    <Loader2 size={11} class="animate-spin" style="margin-right:2px;" />
                   {/if}
                   {svc.runtime_status || svc.RuntimeStatus || 'draft'}
                 </span>
@@ -232,30 +232,31 @@
               <td>
                 {#if svc.endpoint_url || svc.domain || svcSlug}
                   <a 
-                    href={svc.endpoint_url || (svc.domain ? `https://${svc.domain}` : `https://${svcSlug}.${typeof window !== 'undefined' ? window.location.hostname : 'yourdomain.com'}`)} 
+                    href={svc.endpoint_url || (svc.domain ? `https://${svc.domain}` : `https://${svcSlug}.${typeof window !== 'undefined' ? window.location.hostname : 'example.com'}`)} 
                     target="_blank" 
                     rel="noreferrer"
-                    style="display:inline-flex; align-items:center; gap:4px; font-size:0.8125rem; color:var(--color-accent); font-weight:500;"
+                    onclick={(e) => e.stopPropagation()}
+                    style="display:inline-flex; align-items:center; gap:4px; font-size:0.75rem; color:var(--color-ink); font-weight:500;"
                   >
-                    <Globe size={13} /> {svc.domain || (typeof window !== 'undefined' ? `${svcSlug}.${window.location.hostname}` : `${svcSlug}.yourdomain.com`)} <ExternalLink size={11} />
+                    <Globe size={13} /> {svc.domain || (typeof window !== 'undefined' ? `${svcSlug}.${window.location.hostname}` : `${svcSlug}.example.com`)} <ExternalLink size={11} />
                   </a>
                 {:else}
                   <span class="text-muted text-xs">-</span>
                 {/if}
               </td>
-              <td><span class="font-mono text-xs">:{svc.internal_port || svc.InternalPort || 80}</span></td>
-              <td style="text-align:right;">
-                <div style="display:inline-flex; align-items:center; gap:0.5rem;">
-                  <a href="/services/{svcId}/overview" class="btn btn-secondary" style="padding:4px 12px; min-height:32px; font-size:0.8125rem;">
-                    Manage →
+              <td><span class="font-mono text-xs text-muted">:{svc.internal_port || svc.InternalPort || 80}</span></td>
+              <td style="text-align:right;" onclick={(e) => e.stopPropagation()}>
+                <div style="display:inline-flex; align-items:center; gap:6px;">
+                  <a href="/services/{svcId}/overview" class="btn btn-secondary" style="padding:3px 10px; min-height:28px; font-size:0.75rem;">
+                    Manage <ArrowRight size={12} />
                   </a>
                   <button 
                     class="btn btn-secondary" 
-                    style="padding:4px 8px; min-height:32px; color:var(--color-error); border-color:transparent;" 
+                    style="padding:3px 6px; min-height:28px; color:var(--color-danger); border-color:transparent;" 
                     aria-label="Delete Service"
                     onclick={(e) => deleteService(e, svc)}
                   >
-                    <Trash2 size={16} />
+                    <Trash2 size={14} />
                   </button>
                 </div>
               </td>
@@ -266,21 +267,21 @@
     </div>
   {/if}
 
-  <!-- Databases -->
-  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem;">
-    <h2 style="font-size:1.125rem; font-weight:600; color:var(--color-ink); margin:0;">Databases ({databases.length})</h2>
-    <a href="/databases/new" class="btn btn-secondary" style="padding:0.35rem 0.85rem; font-size:0.8125rem;">
-      <Plus size={14} /> New Database
+  <!-- Databases Section -->
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.75rem;">
+    <h2 style="font-size:1rem; font-weight:600; color:var(--color-ink); margin:0;">Databases ({databases.length})</h2>
+    <a href="/databases/new" class="btn btn-secondary" style="padding:4px 10px; font-size:0.75rem; min-height:30px;">
+      <Plus size={13} /> New Database
     </a>
   </div>
 
   {#if databases.length === 0}
-    <div class="empty-state" style="padding:2.5rem; background:var(--color-surface); border:1px solid var(--color-border); border-radius:var(--radius-lg);">
-      <div class="empty-state-icon"><Database size={48} /></div>
+    <div class="empty-state">
+      <div class="empty-state-icon"><Database size={36} /></div>
       <h3>No databases attached</h3>
       <p>Provision managed PostgreSQL, MySQL, Redis, MongoDB, or ClickHouse instances.</p>
-      <a href="/databases/new" class="btn btn-secondary" style="margin-top:1rem">
-        <Database size={16} /> Provision Database
+      <a href="/databases/new" class="btn btn-secondary" style="margin-top:0.75rem; font-size:0.75rem;">
+        <Database size={14} /> Provision Database
       </a>
     </div>
   {:else}
@@ -293,37 +294,37 @@
             <th>Internal Host</th>
             <th>Port</th>
             <th>Status</th>
-            <th>Actions</th>
+            <th style="text-align:right;">Actions</th>
           </tr>
         </thead>
         <tbody>
           {#each databases as db}
             {@const dbId = db.id || db.ID}
-            <tr>
+            <tr style="cursor:pointer;" onclick={() => goto(`/databases/${dbId}/overview`)}>
               <td>
                 <div style="display:flex; align-items:center; gap:8px;">
-                  <FrameworkIcon name={db.engine || db.Engine} size={20} />
-                  <a href="/databases/{dbId}/overview" style="font-weight:600; color:var(--color-ink);">
+                  <FrameworkIcon name={db.engine || db.Engine} size={18} />
+                  <a href="/databases/{dbId}/overview" style="font-weight:600; color:var(--color-ink); font-size:0.875rem;">
                     {db.name || db.Name}
                   </a>
                 </div>
               </td>
-              <td><span class="badge" style="background:#e0f2fe; color:#0369a1; text-transform:uppercase;">{db.engine || db.Engine}</span></td>
-              <td><span class="font-mono text-xs">{db.internal_hostname || db.InternalHostname || '-'}</span></td>
-              <td><span class="font-mono text-xs">:{db.internal_port || db.InternalPort || '-'}</span></td>
+              <td><span class="badge" style="background:rgba(56,189,248,0.12); color:#38bdf8; text-transform:uppercase;">{db.engine || db.Engine}</span></td>
+              <td><span class="font-mono text-xs text-muted">{db.internal_hostname || db.InternalHostname || '-'}</span></td>
+              <td><span class="font-mono text-xs text-muted">:{db.internal_port || db.InternalPort || '-'}</span></td>
               <td><span class={statusClass(db.runtime_status || db.RuntimeStatus)}>{db.runtime_status || db.RuntimeStatus || 'provisioning'}</span></td>
-              <td style="text-align:right;">
-                <div style="display:inline-flex; align-items:center; gap:0.5rem;">
-                  <a href="/databases/{dbId}/overview" class="btn btn-secondary" style="padding:4px 12px; min-height:32px; font-size:0.8125rem;">
-                    Manage →
+              <td style="text-align:right;" onclick={(e) => e.stopPropagation()}>
+                <div style="display:inline-flex; align-items:center; gap:6px;">
+                  <a href="/databases/{dbId}/overview" class="btn btn-secondary" style="padding:3px 10px; min-height:28px; font-size:0.75rem;">
+                    Manage <ArrowRight size={12} />
                   </a>
                   <button 
                     class="btn btn-secondary" 
-                    style="padding:4px 8px; min-height:32px; color:var(--color-error); border-color:transparent;" 
+                    style="padding:3px 6px; min-height:28px; color:var(--color-danger); border-color:transparent;" 
                     aria-label="Delete Database"
                     onclick={(e) => deleteDatabase(e, db)}
                   >
-                    <Trash2 size={16} />
+                    <Trash2 size={14} />
                   </button>
                 </div>
               </td>

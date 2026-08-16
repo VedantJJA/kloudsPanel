@@ -87,11 +87,13 @@
   <title>Shared Variables - {workspace?.name || slug} - kloudsPanel</title>
 </svelte:head>
 
-<div class="page-header" style="margin-bottom: 1.5rem;">
+<div class="page-header">
   <div>
     <div class="page-breadcrumbs">
-      <a href="/workspaces">Workspaces</a> /
-      <a href="/workspaces/{slug}">{workspace?.name || slug}</a> /
+      <a href="/workspaces">Workspaces</a>
+      <span>/</span>
+      <a href="/workspaces/{slug}">{workspace?.name || slug}</a>
+      <span>/</span>
       <span>Shared Variables</span>
     </div>
     <h1 class="page-title">Shared Environment Variables</h1>
@@ -99,35 +101,35 @@
   </div>
 </div>
 
-<div class="card" style="padding: 1.5rem; background: var(--color-surface); border: 1px solid var(--color-border); margin-bottom: 2rem;">
-  <div style="display: flex; align-items: center; gap: 0.5rem; background: rgba(0,166,166,0.08); border: 1px solid rgba(0,166,166,0.25); border-radius: var(--radius-md); padding: 0.85rem 1rem; margin-bottom: 1.5rem; font-size: 0.8125rem; color: var(--color-ink);">
-    <Info size={18} style="color: var(--color-accent); flex-shrink: 0;" />
+<div class="card">
+  <div style="display: flex; align-items: center; gap: 0.5rem; background: var(--color-surface-subtle); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 0.85rem 1rem; margin-bottom: 1.5rem; font-size: 0.8125rem; color: var(--color-ink);">
+    <Info size={16} style="color: #ffffff; flex-shrink: 0;" />
     <div>
       Shared variables provide a single source of truth for global API keys, database credentials, or environment flags across all services in this workspace. Service-specific variables with the same name will override workspace variables.
     </div>
   </div>
 
   {#if saved}
-    <div style="background:#d1fae5;border:1px solid #6ee7b7;color:#065f46;border-radius:var(--radius-md);padding:0.75rem 1rem;font-size:0.875rem;margin-bottom:1.25rem">
+    <div style="background: var(--color-success-subtle); border: 1px solid rgba(52,211,153,0.3); color: var(--color-success); border-radius: var(--radius-md); padding: 0.75rem 1rem; font-size: 0.8125rem; margin-bottom: 1.25rem;">
       Shared environment variables updated successfully. Future deployments in this workspace will inherit these values.
     </div>
   {/if}
 
   {#if error}
-    <div style="background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;border-radius:var(--radius-md);padding:0.75rem 1rem;font-size:0.875rem;margin-bottom:1.25rem">
+    <div style="background: var(--color-danger-subtle); border: 1px solid rgba(248,113,113,0.3); color: var(--color-danger); border-radius: var(--radius-md); padding: 0.75rem 1rem; font-size: 0.8125rem; margin-bottom: 1.25rem;">
       {error}
     </div>
   {/if}
 
   {#if loading}
     <div style="text-align: center; padding: 2rem;">
-      <Loader2 size={32} class="animate-spin text-muted" />
+      <Loader2 size={28} class="animate-spin text-muted" />
     </div>
   {:else}
     <form onsubmit={saveVariables}>
       <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1.5rem;">
         {#if variables.length === 0}
-          <div style="text-align: center; padding: 2rem; border: 1px dashed var(--color-border); border-radius: var(--radius-md); color: var(--color-ink-secondary);">
+          <div style="text-align: center; padding: 2rem; border: 1px dashed var(--color-border); border-radius: var(--radius-md); color: var(--color-ink-muted);">
             No shared environment variables configured yet.
           </div>
         {:else}
@@ -156,7 +158,7 @@
                     type="password"
                     class="form-input font-mono"
                     style="font-size: 0.8125rem; padding-right: 2.25rem;"
-                    placeholder="••••••••••••"
+                    placeholder="Enter secret value"
                     bind:value={v.value}
                   />
                 {/if}
@@ -179,18 +181,18 @@
               <button
                 type="button"
                 class="btn btn-secondary"
-                style="padding: 6px 10px; color: var(--color-error); border-color: var(--color-border); min-height: 36px;"
+                style="padding: 6px 10px; color: var(--color-danger); border-color: var(--color-border); min-height: 36px;"
                 onclick={() => removeVariable(i)}
                 title="Delete variable"
               >
-                <Trash2 size={15} />
+                <Trash2 size={14} />
               </button>
             </div>
           {/each}
         {/if}
       </div>
 
-      <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--color-border); padding-top: 1.25rem;">
+      <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--color-border-subtle); padding-top: 1.25rem;">
         <button
           type="button"
           class="btn btn-secondary"
@@ -203,13 +205,13 @@
         <button
           type="submit"
           class="btn btn-primary"
-          style="display: flex; align-items: center; gap: 6px; font-size: 0.8125rem; padding: 8px 20px;"
+          style="display: flex; align-items: center; gap: 6px; font-size: 0.8125rem; padding: 7px 18px;"
           disabled={saving}
         >
           {#if saving}
             <Loader2 size={14} class="animate-spin" /> Saving...
           {:else}
-            <Save size={15} /> Save Variables
+            <Save size={14} /> Save Variables
           {/if}
         </button>
       </div>

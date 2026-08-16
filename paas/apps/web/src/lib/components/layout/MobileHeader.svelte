@@ -56,7 +56,7 @@
     </button>
 
     {#if pageCategory !== 'kloudsPanel'}
-      <span class="badge" style="background: rgba(0, 166, 166, 0.12); color: var(--color-accent); font-size: 0.7rem; font-weight: 600; text-transform: uppercase;">
+      <span class="badge" style="background: rgba(255, 255, 255, 0.08); color: #ffffff; font-size: 0.7rem; font-weight: 600; text-transform: uppercase;">
         {pageCategory}
       </span>
     {/if}
@@ -64,7 +64,7 @@
     <a 
       href="/workspaces" 
       class="btn btn-primary" 
-      style="padding: 4px 10px; min-height: 32px; font-size: 0.75rem; border-radius: var(--radius-full);"
+      style="padding: 4px 10px; min-height: 30px; font-size: 0.75rem; border-radius: var(--radius-md);"
       title="Workspaces"
       onclick={() => isMobileNavOpen.set(false)}
     >

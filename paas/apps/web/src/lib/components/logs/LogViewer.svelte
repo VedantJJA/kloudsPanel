@@ -56,7 +56,7 @@
 <div class="log-viewer" id="log-viewer" role="log" aria-label="Deployment logs" aria-live="polite">
   {#if loading}
     <div style="display:flex; align-items:center; gap:0.5rem; color:#8b949e;">
-      <span class="log-line-system">Loading deployment logs…</span>
+      <span class="log-line-system">Loading deployment logs...</span>
     </div>
   {:else if logs.length === 0}
     <span class="log-line-system">No log entries recorded yet. Trigger a deployment to view real console output.</span>
@@ -77,8 +77,8 @@
   .log-viewer {
     min-height: 380px;
     max-height: 560px;
-    background: #090d13;
-    border: 1px solid #21262d;
+    background: #06070a;
+    border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
     padding: var(--sp-4);
     font-family: var(--font-mono);

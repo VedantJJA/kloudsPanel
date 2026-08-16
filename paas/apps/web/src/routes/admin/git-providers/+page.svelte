@@ -299,11 +299,11 @@
       <div class="form-group" style="margin:0;">
         <label class="form-label" for="app-client-secret" style="font-size:0.8125rem;">{current.secretLabel}</label>
         {#if activeTab === 'github'}
-          <input id="app-client-secret" type="password" class="form-input font-mono" placeholder="••••••••••••••••••••••••••••••••" bind:value={githubClientSecret} required />
+          <input id="app-client-secret" type="password" class="form-input font-mono" placeholder="Enter client secret" bind:value={githubClientSecret} required />
         {:else if activeTab === 'gitlab'}
-          <input id="app-client-secret" type="password" class="form-input font-mono" placeholder="••••••••••••••••••••••••••••••••" bind:value={gitlabClientSecret} required />
+          <input id="app-client-secret" type="password" class="form-input font-mono" placeholder="Enter client secret" bind:value={gitlabClientSecret} required />
         {:else}
-          <input id="app-client-secret" type="password" class="form-input font-mono" placeholder="••••••••••••••••••••••••••••••••" bind:value={bitbucketClientSecret} required />
+          <input id="app-client-secret" type="password" class="form-input font-mono" placeholder="Enter client secret" bind:value={bitbucketClientSecret} required />
         {/if}
       </div>
 

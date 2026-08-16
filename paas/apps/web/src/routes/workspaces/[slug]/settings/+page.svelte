@@ -90,45 +90,31 @@
   <title>Workspace Settings - {workspace?.name || slug} - kloudsPanel</title>
 </svelte:head>
 
-<div class="page-header" style="margin-bottom: 1.25rem;">
+<div class="page-header">
   <div>
     <div class="page-breadcrumbs">
-      <a href="/workspaces">Workspaces</a> /
-      <a href="/workspaces/{slug}">{workspace?.name || slug}</a> /
+      <a href="/workspaces">Workspaces</a>
+      <span>/</span>
+      <a href="/workspaces/{slug}">{workspace?.name || slug}</a>
+      <span>/</span>
       <span>Settings</span>
     </div>
     <h1 class="page-title">Workspace Settings</h1>
-    <p class="page-subtitle">Configure workspace details, database assist mode, and manage resource lifecycles</p>
+    <p class="page-subtitle">Configure workspace details and manage resource lifecycles</p>
   </div>
 </div>
 
-<!-- Modern Tab Bar -->
-<div class="tabs-bar" style="display:flex; gap:0.25rem; border-bottom:2px solid var(--color-border); margin-bottom:1.5rem; overflow-x:auto;">
+<!-- Tabs Bar -->
+<div class="tabs-bar">
   {#each tabs as t}
     {@const Icon = t.icon}
     <button
       type="button"
+      class="tab-btn"
+      class:active={activeTab === t.id}
       onclick={() => { activeTab = t.id; error = ''; saved = false; }}
-      style="
-        padding: 0.625rem 1.25rem;
-        font-size: 0.875rem;
-        font-weight: 600;
-        color: {activeTab === t.id ? (t.id === 'danger' ? 'var(--color-danger)' : 'var(--color-accent)') : 'var(--color-ink-secondary)'};
-        border-bottom: 2px solid {activeTab === t.id ? (t.id === 'danger' ? 'var(--color-danger)' : 'var(--color-accent)') : 'transparent'};
-        margin-bottom: -2px;
-        white-space: nowrap;
-        background: transparent;
-        border-top: none;
-        border-left: none;
-        border-right: none;
-        cursor: pointer;
-        transition: all 0.15s;
-        display: flex;
-        align-items: center;
-        gap: 7px;
-      "
     >
-      <Icon size={16} />
+      <Icon size={15} />
       <span>{t.label}</span>
     </button>
   {/each}
@@ -136,19 +122,19 @@
 
 {#if loading}
   <div style="text-align: center; padding: 2rem;">
-    <Loader2 size={32} class="animate-spin text-muted" />
+    <Loader2 size={28} class="animate-spin text-muted" />
   </div>
 {:else}
-  <div style="max-width: 720px;">
+  <div style="max-width: 680px;">
     {#if activeTab === 'general'}
       <!-- General Settings Card -->
-      <div class="card" style="padding: 1.5rem; background: var(--color-surface); border: 1px solid var(--color-border);">
-        <div class="card-header" style="margin-bottom: 1.25rem;">
-          <h3 style="margin: 0; font-size: 1.05rem;">General Information</h3>
+      <div class="card">
+        <div class="card-header">
+          <h3 style="margin: 0; font-size: 0.9375rem;">General Information</h3>
         </div>
 
         {#if saved}
-          <div style="background:#d1fae5;border:1px solid #6ee7b7;color:#065f46;border-radius:var(--radius-md);padding:0.75rem 1rem;font-size:0.875rem;margin-bottom:1.25rem">
+          <div style="background: var(--color-success-subtle); border: 1px solid rgba(52,211,153,0.3); color: var(--color-success); border-radius: var(--radius-md); padding: 0.75rem 1rem; font-size: 0.8125rem; margin-bottom: 1.25rem;">
             Workspace updated successfully.
           </div>
         {/if}
@@ -164,7 +150,7 @@
             <input id="ws-slug" type="text" class="form-input font-mono" value={slug} disabled />
           </div>
 
-          <button type="submit" class="btn btn-primary" style="display: inline-flex; align-items: center; gap: 6px;" disabled={saving}>
+          <button type="submit" class="btn btn-primary" style="margin-top: 0.5rem;" disabled={saving}>
             {#if saving}<Loader2 size={14} class="animate-spin" /> Saving...{:else}<Save size={14} /> Save Changes{/if}
           </button>
         </form>
@@ -172,21 +158,20 @@
 
     {:else if activeTab === 'danger'}
       <!-- Danger Zone Card -->
-      <div class="card" style="padding: 1.5rem; background: var(--color-surface); border: 1px solid #fca5a5;">
-        <div class="card-header" style="margin-bottom: 1rem;">
-          <h3 style="margin: 0; font-size: 1.05rem; color: var(--color-error); display: flex; align-items: center; gap: 6px;">
-            <AlertTriangle size={18} /> Danger Zone
+      <div class="card" style="border-color: rgba(248, 113, 113, 0.35);">
+        <div class="card-header" style="border-bottom-color: rgba(248, 113, 113, 0.2);">
+          <h3 style="margin: 0; font-size: 0.9375rem; color: var(--color-danger); display: flex; align-items: center; gap: 6px;">
+            <AlertTriangle size={16} /> Danger Zone
           </h3>
         </div>
 
         <p class="text-sm text-muted" style="margin-bottom: 1.25rem;">
-          Permanently delete this workspace and all projects, services, deployments, and attached databases. This action cannot be undone.
+          Permanently delete this workspace and all associated projects, services, deployments, and databases. This action cannot be undone.
         </p>
 
         <button
           type="button"
           class="btn btn-danger"
-          style="background: var(--color-danger); border-color: var(--color-danger); color: #fff; display: inline-flex; align-items: center; gap: 6px;"
           onclick={handleDelete}
           disabled={deleting}
         >

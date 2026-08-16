@@ -2,7 +2,7 @@
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
-  import { Loader2, Box, FolderOpen, Trash2 } from 'lucide-svelte';
+  import { Loader2, Box, FolderKanban, Trash2, Plus, ArrowRight } from 'lucide-svelte';
 
   const slug = $derived($page.params.slug);
   let workspace = $state<any>(null);
@@ -63,67 +63,98 @@
 
 {#if loading}
   <div class="empty-state">
-    <div class="animate-spin text-muted" style="margin-bottom:1rem"><Loader2 size={48} /></div>
-    <p>Loading...</p>
+    <div class="animate-spin text-muted" style="margin-bottom:1rem"><Loader2 size={36} /></div>
+    <p>Loading projects...</p>
   </div>
 {:else}
   <div class="page-header">
     <div>
       <div class="page-breadcrumbs">
-        <a href="/workspaces">Workspaces</a> /
+        <a href="/workspaces">Workspaces</a>
+        <span>/</span>
         <span>{workspace?.name || workspace?.Name || slug}</span>
       </div>
       <h1 class="page-title">{workspace?.name || workspace?.Name || slug}</h1>
-      <p class="page-subtitle">Manage projects and services in this workspace</p>
+      <p class="page-subtitle">Manage projects, applications, and microservices</p>
     </div>
     <button class="btn btn-primary" onclick={() => goto(`/workspaces/${slug}/projects/new`)}>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-      </svg>
+      <Plus size={16} />
       New Project
     </button>
   </div>
 
   {#if projects.length === 0}
     <div class="empty-state">
-      <div class="empty-state-icon"><Box size={48} /></div>
+      <div class="empty-state-icon"><Box size={40} /></div>
       <h3>No projects yet</h3>
       <p>Create your first project to start deploying services.</p>
-      <button class="btn btn-primary mt-4" onclick={() => goto(`/workspaces/${slug}/projects/new`)}>Create Project</button>
+      <button class="btn btn-primary" style="margin-top:1rem" onclick={() => goto(`/workspaces/${slug}/projects/new`)}>
+        <Plus size={16} /> Create Project
+      </button>
     </div>
   {:else}
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:1rem">
-      {#each projects as proj}
-        {@const projId = proj.id || proj.ID}
-        <div 
-          class="card" 
-          style="cursor:pointer"
-          onclick={() => goto(`/projects/${projId}`)}
-          onkeydown={(e) => e.key === 'Enter' && goto(`/projects/${projId}`)}
-          role="button"
-          tabindex="0"
-        >
-          <div class="card-header" style="display:flex; justify-content:space-between; align-items:flex-start">
-            <div>
-              <h3 style="margin:0">{proj.name || proj.Name}</h3>
-              <span class="text-xs text-muted font-mono">{proj.slug || proj.Slug || ''}</span>
-            </div>
-            <div style="display:flex; gap:0.5rem; align-items:center;">
-              <span class="badge badge-running">active</span>
-              <button 
-                class="btn btn-secondary" 
-                style="padding:4px; color:var(--color-error); border:none; background:transparent" 
-                aria-label="Delete Project" 
-                onclick={(e) => deleteProject(e, proj)}
-              >
-                <Trash2 size={16} />
-              </button>
-            </div>
-          </div>
-          <p class="text-sm text-muted" style="margin:0 0 0.5rem 0">{proj.description ?? 'No description'}</p>
-          <div class="text-xs text-muted" style="color:var(--color-accent)">Open project →</div>
-        </div>
-      {/each}
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>Project</th>
+            <th>Slug</th>
+            <th>Description</th>
+            <th>Status</th>
+            <th style="text-align:right;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each projects as proj}
+            {@const projId = proj.id || proj.ID}
+            <tr 
+              style="cursor:pointer"
+              onclick={() => goto(`/projects/${projId}`)}
+            >
+              <td>
+                <div style="display:flex; align-items:center; gap:10px;">
+                  <div style="width:32px; height:32px; border-radius:var(--radius-sm); background:var(--color-surface-subtle); border:1px solid var(--color-border); display:flex; align-items:center; justify-content:center; color:var(--color-ink);">
+                    <FolderKanban size={16} />
+                  </div>
+                  <div>
+                    <a href={`/projects/${projId}`} style="font-weight:600; color:var(--color-ink); font-size:0.875rem;">
+                      {proj.name || proj.Name}
+                    </a>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <span class="font-mono text-xs text-muted">/{proj.slug || proj.Slug || ''}</span>
+              </td>
+              <td>
+                <span class="text-xs text-muted truncate" style="max-width:240px; display:inline-block;">{proj.description || 'No description'}</span>
+              </td>
+              <td>
+                <span class="badge badge-running">active</span>
+              </td>
+              <td style="text-align:right;" onclick={(e) => e.stopPropagation()}>
+                <div style="display:inline-flex; align-items:center; gap:6px;">
+                  <button 
+                    class="btn btn-secondary" 
+                    style="padding:4px 10px; min-height:30px; font-size:0.75rem;" 
+                    onclick={() => goto(`/projects/${projId}`)}
+                  >
+                    Open <ArrowRight size={13} />
+                  </button>
+                  <button 
+                    class="btn btn-secondary" 
+                    style="padding:4px 8px; min-height:30px; color:var(--color-danger); border-color:transparent;" 
+                    aria-label="Delete Project" 
+                    onclick={(e) => deleteProject(e, proj)}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
     </div>
   {/if}
 {/if}

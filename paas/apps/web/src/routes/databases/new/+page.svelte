@@ -172,7 +172,6 @@
       
       const db = await res.json();
       const dbId = db.id || db.ID;
-      // Navigate straight to the new database management dashboard
       goto(`/databases/${dbId}/overview`);
     } catch (e: any) {
       error = e.message;
@@ -186,30 +185,30 @@
   <title>New Database - kloudsPanel</title>
 </svelte:head>
 
-<div class="page-header" style="margin-bottom: 2rem;">
-  <div style="display: flex; align-items: center; gap: 1rem;">
+<div class="page-header">
+  <div style="display: flex; align-items: center; gap: 0.75rem;">
     <button 
       class="btn btn-secondary" 
       onclick={() => history.back()} 
-      style="padding: 0; width: 40px; height: 40px; min-height: 40px; border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; flex-shrink: 0;"
+      style="padding: 0; width: 34px; height: 34px; min-height: 34px; border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; flex-shrink: 0;"
       aria-label="Back"
     >
-      <ArrowLeft size={18} />
+      <ArrowLeft size={16} />
     </button>
     <div>
       <h1 class="page-title">Provision Managed Database</h1>
-      <p class="page-subtitle">Deploy a dedicated database instance with version selection, automatic high availability, and isolated private networking.</p>
+      <p class="page-subtitle">Deploy a dedicated database instance with version selection and isolated private networking</p>
     </div>
   </div>
 </div>
 
-<div class="card" style="max-width: 720px; margin-bottom: 3rem;">
+<div class="card" style="max-width: 680px; margin-bottom: 2rem;">
   <form onsubmit={createDatabase}>
     
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.25rem;">
       <div class="form-group">
         <label for="workspace-select" class="form-label">Workspace</label>
-        <select id="workspace-select" class="form-input" bind:value={selectedWorkspace} required>
+        <select id="workspace-select" class="form-select" bind:value={selectedWorkspace} required>
           <option value="" disabled>Select Workspace...</option>
           {#each workspaces as ws}
             <option value={ws.id || ws.ID}>{ws.name || ws.Name}</option>
@@ -219,7 +218,7 @@
 
       <div class="form-group">
         <label for="project-select" class="form-label">Project</label>
-        <select id="project-select" class="form-input" bind:value={projectId} required disabled={!selectedWorkspace || projects.length === 0}>
+        <select id="project-select" class="form-select" bind:value={projectId} required disabled={!selectedWorkspace || projects.length === 0}>
           <option value="" disabled>Select Project...</option>
           {#each projects as p}
             <option value={p.id || p.ID}>{p.name || p.Name}</option>
@@ -244,8 +243,8 @@
 
     <!-- Engine Selection Cards -->
     <div style="margin-bottom: 1.5rem;">
-      <label for="db-engine-cards-container" class="form-label" style="margin-bottom: 0.75rem;">Select Database Engine</label>
-      <div id="db-engine-cards-container" style="display: grid; grid-template-columns: 1fr; gap: 0.75rem;">
+      <label for="db-engine-cards-container" class="form-label" style="margin-bottom: 0.5rem; display:block;">Select Database Engine</label>
+      <div id="db-engine-cards-container" style="display: grid; grid-template-columns: 1fr; gap: 0.5rem;">
         {#each engines as eng}
           {@const isSelected = engine === eng.id}
           <button 
@@ -254,9 +253,9 @@
             style="
               cursor: pointer;
               text-align: left;
-              padding: 0.85rem 1.15rem;
-              border: 2px solid {isSelected ? 'var(--color-accent)' : 'var(--color-border)'};
-              background: {isSelected ? 'rgba(0,166,166,0.04)' : 'var(--color-surface)'};
+              padding: 0.75rem 1rem;
+              border: 1px solid {isSelected ? '#ffffff' : 'var(--color-border)'};
+              background: {isSelected ? 'var(--color-surface-subtle)' : 'var(--color-surface)'};
               display: flex;
               align-items: center;
               justify-content: space-between;
@@ -264,19 +263,19 @@
             "
             onclick={() => engine = eng.id}
           >
-            <div style="display: flex; align-items: center; gap: 0.85rem;">
-              <div style="display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: var(--radius-md); background: {eng.color}15;">
-                <FrameworkIcon name={eng.id} size={24} />
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+              <div style="display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: var(--radius-sm); background: var(--color-surface); border: 1px solid var(--color-border);">
+                <FrameworkIcon name={eng.id} size={20} />
               </div>
               <div>
-                <div style="font-size: 0.9375rem; font-weight: 600; color: var(--color-ink);">{eng.name}</div>
+                <div style="font-size: 0.875rem; font-weight: 600; color: var(--color-ink);">{eng.name}</div>
                 <div class="text-xs text-muted">{eng.desc}</div>
               </div>
             </div>
             <div style="display: flex; align-items: center; gap: 0.75rem;">
               <span class="font-mono text-xs text-muted">Port {eng.port}</span>
               {#if isSelected}
-                <span style="display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: var(--color-accent); color: #fff;">
+                <span style="display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: var(--radius-sm); background: #ffffff; color: #090a0f;">
                   <Check size={12} strokeWidth={3} />
                 </span>
               {/if}
@@ -287,17 +286,16 @@
     </div>
 
     <!-- Dynamic Version Selection Box -->
-    <div style="padding: 1.25rem; background: var(--color-canvas); border: 1px solid var(--color-border); border-radius: var(--radius-md); margin-bottom: 1.5rem;">
-      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
+    <div style="padding: 1.25rem; background: var(--color-surface-subtle); border: 1px solid var(--color-border); border-radius: var(--radius-md); margin-bottom: 1.5rem;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
         <div>
-          <label for="engine-version-select" class="form-label" style="margin: 0; font-size: 0.875rem;">
+          <label for="engine-version-select" class="form-label" style="margin: 0;">
             {currentEngineObj.name} Engine Version
           </label>
-          <p class="text-xs text-muted" style="margin: 2px 0 0 0;">Select the exact engine version to deploy inside the hardened container sandbox.</p>
         </div>
       </div>
 
-      <select id="engine-version-select" class="form-input font-mono text-sm" bind:value={selectedVersion}>
+      <select id="engine-version-select" class="form-select font-mono text-xs" bind:value={selectedVersion}>
         {#each currentEngineObj.versions as v}
           <option value={v.value}>{v.label}</option>
         {/each}
@@ -305,27 +303,27 @@
     </div>
 
     <!-- Security & Password Credentials Box -->
-    <div style="padding: 1.25rem; background: var(--color-canvas); border: 1px solid var(--color-border); border-radius: var(--radius-md); margin-bottom: 1.5rem;">
+    <div style="padding: 1.25rem; background: var(--color-surface-subtle); border: 1px solid var(--color-border); border-radius: var(--radius-md); margin-bottom: 1.5rem;">
       <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
-        <ShieldCheck size={18} style="color: var(--color-accent);" />
-        <span style="font-size: 0.875rem; font-weight: 600;">Security & Credentials</span>
+        <ShieldCheck size={16} style="color: #ffffff;" />
+        <span style="font-size: 0.8125rem; font-weight: 600; color: var(--color-ink);">Security and Master Credentials</span>
       </div>
 
-      <div style="display: flex; flex-direction: column; gap: 0.75rem;">
-        <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8125rem; cursor: pointer;">
+      <div style="display: flex; flex-direction: column; gap: 0.6rem;">
+        <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8125rem; cursor: pointer; color: var(--color-ink);">
           <input type="radio" name="pwd_mode" checked={useAutoPassword} onchange={() => useAutoPassword = true} />
-          <span><strong>Auto-generate strong cryptographic password</strong> (128-bit entropy, Recommended)</span>
+          <span><strong>Auto-generate strong password</strong> (128-bit entropy, Recommended)</span>
         </label>
-        <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8125rem; cursor: pointer;">
+        <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8125rem; cursor: pointer; color: var(--color-ink);">
           <input type="radio" name="pwd_mode" checked={!useAutoPassword} onchange={() => useAutoPassword = false} />
           <span>Set custom master password</span>
         </label>
 
         {#if !useAutoPassword}
-          <div style="margin-top: 0.5rem;">
+          <div style="margin-top: 0.35rem;">
             <input 
               type="password" 
-              class="form-input font-mono text-sm" 
+              class="form-input font-mono text-xs" 
               placeholder="Enter secure master password..." 
               bind:value={customPassword}
               required={!useAutoPassword}
@@ -336,21 +334,21 @@
     </div>
 
     {#if error}
-      <div class="alert alert-error" style="margin-bottom: 1.5rem; background: #fee2e2; border: 1px solid #fca5a5; color: #991b1b; padding: 0.75rem 1rem; border-radius: var(--radius-md); font-size: 0.875rem;">
+      <div style="margin-bottom: 1.25rem; background: var(--color-danger-subtle); border: 1px solid rgba(248,113,113,0.3); color: var(--color-danger); padding: 0.75rem 1rem; border-radius: var(--radius-md); font-size: 0.8125rem;">
         {error}
       </div>
     {/if}
 
-    <div style="display: flex; justify-content: flex-end; gap: 1rem; padding-top: 1rem; border-top: 1px solid var(--color-border);">
+    <div style="display: flex; justify-content: flex-end; gap: 0.75rem; padding-top: 1rem; border-top: 1px solid var(--color-border-subtle);">
       <button type="button" class="btn btn-secondary" onclick={() => history.back()} disabled={loading}>
         Cancel
       </button>
       <button type="submit" class="btn btn-primary" disabled={loading || !projectId || !name || !engine}>
         {#if loading}
-          <Loader2 size={16} class="animate-spin" style="margin-right: 0.5rem;" />
+          <Loader2 size={14} class="animate-spin" style="margin-right: 0.4rem;" />
           Provisioning Database...
         {:else}
-          <Save size={16} style="margin-right: 0.5rem;" />
+          <Save size={14} style="margin-right: 0.4rem;" />
           Create {currentEngineObj.name} Database
         {/if}
       </button>

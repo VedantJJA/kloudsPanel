@@ -3,13 +3,13 @@ import { writable } from 'svelte/store';
 export type ThemeMode = 'light' | 'dark' | 'system';
 
 function createThemeStore() {
-  const { subscribe, set, update } = writable<ThemeMode>('system');
+  const { subscribe, set, update } = writable<ThemeMode>('dark');
 
   let mediaQuery: MediaQueryList | null = null;
 
   function getSystemTheme(): 'light' | 'dark' {
-    if (typeof window === 'undefined') return 'light';
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    if (typeof window === 'undefined') return 'dark';
+    return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
   }
 
   function applyTheme(mode: ThemeMode) {
@@ -39,7 +39,7 @@ function createThemeStore() {
       
       let saved = localStorage.getItem('klouds_theme') as ThemeMode | null;
       if (!saved || !['light', 'dark', 'system'].includes(saved)) {
-        saved = 'system';
+        saved = 'dark';
       }
 
       set(saved);

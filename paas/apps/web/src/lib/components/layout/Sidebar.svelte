@@ -278,22 +278,22 @@
       <a 
         href={currentService?.project_id ? `/projects/${currentService.project_id}` : '/workspaces'} 
         class="nav-item" 
-        style="padding: 6px var(--sp-2); min-height: 32px; font-size: 0.8125rem; color: rgba(234,241,250,0.6);"
+        style="padding: 6px var(--sp-2); min-height: 32px; font-size: 0.8125rem; color: var(--color-ink-secondary);"
         title="Back to Project"
         onclick={closeMobileNav}
       >
         <ArrowLeft size={14} style="margin-right: 4px; flex-shrink:0;" /> 
         <span class="nav-item-text">Back to Project</span>
       </a>
-      <div class="context-header-details" style="margin-top: 0.75rem; padding: 0.75rem; background: rgba(234,241,250,0.06); border-radius: var(--radius-md); border: 1px solid rgba(234,241,250,0.1);">
-        <div style="font-size: 0.875rem; font-weight: 600; color: #fff; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
+      <div class="context-header-details" style="margin-top: 0.75rem; padding: 0.75rem; background: var(--color-surface-subtle); border-radius: var(--radius-md); border: 1px solid var(--color-border);">
+        <div style="font-size: 0.875rem; font-weight: 600; color: var(--color-ink); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
           {currentService?.name || 'Service'}
         </div>
         <div style="display: flex; gap: 0.4rem; align-items: center; margin-top: 0.25rem;">
-          <span style="font-size: 0.6875rem; text-transform: uppercase; background: rgba(0,166,166,0.3); color: #00e5e5; padding: 2px 6px; border-radius: 4px; font-weight: 600;">
+          <span style="font-size: 0.6875rem; text-transform: uppercase; background: rgba(255,255,255,0.08); color: #ffffff; padding: 2px 6px; border-radius: var(--radius-sm); font-weight: 600;">
             {currentService?.kind || 'web'}
           </span>
-          <span style="font-size: 0.6875rem; color: rgba(234,241,250,0.5);">
+          <span style="font-size: 0.6875rem; color: var(--color-ink-muted);">
             {currentService?.runtime_status || 'draft'}
           </span>
         </div>
@@ -327,22 +327,22 @@
       <a 
         href="/databases" 
         class="nav-item" 
-        style="padding: 6px var(--sp-2); min-height: 32px; font-size: 0.8125rem; color: rgba(234,241,250,0.6);"
+        style="padding: 6px var(--sp-2); min-height: 32px; font-size: 0.8125rem; color: var(--color-ink-secondary);"
         title="Back to Databases"
         onclick={closeMobileNav}
       >
         <ArrowLeft size={14} style="margin-right: 4px; flex-shrink:0;" /> 
         <span class="nav-item-text">Back to Databases</span>
       </a>
-      <div class="context-header-details" style="margin-top: 0.75rem; padding: 0.75rem; background: rgba(234,241,250,0.06); border-radius: var(--radius-md); border: 1px solid rgba(234,241,250,0.1);">
-        <div style="font-size: 0.875rem; font-weight: 600; color: #fff; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
+      <div class="context-header-details" style="margin-top: 0.75rem; padding: 0.75rem; background: var(--color-surface-subtle); border-radius: var(--radius-md); border: 1px solid var(--color-border);">
+        <div style="font-size: 0.875rem; font-weight: 600; color: var(--color-ink); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
           {currentDatabase?.name || 'Database'}
         </div>
         <div style="display: flex; gap: 0.4rem; align-items: center; margin-top: 0.25rem;">
-          <span style="font-size: 0.6875rem; text-transform: uppercase; background: rgba(3,105,161,0.4); color: #7dd3fc; padding: 2px 6px; border-radius: 4px; font-weight: 600;">
+          <span style="font-size: 0.6875rem; text-transform: uppercase; background: rgba(56,189,248,0.15); color: #38bdf8; padding: 2px 6px; border-radius: var(--radius-sm); font-weight: 600;">
             {currentDatabase?.engine || 'postgres'}
           </span>
-          <span style="font-size: 0.6875rem; color: {(currentDatabase?.runtime_status === 'ready' || currentDatabase?.runtime_status === 'running') ? '#4ade80' : currentDatabase?.runtime_status === 'restarting' ? '#f59e0b' : 'rgba(234,241,250,0.5)'}; text-transform: lowercase;">
+          <span style="font-size: 0.6875rem; color: {(currentDatabase?.runtime_status === 'ready' || currentDatabase?.runtime_status === 'running') ? '#34d399' : currentDatabase?.runtime_status === 'restarting' ? '#fbbf24' : 'var(--color-ink-muted)'}; text-transform: lowercase;">
             {currentDatabase?.runtime_status || 'provisioning'}
           </span>
         </div>
@@ -351,7 +351,7 @@
 
     <!-- Database Specific Nav Tabs -->
     <div class="sidebar-nav" role="list">
-      <div class="nav-section" style="font-size: 0.6875rem; color: rgba(234,241,250,0.4); text-transform: uppercase; letter-spacing: 0.05em; padding: 0 var(--sp-2); margin-bottom: 0.5rem;">
+      <div class="nav-section" style="font-size: 0.6875rem; color: var(--color-ink-muted); text-transform: uppercase; letter-spacing: 0.05em; padding: 0 var(--sp-2); margin-bottom: 0.5rem;">
         Database Management
       </div>
       {#each databaseTabs as item}
@@ -376,22 +376,22 @@
       <a 
         href="/workspaces" 
         class="nav-item" 
-        style="padding: 6px var(--sp-2); min-height: 32px; font-size: 0.8125rem; color: rgba(234,241,250,0.6);"
+        style="padding: 6px var(--sp-2); min-height: 32px; font-size: 0.8125rem; color: var(--color-ink-secondary);"
         title="Back to All Workspaces"
         onclick={closeMobileNav}
       >
         <ArrowLeft size={14} style="margin-right: 4px; flex-shrink:0;" /> 
         <span class="nav-item-text">All Workspaces</span>
       </a>
-      <div class="context-header-details" style="margin-top: 0.75rem; padding: 0.75rem; background: rgba(234,241,250,0.06); border-radius: var(--radius-md); border: 1px solid rgba(234,241,250,0.1);">
-        <div style="font-size: 0.875rem; font-weight: 600; color: #fff; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
+      <div class="context-header-details" style="margin-top: 0.75rem; padding: 0.75rem; background: var(--color-surface-subtle); border-radius: var(--radius-md); border: 1px solid var(--color-border);">
+        <div style="font-size: 0.875rem; font-weight: 600; color: var(--color-ink); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
           {currentWorkspace?.name || currentWorkspace?.Name || currentWorkspaceSlug}
         </div>
         <div style="display: flex; gap: 0.4rem; align-items: center; margin-top: 0.25rem;">
-          <span style="font-size: 0.6875rem; text-transform: uppercase; background: rgba(16,185,129,0.25); color: #34d399; padding: 2px 6px; border-radius: 4px; font-weight: 600;">
+          <span style="font-size: 0.6875rem; text-transform: uppercase; background: rgba(52,211,153,0.15); color: #34d399; padding: 2px 6px; border-radius: var(--radius-sm); font-weight: 600;">
             Workspace
           </span>
-          <span style="font-size: 0.6875rem; color: rgba(234,241,250,0.5);">
+          <span style="font-size: 0.6875rem; color: var(--color-ink-muted);">
             {currentWorkspace?.status || 'active'}
           </span>
         </div>
@@ -400,7 +400,7 @@
 
     <!-- Workspace Specific Nav Tabs -->
     <div class="sidebar-nav" role="list">
-      <div class="nav-section" style="font-size: 0.6875rem; color: rgba(234,241,250,0.4); text-transform: uppercase; letter-spacing: 0.05em; padding: 0 var(--sp-2); margin-bottom: 0.5rem;">
+      <div class="nav-section" style="font-size: 0.6875rem; color: var(--color-ink-muted); text-transform: uppercase; letter-spacing: 0.05em; padding: 0 var(--sp-2); margin-bottom: 0.5rem;">
         Workspace Management
       </div>
       {#each workspaceTabs as item}
@@ -425,22 +425,22 @@
       <a 
         href={currentProject?.workspace_slug ? `/workspaces/${currentProject.workspace_slug}` : currentProject?.workspace_id ? `/workspaces/${currentProject.workspace_id}` : '/workspaces'} 
         class="nav-item" 
-        style="padding: 6px var(--sp-2); min-height: 32px; font-size: 0.8125rem; color: rgba(234,241,250,0.6);"
+        style="padding: 6px var(--sp-2); min-height: 32px; font-size: 0.8125rem; color: var(--color-ink-secondary);"
         title="Back to Workspace"
         onclick={closeMobileNav}
       >
         <ArrowLeft size={14} style="margin-right: 4px; flex-shrink:0;" /> 
         <span class="nav-item-text">Back to Workspace</span>
       </a>
-      <div class="context-header-details" style="margin-top: 0.75rem; padding: 0.75rem; background: rgba(234,241,250,0.06); border-radius: var(--radius-md); border: 1px solid rgba(234,241,250,0.1);">
-        <div style="font-size: 0.875rem; font-weight: 600; color: #fff; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
+      <div class="context-header-details" style="margin-top: 0.75rem; padding: 0.75rem; background: var(--color-surface-subtle); border-radius: var(--radius-md); border: 1px solid var(--color-border);">
+        <div style="font-size: 0.875rem; font-weight: 600; color: var(--color-ink); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
           {currentProject?.name || currentProject?.Name || currentProjectSlug}
         </div>
         <div style="display: flex; gap: 0.4rem; align-items: center; margin-top: 0.25rem;">
-          <span style="font-size: 0.6875rem; text-transform: uppercase; background: rgba(0,166,166,0.3); color: #00e5e5; padding: 2px 6px; border-radius: 4px; font-weight: 600;">
+          <span style="font-size: 0.6875rem; text-transform: uppercase; background: rgba(255,255,255,0.08); color: #ffffff; padding: 2px 6px; border-radius: var(--radius-sm); font-weight: 600;">
             Project
           </span>
-          <span style="font-size: 0.6875rem; color: rgba(234,241,250,0.5); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
+          <span style="font-size: 0.6875rem; color: var(--color-ink-muted); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
             {currentProject?.slug || currentProjectSlug}
           </span>
         </div>

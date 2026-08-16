@@ -35,7 +35,9 @@
     Move,
     Layers,
     Share2,
-    Plus
+    Plus,
+    Globe,
+    ShieldCheck
   } from 'lucide-svelte';
   import FrameworkIcon from '$lib/components/icons/FrameworkIcon.svelte';
 
@@ -384,7 +386,7 @@
     const externalHost = raw.externalHost || (typeof window !== 'undefined' ? window.location.hostname : 'yourdomain.com');
     const dbName = raw.databaseName || database?.database_name || database?.name || 'app';
     const user = raw.username || (engine === 'postgres' ? 'postgres' : 'root');
-    const pass = raw.password || '••••••••';
+    const pass = raw.password || '********';
     const internalUri = raw.internalConnectionUri || raw.connectionUri || `${engine}://${user}:${pass}@${internalHost}:${internalPort}/${dbName}`;
     const externalUri = raw.externalConnectionUri || `${engine}://${user}:${pass}@${externalHost}:${externalPort}/${dbName}`;
 
@@ -532,7 +534,7 @@
         </span>
       </div>
       <div class="text-xs text-muted" style="margin-top:0.25rem;">
-        Public: <span class="font-mono">{parsedMeta.externalHost}:{parsedMeta.externalPort}</span> • Internal: <span class="font-mono">{database?.internal_hostname}:{database?.internal_port}</span>
+        Public: <span class="font-mono">{parsedMeta.externalHost}:{parsedMeta.externalPort}</span> | Internal: <span class="font-mono">{database?.internal_hostname}:{database?.internal_port}</span>
       </div>
     </div>
 
@@ -548,25 +550,19 @@
   </div>
 
   <!-- Tabs -->
-  <div class="tabs-bar" style="display:flex; gap:0; border-bottom:2px solid var(--color-border); margin-bottom:1.5rem; overflow-x:auto;">
+  <div class="tabs-bar">
     {#each tabs as t}
       <a
         href="/databases/{id}/{t}"
+        class="tab-btn"
+        class:active={tab === t}
         onclick={() => { if (t === 'visualizer') loadSchema(); }}
-        style="
-          padding:0.625rem 1.25rem; font-size:0.875rem; font-weight:500;
-          color:{tab === t ? 'var(--color-accent)' : 'var(--color-ink-secondary)'};
-          border-bottom:2px solid {tab === t ? 'var(--color-accent)' : 'transparent'};
-          margin-bottom:-2px; white-space:nowrap; text-decoration:none;
-          transition:color 0.15s;
-          display: flex; align-items: center; gap: 6px;
-        "
       >
-        {#if t === 'overview'}<Database size={15} />{/if}
-        {#if t === 'query'}<Terminal size={15} />{/if}
-        {#if t === 'visualizer'}<Network size={15} />{/if}
-        {#if t === 'logs'}<Code size={15} />{/if}
-        {#if t === 'settings'}<Settings size={15} />{/if}
+        {#if t === 'overview'}<Database size={14} />{/if}
+        {#if t === 'query'}<Terminal size={14} />{/if}
+        {#if t === 'visualizer'}<Network size={14} />{/if}
+        {#if t === 'logs'}<Code size={14} />{/if}
+        {#if t === 'settings'}<Settings size={14} />{/if}
         {t === 'query' ? 'SQL / Query Studio' : t === 'visualizer' ? 'ER Diagram & Schema' : t.charAt(0).toUpperCase() + t.slice(1)}
       </a>
     {/each}
@@ -575,11 +571,13 @@
   <!-- Tab Contents -->
   {#if tab === 'overview'}
     <!-- External Public Connection String Banner -->
-    <div class="card" style="margin-bottom:1.5rem; background: var(--color-surface); border: 1.5px solid var(--color-accent); border-radius: var(--radius-lg); padding: 1.25rem;">
+    <div class="card" style="margin-bottom:1.5rem;">
       <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 0.75rem; flex-wrap:wrap; gap:0.5rem;">
         <div>
           <div style="display:flex; align-items:center; gap:0.5rem;">
-            <span class="badge" style="background:rgba(0,166,166,0.15); color:var(--color-accent); font-weight:700;">🌐 External / Public Access</span>
+            <span class="badge" style="background:var(--color-surface-subtle); color:#ffffff; font-weight:700; display:flex; align-items:center; gap:4px;">
+              <Globe size={12} /> External / Public Access
+            </span>
             <h3 style="margin:0; font-size:1.05rem;">Public Connection URI</h3>
           </div>
           <p class="text-xs text-muted" style="margin-top:0.35rem;">Use this URI to connect from your local laptop (<span class="font-mono">psql</span>, DBeaver, TablePlus, pgAdmin, Prisma Studio, scripts).</p>
@@ -588,14 +586,14 @@
           {#if copiedField === 'ext_uri'}<Check size={13} /> Copied!{:else}<Copy size={13} /> Copy Public URI{/if}
         </button>
       </div>
-      <div style="background: #0d1117; color: #79c0ff; font-family: var(--font-mono); font-size: 0.875rem; padding: 0.85rem 1rem; border-radius: var(--radius-md); word-break: break-all; margin-bottom: 1rem;">
+      <div style="background: #06070a; color: #79c0ff; font-family: var(--font-mono); font-size: 0.875rem; padding: 0.85rem 1rem; border-radius: var(--radius-md); border: 1px solid var(--color-border); word-break: break-all; margin-bottom: 1rem;">
         {parsedMeta.externalConnectionUri}
       </div>
 
       <!-- Quick PSQL / CLI Command -->
-      <div style="background: rgba(0,0,0,0.03); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 0.75rem 1rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
+      <div style="background: var(--color-surface-subtle); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 0.75rem 1rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
         <div style="font-size: 0.8125rem; font-weight: 600; color: var(--color-ink);">
-          Terminal Command: <span class="font-mono" style="color: #059669; font-weight: normal; margin-left: 6px;">{cliCommand}</span>
+          Terminal Command: <span class="font-mono" style="color: #34d399; font-weight: normal; margin-left: 6px;">{cliCommand}</span>
         </div>
         <button class="btn btn-secondary" style="font-size:0.75rem; padding:3px 10px; min-height:28px;" onclick={() => copyText(cliCommand, 'cli')}>
           {#if copiedField === 'cli'}<Check size={12} /> Copied CLI{:else}<Copy size={12} /> Copy Command{/if}
@@ -604,20 +602,22 @@
     </div>
 
     <!-- Internal Connection URI Card -->
-    <div class="card" style="margin-bottom:1.5rem; background: var(--color-surface); border: 1px solid var(--color-border);">
+    <div class="card" style="margin-bottom:1.5rem;">
       <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
         <div>
           <div style="display:flex; align-items:center; gap:0.5rem;">
-            <span class="badge" style="background:#f1f5f9; color:#475569; font-weight:600;">🔒 Private Platform Network</span>
+            <span class="badge" style="background:var(--color-surface-subtle); color:var(--color-ink-secondary); font-weight:600; display:flex; align-items:center; gap:4px;">
+              <ShieldCheck size={12} /> Private Platform Network
+            </span>
             <h3 style="margin:0; font-size:0.9375rem;">Internal Connection URI</h3>
           </div>
-          <p class="text-xs text-muted" style="margin-top:0.25rem;">Use inside web services & background workers running on kloudsPanel.</p>
+          <p class="text-xs text-muted" style="margin-top:0.25rem;">Use inside web services and background workers running on kloudsPanel.</p>
         </div>
         <button class="btn btn-secondary" style="font-size:0.75rem; padding:4px 10px; min-height:30px;" onclick={() => copyText(parsedMeta.internalConnectionUri, 'int_uri')}>
           {#if copiedField === 'int_uri'}<Check size={12} /> Copied{:else}<Copy size={12} /> Copy Internal URI{/if}
         </button>
       </div>
-      <div style="background: #0d1117; color: #a5d6ff; font-family: var(--font-mono); font-size: 0.8125rem; padding: 0.75rem 1rem; border-radius: var(--radius-md); word-break: break-all;">
+      <div style="background: #06070a; color: #a5d6ff; font-family: var(--font-mono); font-size: 0.8125rem; padding: 0.75rem 1rem; border-radius: var(--radius-md); border: 1px solid var(--color-border); word-break: break-all;">
         {parsedMeta.internalConnectionUri}
       </div>
     </div>
@@ -817,22 +817,20 @@
       </div>
     {/if}
 
-  <!-- ══════════════════════════════════════════════════════════════════════════ -->
-  <!-- TAB 3: ER DIAGRAM & SCHEMA VISUALIZER                                      -->
-  <!-- ══════════════════════════════════════════════════════════════════════════ -->
+  <!-- --- TAB 3: ER DIAGRAM & SCHEMA VISUALIZER ----------------------------- -->
   {:else if tab === 'visualizer'}
-    <div class="card" style="padding: 1.25rem; margin-bottom: 1.5rem; background: var(--color-surface); border: 1px solid var(--color-border);">
+    <div class="card" style="padding: 1.25rem; margin-bottom: 1.5rem;">
       <!-- Visualizer Control Toolbar -->
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.75rem;">
         <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
-          <div style="font-weight: 700; font-size: 1.05rem; display: flex; align-items: center; gap: 6px;">
-            <Network size={18} style="color: var(--color-accent);" /> ER Diagram & Schema Visualizer
+          <div style="font-weight: 700; font-size: 0.9375rem; display: flex; align-items: center; gap: 6px;">
+            <Network size={16} style="color: #ffffff;" /> ER Diagram & Schema Visualizer
           </div>
           {#if schemaData}
-            <span class="badge" style="background: rgba(0,166,166,0.1); color: var(--color-accent); font-weight: 600;">
+            <span class="badge" style="background: var(--color-surface-subtle); color: #ffffff; font-weight: 600;">
               {schemaData.table_count || 0} Tables
             </span>
-            <span class="badge" style="background: rgba(16,185,129,0.1); color: #059669; font-weight: 600;">
+            <span class="badge" style="background: var(--color-success-subtle); color: var(--color-success); font-weight: 600;">
               {schemaData.relationships?.length || 0} Relations
             </span>
           {/if}
@@ -851,7 +849,7 @@
             <Search size={14} style="position: absolute; left: 8px; top: 8px; color: var(--color-ink-muted);" />
           </div>
 
-          <div style="display: flex; align-items: center; background: var(--color-surface-sunken); border-radius: var(--radius-md); border: 1px solid var(--color-border); padding: 2px;">
+          <div style="display: flex; align-items: center; background: var(--color-surface-subtle); border-radius: var(--radius-md); border: 1px solid var(--color-border); padding: 2px;">
             <button class="btn btn-secondary" style="padding: 3px 8px; height: 26px; border: none;" onclick={zoomOut} title="Zoom Out">
               <ZoomOut size={13} />
             </button>
@@ -880,9 +878,9 @@
         style="
           position: relative;
           height: 600px;
-          background: #090d16;
+          background: #06070a;
           border-radius: var(--radius-md);
-          border: 1px solid #1e293b;
+          border: 1px solid var(--color-border);
           overflow: hidden;
           cursor: {isPanning ? 'grabbing' : 'grab'};
           user-select: none;
@@ -894,20 +892,20 @@
         onmouseup={handleCanvasMouseUp}
       >
         <!-- Canvas Instructions overlay -->
-        <div style="position: absolute; bottom: 12px; left: 12px; z-index: 10; pointer-events: none; background: rgba(15,23,42,0.85); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 4px 10px; font-size: 0.75rem; color: #94a3b8; display: flex; align-items: center; gap: 8px;">
-          <Move size={12} /> Drag canvas to pan • Drag table headers to reposition • Click tables to inspect
+        <div style="position: absolute; bottom: 12px; left: 12px; z-index: 10; pointer-events: none; background: rgba(12,13,18,0.9); border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: 4px 10px; font-size: 0.75rem; color: #94a3b8; display: flex; align-items: center; gap: 8px;">
+          <Move size={12} /> Drag canvas to pan | Drag table headers to reposition | Click tables to inspect
         </div>
 
         {#if schemaLoading}
           <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #94a3b8;">
-            <Loader2 size={36} class="animate-spin" style="color: var(--color-accent); margin-bottom: 0.75rem;" />
-            <p style="font-size: 0.875rem;">Inspecting database schema & relationships...</p>
+            <Loader2 size={32} class="animate-spin" style="color: #ffffff; margin-bottom: 0.75rem;" />
+            <p style="font-size: 0.875rem;">Inspecting database schema and relationships...</p>
           </div>
         {:else if !schemaData || (schemaData.tables && schemaData.tables.length === 0)}
           <!-- Empty State with 1-click sample schema creator -->
           <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center; padding: 2rem;">
-            <div style="width: 56px; height: 56px; border-radius: 50%; background: rgba(0,166,166,0.12); color: var(--color-accent); display: flex; align-items: center; justify-content: center; margin-bottom: 1rem;">
-              <Network size={28} />
+            <div style="width: 44px; height: 44px; border-radius: var(--radius-sm); background: var(--color-surface-subtle); border: 1px solid var(--color-border); color: #ffffff; display: flex; align-items: center; justify-content: center; margin-bottom: 1rem;">
+              <Network size={22} />
             </div>
             <h3 style="color: #fff; margin: 0 0 0.5rem 0; font-size: 1.15rem;">No Tables Found in Database</h3>
             <p style="color: #94a3b8; font-size: 0.875rem; max-width: 460px; margin-bottom: 1.25rem; line-height: 1.5;">

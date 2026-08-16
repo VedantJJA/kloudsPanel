@@ -1,7 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
-  import { Database, Plus, Loader2, Trash2 } from 'lucide-svelte';
+  import { Database, Plus, Loader2, Trash2, ArrowRight } from 'lucide-svelte';
   import FrameworkIcon from '$lib/components/icons/FrameworkIcon.svelte';
 
   let databases = $state<any[]>([]);
@@ -73,7 +73,7 @@
 <div class="page-header">
   <div>
     <h1 class="page-title">Databases</h1>
-    <p class="page-subtitle">Managed PostgreSQL, MySQL, Redis, MongoDB, and ClickHouse databases</p>
+    <p class="page-subtitle">Managed PostgreSQL, MySQL, Redis, MongoDB, and ClickHouse instances</p>
   </div>
   <button class="btn btn-primary" onclick={() => goto('/databases/new')}>
     <Plus size={16} /> New Database
@@ -82,16 +82,16 @@
 
 {#if loading}
   <div class="empty-state">
-    <div class="animate-spin text-muted" style="margin-bottom:1rem"><Loader2 size={48} /></div>
-    <p>Loading databases…</p>
+    <div class="animate-spin text-muted" style="margin-bottom:1rem"><Loader2 size={36} /></div>
+    <p>Loading databases...</p>
   </div>
 {:else if databases.length === 0}
-  <div class="empty-state" style="background:var(--color-surface); border:1px solid var(--color-border); border-radius:var(--radius-lg); padding:3rem;">
-    <div class="empty-state-icon"><Database size={48} /></div>
+  <div class="empty-state">
+    <div class="empty-state-icon"><Database size={36} /></div>
     <h3>No databases provisioned yet</h3>
     <p>Create a high-performance managed database instance for your services.</p>
-    <button class="btn btn-primary mt-4" onclick={() => goto('/databases/new')}>
-      <Database size={16} /> Provision Database
+    <button class="btn btn-primary" style="margin-top:1rem;" onclick={() => goto('/databases/new')}>
+      <Database size={15} /> Provision Database
     </button>
   </div>
 {:else}
@@ -104,33 +104,38 @@
           <th>Internal Hostname</th>
           <th>Port</th>
           <th>Status</th>
-          <th>Actions</th>
+          <th style="text-align:right;">Actions</th>
         </tr>
       </thead>
       <tbody>
         {#each databases as db}
           <tr style="cursor:pointer;" onclick={() => goto(`/databases/${db.id || db.ID}/overview`)}>
-            <td style="font-weight:600;">
+            <td>
               <div style="display:flex; align-items:center; gap:8px;">
-                <FrameworkIcon name={db.engine || db.Engine} size={20} />
-                <a href="/databases/{db.id || db.ID}/overview" style="color:var(--color-ink); text-decoration:none; font-weight:700;">
+                <FrameworkIcon name={db.engine || db.Engine} size={18} />
+                <a href="/databases/{db.id || db.ID}/overview" style="color:var(--color-ink); text-decoration:none; font-weight:600; font-size:0.875rem;">
                   {db.name || db.Name}
                 </a>
               </div>
             </td>
-            <td><span class="badge" style="background:#e0f2fe; color:#0369a1; text-transform:uppercase; font-weight:700;">{db.engine || db.Engine}</span></td>
-            <td><span class="font-mono text-xs">{db.internal_hostname || db.InternalHostname || '-'}</span></td>
-            <td><span class="font-mono text-xs">:{db.internal_port || db.InternalPort || '-'}</span></td>
+            <td><span class="badge" style="background:rgba(56,189,248,0.12); color:#38bdf8; text-transform:uppercase;">{db.engine || db.Engine}</span></td>
+            <td><span class="font-mono text-xs text-muted">{db.internal_hostname || db.InternalHostname || '-'}</span></td>
+            <td><span class="font-mono text-xs text-muted">:{db.internal_port || db.InternalPort || '-'}</span></td>
             <td><span class={statusClass(db.runtime_status || db.RuntimeStatus)}>{db.runtime_status || db.RuntimeStatus || 'provisioning'}</span></td>
             <td style="text-align:right;" onclick={(e) => e.stopPropagation()}>
-              <button 
-                class="btn btn-secondary" 
-                style="padding:4px 8px; min-height:32px; color:var(--color-danger); border-color:transparent;" 
-                aria-label="Delete Database"
-                onclick={(e) => deleteDatabase(e, db)}
-              >
-                <Trash2 size={16} />
-              </button>
+              <div style="display:inline-flex; align-items:center; gap:6px;">
+                <a href="/databases/{db.id || db.ID}/overview" class="btn btn-secondary" style="padding:3px 10px; min-height:28px; font-size:0.75rem;">
+                  Manage <ArrowRight size={12} />
+                </a>
+                <button 
+                  class="btn btn-secondary" 
+                  style="padding:3px 6px; min-height:28px; color:var(--color-danger); border-color:transparent;" 
+                  aria-label="Delete Database"
+                  onclick={(e) => deleteDatabase(e, db)}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
             </td>
           </tr>
         {/each}

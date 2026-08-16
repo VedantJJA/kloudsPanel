@@ -27,7 +27,8 @@
     Sparkles,
     FileText,
     Code,
-    Download
+    Download,
+    ArrowRight
   } from 'lucide-svelte';
   import FrameworkIcon from '$lib/components/icons/FrameworkIcon.svelte';
 
@@ -888,9 +889,11 @@
   </div>
 {:else}
   {#if bannerNotice}
-    <div style="margin-bottom: 1.25rem; padding: 0.75rem 1rem; border-radius: var(--radius-md); font-size: 0.875rem; display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; background: {bannerNotice.type === 'error' ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)'}; border: 1px solid {bannerNotice.type === 'error' ? 'rgba(239,68,68,0.3)' : 'rgba(16,185,129,0.3)'}; color: {bannerNotice.type === 'error' ? '#ef4444' : '#10b981'};">
+    <div style="margin-bottom: 1.25rem; padding: 0.75rem 1rem; border-radius: var(--radius-md); font-size: 0.875rem; display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; background: {bannerNotice.type === 'error' ? 'var(--color-danger-subtle)' : 'var(--color-success-subtle)'}; border: 1px solid {bannerNotice.type === 'error' ? 'rgba(248,113,113,0.3)' : 'rgba(52,211,153,0.3)'}; color: {bannerNotice.type === 'error' ? 'var(--color-danger)' : 'var(--color-success)'};">
       <span>{bannerNotice.message}</span>
-      <button type="button" class="btn btn-secondary" style="padding: 2px 8px; height: auto; min-height: 0; font-size: 0.75rem;" onclick={() => bannerNotice = null}>✕</button>
+      <button type="button" class="btn btn-secondary" style="padding: 2px 8px; height: auto; min-height: 0; font-size: 0.75rem;" onclick={() => bannerNotice = null}>
+        <X size={13} />
+      </button>
     </div>
   {/if}
 
@@ -904,7 +907,7 @@
         {/if}
       </p>
       <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
-        <FrameworkIcon name={parsedResource.presetId || service?.kind || 'node'} size={26} />
+        <FrameworkIcon name={parsedResource.presetId || service?.kind || 'node'} size={24} />
         <h1 class="page-title" style="margin:0;">{service?.name || service?.Name}</h1>
         <span class="badge badge-{statusBadge}">{statusBadge}</span>
         {#if endpointUrl && (service?.kind === 'web' || service?.kind === 'static')}
@@ -913,14 +916,14 @@
             target="_blank" 
             rel="noopener noreferrer" 
             class="badge" 
-            style="background: rgba(0,166,166,0.12); color: var(--color-accent); font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px;"
+            style="background: var(--color-surface-subtle); border: 1px solid var(--color-border); color: #ffffff; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px;"
           >
             <Globe size={12} /> {service.domain || endpointUrl.replace('https://', '')} <ExternalLink size={11} />
           </a>
         {/if}
       </div>
       <div class="text-xs text-muted" style="margin-top:0.25rem;">
-        Internal port: <span class="font-mono">:{service?.internal_port || service?.InternalPort || 80}</span> • Kind: {service?.kind || service?.Kind || 'web'}
+        Internal port: <span class="font-mono">:{service?.internal_port || service?.InternalPort || 80}</span> | Kind: {service?.kind || service?.Kind || 'web'}
       </div>
     </div>
     <div style="display:flex; gap:0.5rem; align-items:center;">
@@ -971,7 +974,7 @@
 
     <!-- Live URL & Public Ingress Banner -->
     {#if endpointUrl && (service?.kind === 'web' || service?.kind === 'static')}
-      <div class="card" style="margin-bottom:1.5rem; background: linear-gradient(135deg, rgba(0,166,166,0.06) 0%, var(--color-surface) 100%); border: 1px solid rgba(0,166,166,0.3);">
+      <div class="card" style="margin-bottom:1.5rem;">
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
           <div style="display:flex; align-items:center; gap:0.85rem;">
             <div style="display:flex; align-items:center; justify-content:center; width:44px; height:44px; border-radius:var(--radius-md); background:rgba(0,166,166,0.15); color:var(--color-accent);">
@@ -990,7 +993,7 @@
                 {endpointUrl} <ExternalLink size={14} style="color:var(--color-accent);" />
               </a>
               <div class="text-xs text-muted" style="display:flex; align-items:center; gap:0.4rem; margin-top:0.25rem;">
-                <ShieldCheck size={13} style="color:#059669;" /> SSL Enabled (Let's Encrypt) • Routing via Traefik Edge
+                <ShieldCheck size={13} style="color:#34d399;" /> SSL Enabled (Let's Encrypt) | Routing via Traefik Edge
               </div>
             </div>
           </div>
@@ -1010,43 +1013,19 @@
     <!-- Stat cards grid -->
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:1rem; margin-bottom:1.5rem;">
       <div class="card" style="padding:1.25rem;">
-        <div class="text-xs text-muted" style="margin-bottom:0.25rem;">Runtime & Version</div>
-        <div style="font-size:1.05rem; font-weight:600; text-transform:capitalize; display:flex; align-items:center; gap:6px;">
-          <FrameworkIcon name={parsedResource.presetId || service?.kind || 'node'} size={18} />
-          <span>{parsedResource.presetId || service?.kind || 'node'}</span>
-          <span class="badge font-mono" style="font-size:0.7rem; background:rgba(0,0,0,0.05); font-weight:500;">
-            {parsedResource.runtimeVersion ? `v${parsedResource.runtimeVersion}` : 'Auto-Detect'}
-          </span>
-        </div>
+        <div class="text-xs text-muted" style="margin-bottom:0.25rem;">Framework / Preset</div>
+        <div style="font-size:1.125rem; font-weight:600; text-transform:capitalize;">{parsedRes.presetId || service?.kind || 'node'}</div>
       </div>
+
       <div class="card" style="padding:1.25rem;">
         <div class="text-xs text-muted" style="margin-bottom:0.25rem;">Runtime Status</div>
-        <div style="display:flex; align-items:center; gap:0.5rem; margin-top:0.25rem;">
-          <span class="badge badge-{statusBadge}">{statusBadge}</span>
-        </div>
+        <div style="font-size:1.125rem; font-weight:600; text-transform:capitalize;">{service?.runtime_status || service?.RuntimeStatus || 'draft'}</div>
       </div>
 
-      <div class="card" style="padding:1.25rem;">
-        <div class="text-xs text-muted" style="margin-bottom:0.25rem;">Container Sandbox Limits</div>
-        <div style="font-size:0.9375rem; font-weight:600; display:flex; align-items:center; gap:6px; margin-top:2px;">
-          <span class="badge font-mono" style="background:rgba(0,166,166,0.1); color:var(--color-accent); font-size:0.75rem;">
-            {parsedResource.mem_limit || '512m'} RAM
-          </span>
-          <span class="badge font-mono" style="background:rgba(0,166,166,0.1); color:var(--color-accent); font-size:0.75rem;">
-            {parsedResource.cpu_limit || '1.0'} CPU
-          </span>
-        </div>
-      </div>
-
-      {#if (service?.kind || service?.Kind) === 'cron'}
+      {#if service?.kind === 'web' || service?.kind === 'static'}
         <div class="card" style="padding:1.25rem;">
-          <div class="text-xs text-muted" style="margin-bottom:0.25rem;">Cron Schedule</div>
-          <div style="font-size:1rem; font-weight:600; font-family:var(--font-mono)">{parsedResource.cronSchedule || '0 * * * *'}</div>
-        </div>
-      {:else if (service?.kind || service?.Kind) === 'worker'}
-        <div class="card" style="padding:1.25rem;">
-          <div class="text-xs text-muted" style="margin-bottom:0.25rem;">Execution Model</div>
-          <div style="font-size:1.125rem; font-weight:600;">Background Daemon</div>
+          <div class="text-xs text-muted" style="margin-bottom:0.25rem;">Internal Port</div>
+          <div style="font-size:1.125rem; font-weight:600; font-family:var(--font-mono)">:{service?.internal_port || service?.InternalPort || 80}</div>
         </div>
       {:else}
         <div class="card" style="padding:1.25rem;">
@@ -1078,11 +1057,11 @@
               <span class="badge badge-{dep.status}">{dep.status}</span>
             </div>
             <p class="text-xs text-muted" style="margin:0.25rem 0 0 0;">
-              Triggered by {dep.triggered_by || 'system'} via {dep.trigger} • Driver: {dep.build_driver}
+              Triggered by {dep.triggered_by || 'system'} via {dep.trigger} | Driver: {dep.build_driver}
             </p>
           </div>
           <a href="/services/{id}/logs" class="btn btn-secondary" style="font-size:0.8125rem;">
-            View Logs →
+            View Logs <ArrowRight size={13} />
           </a>
         </div>
       {:else}
@@ -1199,9 +1178,11 @@
       </div>
 
       {#if blueprintNotice}
-        <div style="background:{blueprintNotice.type === 'success' ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)'}; border:1px solid {blueprintNotice.type === 'success' ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}; color:{blueprintNotice.type === 'success' ? '#10b981' : '#ef4444'}; border-radius:var(--radius-md); padding:0.6rem 1rem; font-size:0.875rem; margin-bottom:1.25rem; display:flex; justify-content:space-between; align-items:center;">
+        <div style="background:{blueprintNotice.type === 'success' ? 'var(--color-success-subtle)' : 'var(--color-danger-subtle)'}; border:1px solid {blueprintNotice.type === 'success' ? 'rgba(52,211,153,0.3)' : 'rgba(248,113,113,0.3)'}; color:{blueprintNotice.type === 'success' ? 'var(--color-success)' : 'var(--color-danger)'}; border-radius:var(--radius-md); padding:0.6rem 1rem; font-size:0.875rem; margin-bottom:1.25rem; display:flex; justify-content:space-between; align-items:center;">
           <span>{blueprintNotice.message}</span>
-          <button type="button" class="btn btn-secondary" style="padding:2px 8px; font-size:0.75rem; height:auto; min-height:0;" onclick={() => blueprintNotice = null}>✕</button>
+          <button type="button" class="btn btn-secondary" style="padding:2px 8px; font-size:0.75rem; height:auto; min-height:0;" onclick={() => blueprintNotice = null}>
+            <X size={13} />
+          </button>
         </div>
       {/if}
 
@@ -1281,7 +1262,7 @@
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; padding-top:1.25rem; border-top:1px solid var(--color-border);">
         <span class="text-xs text-muted">
           {#if envDirty}
-            <span style="color:#f59e0b; font-weight:600;">● Unsaved changes</span>
+            <span style="color:#fbbf24; font-weight:600;">Unsaved changes</span>
           {:else}
             <span>All environment variables synced</span>
           {/if}
@@ -1407,7 +1388,7 @@
                   </span>
                 </td>
                 <td class="font-mono text-xs" style="color:var(--color-ink-muted);">
-                  CNAME → {service?.domain || (typeof window !== 'undefined' ? `${service?.slug}.${window.location.hostname}` : 'yourdomain.com')}
+                  CNAME -&gt; {service?.domain || (typeof window !== 'undefined' ? `${service?.slug}.${window.location.hostname}` : 'yourdomain.com')}
                 </td>
                 <td style="text-align:right;">
                   <button 
@@ -1665,8 +1646,8 @@
                 </div>
               </div>
 
-              <div class="text-xs text-muted" style="font-size: 0.75rem; border-top: 1px dashed var(--color-border); padding-top: 0.5rem;">
-                💡 {simResult.explanation}
+              <div class="text-xs text-muted" style="font-size: 0.75rem; border-top: 1px dashed var(--color-border); padding-top: 0.5rem; display: flex; align-items: center; gap: 4px;">
+                <Sparkles size={13} /> {simResult.explanation}
               </div>
 
               {#if liveTestResult}
@@ -1818,8 +1799,8 @@
               <ShieldCheck size={18} style="color: var(--color-accent);" />
               <span style="font-size: 0.875rem; font-weight: 700;">Sandbox Resource Limits & Security</span>
             </div>
-            <span class="badge" style="background: rgba(16,185,129,0.15); color: #065f46; font-size: 0.7rem;">
-              🛡️ Non-Root Sandbox Active
+            <span class="badge" style="background: var(--color-success-subtle); color: var(--color-success); font-size: 0.7rem; display: flex; align-items: center; gap: 4px;">
+              <ShieldCheck size={12} /> Non-Root Sandbox Active
             </span>
           </div>
 

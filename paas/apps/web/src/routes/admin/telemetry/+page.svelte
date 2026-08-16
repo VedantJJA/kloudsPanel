@@ -321,17 +321,17 @@
           </div>
           <div style="text-align:right">
             <span class="badge badge-running" style="font-size:0.75rem">Current: {metrics.cpu_percent.toFixed(1)}%</span>
-            <div class="text-xs text-muted" style="margin-top:2px">Avg: {avgCpu}% • Peak: {maxCpu}%</div>
+            <div class="text-xs text-muted" style="margin-top:2px">Avg: {avgCpu}% | Peak: {maxCpu}%</div>
           </div>
         </div>
 
         <!-- SVG CPU Line/Area Graph -->
-        <div style="background:rgba(0,0,0,0.03);border-radius:var(--radius-md);padding:0.75rem;border:1px solid var(--color-border);">
+        <div style="background:var(--color-surface-subtle);border-radius:var(--radius-md);padding:0.75rem;border:1px solid var(--color-border);">
           <svg viewBox="0 0 500 120" style="width:100%;height:140px;overflow:visible;">
             <defs>
               <linearGradient id="cpuGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stop-color="var(--color-accent)" stop-opacity="0.4" />
-                <stop offset="100%" stop-color="var(--color-accent)" stop-opacity="0.0" />
+                <stop offset="0%" stop-color="#ffffff" stop-opacity="0.3" />
+                <stop offset="100%" stop-color="#ffffff" stop-opacity="0.0" />
               </linearGradient>
             </defs>
             <!-- Grid Lines -->
@@ -343,7 +343,7 @@
             <text x="5" y="116" fill="var(--color-ink-muted)" font-size="9">0%</text>
             <!-- Area & Line -->
             <path d={generateAreaPath(cpuValues, 500, 120, 100)} fill="url(#cpuGrad)" />
-            <path d={generateSvgPath(cpuValues, 500, 120, 100)} fill="none" stroke="var(--color-accent)" stroke-width="2.5" stroke-linecap="round" />
+            <path d={generateSvgPath(cpuValues, 500, 120, 100)} fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" />
           </svg>
         </div>
       </div>
@@ -353,23 +353,23 @@
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
           <div>
             <div style="font-weight:700;font-size:0.9375rem;display:flex;align-items:center;gap:6px">
-              <Brain size={16} style="color:var(--color-primary);" /> Memory Usage Trend (%)
+              <Brain size={16} style="color:var(--color-ink);" /> Memory Usage Trend (%)
             </div>
             <div class="text-xs text-muted">Live host RAM allocation trend</div>
           </div>
           <div style="text-align:right">
-            <span class="badge" style="background:#e0e7ff;color:#3730a3;font-size:0.75rem">Current: {pct(metrics.memory_used_bytes, metrics.memory_total_bytes)}%</span>
-            <div class="text-xs text-muted" style="margin-top:2px">Avg: {avgMem}% • {fmt(metrics.memory_used_bytes)}</div>
+            <span class="badge" style="background:var(--color-surface-subtle);color:#ffffff;font-size:0.75rem">Current: {pct(metrics.memory_used_bytes, metrics.memory_total_bytes)}%</span>
+            <div class="text-xs text-muted" style="margin-top:2px">Avg: {avgMem}% | {fmt(metrics.memory_used_bytes)}</div>
           </div>
         </div>
 
         <!-- SVG Memory Line/Area Graph -->
-        <div style="background:rgba(0,0,0,0.03);border-radius:var(--radius-md);padding:0.75rem;border:1px solid var(--color-border);">
+        <div style="background:var(--color-surface-subtle);border-radius:var(--radius-md);padding:0.75rem;border:1px solid var(--color-border);">
           <svg viewBox="0 0 500 120" style="width:100%;height:140px;overflow:visible;">
             <defs>
               <linearGradient id="memGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.35" />
-                <stop offset="100%" stop-color="#3b82f6" stop-opacity="0.0" />
+                <stop offset="0%" stop-color="#ffffff" stop-opacity="0.25" />
+                <stop offset="100%" stop-color="#ffffff" stop-opacity="0.0" />
               </linearGradient>
             </defs>
             <!-- Grid Lines -->
@@ -381,7 +381,7 @@
             <text x="5" y="116" fill="var(--color-ink-muted)" font-size="9">0%</text>
             <!-- Area & Line -->
             <path d={generateAreaPath(memValues, 500, 120, 100)} fill="url(#memGrad)" />
-            <path d={generateSvgPath(memValues, 500, 120, 100)} fill="none" stroke="#3b82f6" stroke-width="2.5" stroke-linecap="round" />
+            <path d={generateSvgPath(memValues, 500, 120, 100)} fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" />
           </svg>
         </div>
       </div>
