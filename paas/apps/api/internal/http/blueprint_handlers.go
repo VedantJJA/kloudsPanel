@@ -170,12 +170,12 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 			continue
 		}
 
-		// In services section: Detect new service start (either list item "- name:" / "- type:" or map key "  frontend:" / "  backend:" / "  redis:")
+		// In services section: Detect new service start (either list item "- name:" / "- type:" / "- runtime:" / "- service:" or map key "  frontend:" / "  backend:" / "  redis:")
+		isListServiceHeader := inServices && (strings.HasPrefix(trimmed, "- type:") || strings.HasPrefix(trimmed, "- name:") || strings.HasPrefix(trimmed, "- service:") || strings.HasPrefix(trimmed, "- kind:") || strings.HasPrefix(trimmed, "- runtime:") || strings.HasPrefix(trimmed, "- env:"))
+
 		isMapServiceHeader := inServices && !inRoutes && !inEnvVars && !strings.HasPrefix(trimmed, "-") && strings.HasSuffix(trimmed, ":") && !strings.Contains(trimmed, " ") &&
 			(strings.HasPrefix(rawLine, "  ") || strings.HasPrefix(rawLine, "\t")) && !strings.HasPrefix(rawLine, "    ") && !strings.HasPrefix(rawLine, "\t\t") &&
-			trimmed != "env:" && trimmed != "envVars:" && trimmed != "source:" && trimmed != "build:" && trimmed != "deploy:" && trimmed != "resources:" && trimmed != "volumes:" && trimmed != "routes:"
-
-		isListServiceHeader := inServices && !inRoutes && !inEnvVars && !strings.HasPrefix(rawLine, "    ") && !strings.HasPrefix(rawLine, "\t\t") && (strings.HasPrefix(trimmed, "- type:") || strings.HasPrefix(trimmed, "- name:") || (strings.HasPrefix(trimmed, "type:") && currentSvc == nil))
+			trimmed != "env:" && trimmed != "envVars:" && trimmed != "source:" && trimmed != "build:" && trimmed != "deploy:" && trimmed != "resources:" && trimmed != "volumes:" && trimmed != "routes:" && trimmed != "healthCheckPath:" && trimmed != "headers:"
 
 		if isMapServiceHeader || isListServiceHeader {
 			flushCurrent()
@@ -199,9 +199,9 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 				parts := strings.SplitN(trimmed, ":", 2)
 				if len(parts) > 1 {
 					val := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
-					if strings.HasPrefix(trimmed, "- type:") || strings.HasPrefix(trimmed, "type:") {
+					if strings.HasPrefix(trimmed, "- type:") || strings.HasPrefix(trimmed, "- kind:") {
 						svcType = strings.ToLower(val)
-					} else if strings.HasPrefix(trimmed, "- name:") {
+					} else if strings.HasPrefix(trimmed, "- name:") || strings.HasPrefix(trimmed, "- service:") {
 						svcName = val
 					}
 				}

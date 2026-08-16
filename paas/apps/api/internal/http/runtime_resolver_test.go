@@ -165,3 +165,37 @@ func TestDynamicTagParser(t *testing.T) {
 		t.Errorf("expected best python version 3.13, got %s", bestPy)
 	}
 }
+
+func TestParseRenderYamlMultiService(t *testing.T) {
+	sampleYaml := `
+services:
+  # 1. Frontend Web Service
+  - type: web
+    name: devpanel-frontend
+    runtime: static
+    rootDir: web
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: API_URL
+        value: https://devpanel-backend.klouds.online
+
+  # 2. Backend REST API
+  - type: web
+    name: devpanel-backend
+    runtime: node
+    rootDir: api
+    buildCommand: npm install
+    startCommand: node index.js
+`
+	res := parseRenderYAMLString(sampleYaml)
+	if len(res.Services) != 2 {
+		t.Fatalf("expected 2 services parsed from render.yaml, got %d", len(res.Services))
+	}
+	if res.Services[0].Name != "devpanel-frontend" && res.Services[0].Name != "devpanel" {
+		t.Errorf("expected first service name devpanel-frontend, got %s", res.Services[0].Name)
+	}
+	if res.Services[1].Name != "devpanel-backend" {
+		t.Errorf("expected second service name devpanel-backend, got %s", res.Services[1].Name)
+	}
+}

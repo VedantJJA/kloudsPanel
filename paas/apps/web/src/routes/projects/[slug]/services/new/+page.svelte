@@ -1221,15 +1221,15 @@
 
     <!-- Blueprint Quick Status Badge -->
     {#if detectedServices.length > 0}
-      <div style="display: flex; align-items: center; gap: 0.5rem; background: var(--color-surface-subtle); border: 1px solid var(--color-accent); padding: 5px 12px; border-radius: var(--radius-md);">
-        <Sparkles size={16} style="color: var(--color-accent);" />
+      <div style="display: flex; align-items: center; gap: 0.5rem; background: var(--color-surface-subtle); border: 1px solid var(--color-border); padding: 5px 12px; border-radius: var(--radius-md);">
+        <Sparkles size={16} style="color: var(--color-info);" />
         <span style="font-size: 0.8125rem; font-weight: 600; color: var(--color-ink);">
           {detectedBlueprintSource}: {detectedServices.length} Services ({detectedDatabases.length} DBs)
         </span>
         <button 
           type="button"
           class="badge" 
-          style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; cursor: pointer; font-size: 0.7rem; padding: 2px 8px;"
+          style="background: var(--color-info-subtle); color: var(--color-info); border: 1px solid var(--color-info); cursor: pointer; font-size: 0.7rem; padding: 2px 8px;"
           onclick={() => goToStep('stack')}
         >
           View Stack
@@ -1243,14 +1243,15 @@
 <div style="display: flex; align-items: center; gap: 0.5rem; background: var(--color-surface); padding: 6px; border-radius: var(--radius-lg); border: 1px solid var(--color-border); margin-bottom: 1.5rem; overflow-x: auto;">
   <button 
     type="button"
-    class="btn btn-secondary"
+    class="btn"
     style="
       flex: 1; 
       min-width: 140px; 
       font-size: 0.8125rem; 
-      font-weight: {activeTab === 'source' ? '700' : '500'}; 
+      font-weight: {activeTab === 'source' ? '600' : '500'}; 
       background: {activeTab === 'source' ? 'var(--color-surface-subtle)' : 'transparent'}; 
-      border-color: {activeTab === 'source' ? 'var(--color-accent)' : 'transparent'};
+      border: 1px solid {activeTab === 'source' ? 'var(--color-border)' : 'transparent'};
+      box-shadow: {activeTab === 'source' ? '0 1px 2px var(--color-shadow)' : 'none'};
       color: {activeTab === 'source' ? 'var(--color-ink)' : 'var(--color-ink-muted)'};
       display: flex; 
       align-items: center; 
@@ -1259,21 +1260,22 @@
     "
     onclick={() => goToStep('source')}
   >
-    <FolderGit2 size={15} style="color: {activeTab === 'source' ? 'var(--color-accent)' : 'inherit'};" />
+    <FolderGit2 size={15} style="color: {activeTab === 'source' ? 'var(--color-ink)' : 'inherit'};" />
     <span>1. Source & Repo</span>
   </button>
 
   {#if detectedServices.length > 0}
     <button 
       type="button"
-      class="btn btn-secondary"
+      class="btn"
       style="
         flex: 1; 
         min-width: 160px; 
         font-size: 0.8125rem; 
-        font-weight: {activeTab === 'stack' ? '700' : '500'}; 
+        font-weight: {activeTab === 'stack' ? '600' : '500'}; 
         background: {activeTab === 'stack' ? 'var(--color-surface-subtle)' : 'transparent'}; 
-        border-color: {activeTab === 'stack' ? 'var(--color-accent)' : 'transparent'};
+        border: 1px solid {activeTab === 'stack' ? 'var(--color-border)' : 'transparent'};
+        box-shadow: {activeTab === 'stack' ? '0 1px 2px var(--color-shadow)' : 'none'};
         color: {activeTab === 'stack' ? 'var(--color-ink)' : 'var(--color-ink-muted)'};
         opacity: {isStepUnlocked('stack') ? '1' : '0.45'};
         cursor: {isStepUnlocked('stack') ? 'pointer' : 'not-allowed'};
@@ -1286,7 +1288,7 @@
       onclick={() => goToStep('stack')}
     >
       {#if isStepUnlocked('stack')}
-        <Sparkles size={15} style="color: var(--color-accent);" />
+        <Sparkles size={15} style="color: {activeTab === 'stack' ? 'var(--color-info)' : 'inherit'};" />
       {:else}
         <Lock size={13} style="color: var(--color-ink-muted);" />
       {/if}
@@ -1296,14 +1298,15 @@
 
   <button 
     type="button"
-    class="btn btn-secondary"
+    class="btn"
     style="
       flex: 1; 
       min-width: 150px; 
       font-size: 0.8125rem; 
-      font-weight: {activeTab === 'config' ? '700' : '500'}; 
+      font-weight: {activeTab === 'config' ? '600' : '500'}; 
       background: {activeTab === 'config' ? 'var(--color-surface-subtle)' : 'transparent'}; 
-      border-color: {activeTab === 'config' ? 'var(--color-accent)' : 'transparent'};
+      border: 1px solid {activeTab === 'config' ? 'var(--color-border)' : 'transparent'};
+      box-shadow: {activeTab === 'config' ? '0 1px 2px var(--color-shadow)' : 'none'};
       color: {activeTab === 'config' ? 'var(--color-ink)' : 'var(--color-ink-muted)'};
       opacity: {isStepUnlocked('config') ? '1' : '0.45'};
       cursor: {isStepUnlocked('config') ? 'pointer' : 'not-allowed'};
@@ -1316,7 +1319,7 @@
     onclick={() => goToStep('config')}
   >
     {#if isStepUnlocked('config')}
-      <Code size={15} style="color: {activeTab === 'config' ? 'var(--color-accent)' : 'inherit'};" />
+      <Code size={15} style="color: {activeTab === 'config' ? 'var(--color-ink)' : 'inherit'};" />
     {:else}
       <Lock size={13} style="color: var(--color-ink-muted);" />
     {/if}
@@ -1325,14 +1328,15 @@
 
   <button 
     type="button"
-    class="btn btn-secondary"
+    class="btn"
     style="
       flex: 1; 
       min-width: 150px; 
       font-size: 0.8125rem; 
-      font-weight: {activeTab === 'environment' ? '700' : '500'}; 
+      font-weight: {activeTab === 'environment' ? '600' : '500'}; 
       background: {activeTab === 'environment' ? 'var(--color-surface-subtle)' : 'transparent'}; 
-      border-color: {activeTab === 'environment' ? 'var(--color-accent)' : 'transparent'};
+      border: 1px solid {activeTab === 'environment' ? 'var(--color-border)' : 'transparent'};
+      box-shadow: {activeTab === 'environment' ? '0 1px 2px var(--color-shadow)' : 'none'};
       color: {activeTab === 'environment' ? 'var(--color-ink)' : 'var(--color-ink-muted)'};
       opacity: {isStepUnlocked('environment') ? '1' : '0.45'};
       cursor: {isStepUnlocked('environment') ? 'pointer' : 'not-allowed'};
@@ -1345,7 +1349,7 @@
     onclick={() => goToStep('environment')}
   >
     {#if isStepUnlocked('environment')}
-      <Sliders size={15} style="color: {activeTab === 'environment' ? 'var(--color-accent)' : 'inherit'};" />
+      <Sliders size={15} style="color: {activeTab === 'environment' ? 'var(--color-ink)' : 'inherit'};" />
     {:else}
       <Lock size={13} style="color: var(--color-ink-muted);" />
     {/if}
@@ -1689,7 +1693,8 @@
             style="
               padding: 12px 14px; 
               background: {selectedBlueprintIndex === idx ? 'var(--color-surface-subtle)' : 'var(--color-surface)'};
-              border: 1.5px solid {selectedBlueprintIndex === idx ? 'var(--color-accent)' : 'var(--color-border)'};
+              border: 1.5px solid {selectedBlueprintIndex === idx ? 'var(--color-info)' : 'var(--color-border)'};
+              box-shadow: {selectedBlueprintIndex === idx ? '0 0 0 1px var(--color-info-subtle)' : 'none'};
               border-radius: var(--radius-md);
               display: flex;
               flex-direction: column;
@@ -1704,7 +1709,7 @@
               <button
                 type="button"
                 class="badge"
-                style="background: {selectedBlueprintIndex === idx ? 'var(--color-accent)' : 'var(--color-border)'}; color: {selectedBlueprintIndex === idx ? 'var(--color-accent-contrast)' : 'var(--color-ink)'}; font-size: 0.68rem; border: none; cursor: pointer;"
+                style="background: {selectedBlueprintIndex === idx ? 'var(--color-info-subtle)' : 'var(--color-surface-subtle)'}; color: {selectedBlueprintIndex === idx ? 'var(--color-info)' : 'var(--color-ink-secondary)'}; border: 1px solid {selectedBlueprintIndex === idx ? 'var(--color-info)' : 'var(--color-border)'}; font-size: 0.68rem; cursor: pointer;"
                 onclick={() => { applyDetectedService(s, idx); activeTab = 'config'; }}
               >
                 {selectedBlueprintIndex === idx ? 'Editing' : 'Customize'}
