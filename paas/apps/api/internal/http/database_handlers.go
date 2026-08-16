@@ -17,16 +17,16 @@ import (
 	"github.com/yourorg/klouds/api/internal/domain"
 )
 
-// ─── Database Handlers ─────────────────────────────────────────────────────────
+// --- Database Handlers -----------------------------------------------------
 
 func inspectDatabaseRuntimeStatus(containerName string) domain.DatabaseStatus {
 	if containerName == "" {
-		return domain.DBStatusProvisioning
+		return domain.DBStatusFailed
 	}
 	inspectCmd := exec.Command("docker", "inspect", "-f", "{{.State.Status}}", containerName)
 	out, err := inspectCmd.CombinedOutput()
 	if err != nil {
-		return domain.DBStatusProvisioning
+		return domain.DBStatusFailed
 	}
 	status := strings.ToLower(strings.TrimSpace(string(out)))
 	switch status {
@@ -44,7 +44,7 @@ func inspectDatabaseRuntimeStatus(containerName string) domain.DatabaseStatus {
 		if status != "" {
 			return domain.DatabaseStatus(status)
 		}
-		return domain.DBStatusProvisioning
+		return domain.DBStatusFailed
 	}
 }
 
@@ -269,7 +269,7 @@ func (h *Handler) provisionDatabaseInternal(ctx context.Context, projectID, name
 	}
 
 	// Launch Real Docker Database Container asynchronously with published external port & security hardening
-	go h.startDatabaseContainer(dbSlug, hostname, defaultUser, password, dbName, engine, resolvedVer, port, externalPort)
+	go h.startDatabaseContainer(db.ID, dbSlug, hostname, defaultUser, password, dbName, engine, resolvedVer, port, externalPort)
 
 	return db, nil
 }
@@ -346,7 +346,7 @@ func (h *Handler) ensureDatabaseContainerRunning(ctx context.Context, db *domain
 	}
 
 	dbSlug := strings.ToLower(strings.ReplaceAll(db.Name, "_", "-"))
-	h.startDatabaseContainer(dbSlug, containerName, defaultUser, password, dbName, string(db.Engine), version, port, externalPort)
+	h.startDatabaseContainer(db.ID, dbSlug, containerName, defaultUser, password, dbName, string(db.Engine), version, port, externalPort)
 
 	for i := 0; i < 8; i++ {
 		time.Sleep(500 * time.Millisecond)
@@ -358,75 +358,148 @@ func (h *Handler) ensureDatabaseContainerRunning(ctx context.Context, db *domain
 	return nil
 }
 
-func (h *Handler) startDatabaseContainer(dbSlug, containerName, defaultUser, password, dbName, engine, version string, internalPort, externalPort int) {
+func (h *Handler) startDatabaseContainer(dbID, dbSlug, containerName, defaultUser, password, dbName, engine, version string, internalPort, externalPort int) {
 	_ = exec.Command("docker", "network", "create", "platform-control").Run()
 	_ = exec.Command("docker", "rm", "-f", containerName).Run()
 
 	imageTag, _ := resolveDatabaseVersion(engine, version)
 
-	baseArgs := []string{
-		"run", "-d",
-		"--name", containerName,
-		"--network", "platform-control",
-		"--restart", "unless-stopped",
-		"--pids-limit", "256",
-		"--security-opt", "no-new-privileges:true",
-		"--memory", "1g",
-		"--memory-swap", "1g",
-		"--label", "io.paas.managed=true",
-		"--label", "io.paas.type=database",
-		"--label", fmt.Sprintf("io.paas.engine=%s", engine),
-		"-p", fmt.Sprintf("%d:%d", externalPort, internalPort),
+	// Pre-pull container image if needed to prevent container run timing out
+	_ = exec.Command("docker", "pull", imageTag).Run()
+
+	allocatedPort := externalPort
+	var runErr error
+
+	for attempt := 0; attempt < 5; attempt++ {
+		baseArgs := []string{
+			"run", "-d",
+			"--name", containerName,
+			"--network", "platform-control",
+			"--restart", "unless-stopped",
+			"--pids-limit", "256",
+			"--security-opt", "no-new-privileges:true",
+			"--memory", "1g",
+			"--memory-swap", "1g",
+			"--label", "io.paas.managed=true",
+			"--label", "io.paas.type=database",
+			"--label", fmt.Sprintf("io.paas.engine=%s", engine),
+			"-p", fmt.Sprintf("%d:%d", allocatedPort, internalPort),
+		}
+
+		var engineArgs []string
+		switch engine {
+		case "postgres", "postgresql":
+			engineArgs = []string{
+				"-e", fmt.Sprintf("POSTGRES_USER=%s", defaultUser),
+				"-e", fmt.Sprintf("POSTGRES_PASSWORD=%s", password),
+				"-e", fmt.Sprintf("POSTGRES_DB=%s", dbName),
+				"-v", fmt.Sprintf("paas-db-data-%s:/var/lib/postgresql/data", dbSlug),
+				imageTag,
+			}
+		case "mysql":
+			engineArgs = []string{
+				"-e", fmt.Sprintf("MYSQL_ROOT_PASSWORD=%s", password),
+				"-e", fmt.Sprintf("MYSQL_DATABASE=%s", dbName),
+				"-e", "MYSQL_ROOT_HOST=%",
+				"-v", fmt.Sprintf("paas-db-data-%s:/var/lib/mysql", dbSlug),
+				imageTag,
+			}
+		case "redis":
+			engineArgs = []string{
+				"-v", fmt.Sprintf("paas-db-data-%s:/data", dbSlug),
+				imageTag,
+				"redis-server", "--requirepass", password,
+			}
+		case "mongodb", "mongo":
+			engineArgs = []string{
+				"-e", fmt.Sprintf("MONGO_INITDB_ROOT_USERNAME=%s", defaultUser),
+				"-e", fmt.Sprintf("MONGO_INITDB_ROOT_PASSWORD=%s", password),
+				"-v", fmt.Sprintf("paas-db-data-%s:/data/db", dbSlug),
+				imageTag,
+			}
+		case "clickhouse":
+			engineArgs = []string{
+				"-v", fmt.Sprintf("paas-db-data-%s:/var/lib/clickhouse", dbSlug),
+				imageTag,
+			}
+		default:
+			engineArgs = []string{
+				"-e", fmt.Sprintf("POSTGRES_USER=%s", defaultUser),
+				"-e", fmt.Sprintf("POSTGRES_PASSWORD=%s", password),
+				"-e", fmt.Sprintf("POSTGRES_DB=%s", dbName),
+				"-v", fmt.Sprintf("paas-db-data-%s:/var/lib/postgresql/data", dbSlug),
+				imageTag,
+			}
+		}
+
+		runArgs := append(baseArgs, engineArgs...)
+		runOut, err := exec.Command("docker", runArgs...).CombinedOutput()
+		if err == nil {
+			runErr = nil
+			break
+		}
+		runErr = err
+		outStr := string(runOut)
+		if strings.Contains(outStr, "port is already allocated") || strings.Contains(outStr, "address already in use") || strings.Contains(outStr, "Bind for") {
+			allocatedPort = allocatedPort + 1
+			_ = exec.Command("docker", "rm", "-f", containerName).Run()
+			continue
+		}
+		break
 	}
 
-	var engineArgs []string
-	switch engine {
-	case "postgres", "postgresql":
-		engineArgs = []string{
-			"-e", fmt.Sprintf("POSTGRES_USER=%s", defaultUser),
-			"-e", fmt.Sprintf("POSTGRES_PASSWORD=%s", password),
-			"-e", fmt.Sprintf("POSTGRES_DB=%s", dbName),
-			"-v", fmt.Sprintf("paas-db-data-%s:/var/lib/postgresql/data", dbSlug),
-			imageTag,
-		}
-	case "mysql":
-		engineArgs = []string{
-			"-e", fmt.Sprintf("MYSQL_ROOT_PASSWORD=%s", password),
-			"-e", fmt.Sprintf("MYSQL_DATABASE=%s", dbName),
-			"-e", "MYSQL_ROOT_HOST=%",
-			"-v", fmt.Sprintf("paas-db-data-%s:/var/lib/mysql", dbSlug),
-			imageTag,
-		}
-	case "redis":
-		engineArgs = []string{
-			"-v", fmt.Sprintf("paas-db-data-%s:/data", dbSlug),
-			imageTag,
-			"redis-server", "--requirepass", password,
-		}
-	case "mongodb", "mongo":
-		engineArgs = []string{
-			"-e", fmt.Sprintf("MONGO_INITDB_ROOT_USERNAME=%s", defaultUser),
-			"-e", fmt.Sprintf("MONGO_INITDB_ROOT_PASSWORD=%s", password),
-			"-v", fmt.Sprintf("paas-db-data-%s:/data/db", dbSlug),
-			imageTag,
-		}
-	case "clickhouse":
-		engineArgs = []string{
-			"-v", fmt.Sprintf("paas-db-data-%s:/var/lib/clickhouse", dbSlug),
-			imageTag,
-		}
-	default:
-		engineArgs = []string{
-			"-e", fmt.Sprintf("POSTGRES_USER=%s", defaultUser),
-			"-e", fmt.Sprintf("POSTGRES_PASSWORD=%s", password),
-			"-e", fmt.Sprintf("POSTGRES_DB=%s", dbName),
-			"-v", fmt.Sprintf("paas-db-data-%s:/var/lib/postgresql/data", dbSlug),
-			imageTag,
+	// Update database record in SQLite store
+	ctx := context.Background()
+	if dbID != "" {
+		if db, err := h.store.Databases().GetByID(ctx, dbID); err == nil && db != nil {
+			if runErr != nil {
+				db.RuntimeStatus = domain.DBStatusFailed
+				_ = h.store.Databases().Update(ctx, db)
+			} else {
+				// Wait for container to be ready
+				for i := 0; i < 15; i++ {
+					time.Sleep(1 * time.Second)
+					checkCmd := exec.Command("docker", "inspect", "-f", "{{.State.Running}}", containerName)
+					if chkOut, chkErr := checkCmd.CombinedOutput(); chkErr == nil && strings.TrimSpace(string(chkOut)) == "true" {
+						db.RuntimeStatus = domain.DBStatusReady
+						break
+					}
+				}
+				if db.RuntimeStatus != domain.DBStatusReady {
+					db.RuntimeStatus = inspectDatabaseRuntimeStatus(containerName)
+				}
+
+				if allocatedPort != externalPort && db.ResourceJSON != "" {
+					var meta map[string]any
+					if json.Unmarshal([]byte(db.ResourceJSON), &meta) == nil {
+						meta["externalPort"] = allocatedPort
+						externalHost := getRootDomain()
+						if externalHost == "" {
+							externalHost = "yourdomain.com"
+						}
+						var externalConnURI string
+						switch engine {
+						case "postgres", "postgresql":
+							externalConnURI = fmt.Sprintf("postgresql://%s:%s@%s:%d/%s?sslmode=disable", defaultUser, password, externalHost, allocatedPort, dbName)
+						case "mysql":
+							externalConnURI = fmt.Sprintf("mysql://%s:%s@%s:%d/%s", defaultUser, password, externalHost, allocatedPort, dbName)
+						case "redis":
+							externalConnURI = fmt.Sprintf("redis://:%s@%s:%d", password, externalHost, allocatedPort)
+						case "mongodb", "mongo":
+							externalConnURI = fmt.Sprintf("mongodb://%s:%s@%s:%d/%s?authSource=admin", defaultUser, password, externalHost, allocatedPort, dbName)
+						case "clickhouse":
+							externalConnURI = fmt.Sprintf("clickhouse://%s:%s@%s:%d/%s", defaultUser, password, externalHost, allocatedPort, dbName)
+						}
+						meta["externalConnectionUri"] = externalConnURI
+						meta["psqlCommand"] = fmt.Sprintf("psql \"%s\"", externalConnURI)
+						metaBytes, _ := json.Marshal(meta)
+						db.ResourceJSON = string(metaBytes)
+					}
+				}
+				_ = h.store.Databases().Update(ctx, db)
+			}
 		}
 	}
-
-	runArgs := append(baseArgs, engineArgs...)
-	_ = exec.Command("docker", runArgs...).Run()
 }
 
 func (h *Handler) handleGetDatabase(c fiber.Ctx) error {
@@ -488,7 +561,7 @@ func (h *Handler) handleGetDatabase(c fiber.Ctx) error {
 		if containerName == "" {
 			containerName = fmt.Sprintf("paas-db-%s", dbSlug)
 		}
-		go h.startDatabaseContainer(dbSlug, containerName, user, pass, dbName, string(db.Engine), db.EngineVersion, db.InternalPort, externalPort)
+		go h.startDatabaseContainer(db.ID, dbSlug, containerName, user, pass, dbName, string(db.Engine), db.EngineVersion, db.InternalPort, externalPort)
 	}
 
 	return c.JSON(db)
