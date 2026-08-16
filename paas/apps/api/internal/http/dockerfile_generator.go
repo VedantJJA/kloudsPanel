@@ -14,6 +14,8 @@ import (
 // for both single-package repos and monorepos.
 func nodePnpmSupportedArchSetup() string {
 	return `if [ ! -f pnpm-workspace.yaml ]; then printf 'packages:\n  - "."\n' > pnpm-workspace.yaml; fi; ` +
+		`sed -i '/linux-arm64.*"-"/d' pnpm-workspace.yaml 2>/dev/null || true; ` +
+		`sed -i '/linux-x64.*"-"/d' pnpm-workspace.yaml 2>/dev/null || true; ` +
 		`grep -q 'supportedArchitectures:' pnpm-workspace.yaml || { printf '\nsupportedArchitectures:\n  os:\n    - current\n  cpu:\n    - current\n  libc:\n    - current\n' >> pnpm-workspace.yaml; rm -f pnpm-lock.yaml; }`
 }
 
