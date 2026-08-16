@@ -5,7 +5,7 @@
   import { Loader2, Rocket, Wrench, Database, X, Save, Trash2, Plus, Server, Globe, ExternalLink } from 'lucide-svelte';
   import FrameworkIcon from '$lib/components/icons/FrameworkIcon.svelte';
 
-  const { slug } = $derived($page.params);
+  const slug = $derived($page.params.slug);
   let project = $state<any>(null);
   let services = $state<any[]>([]);
   let databases = $state<any[]>([]);
@@ -22,11 +22,16 @@
   }
 
   async function loadProjectData() {
+    const targetSlug = $page.params.slug || slug || '';
+    if (!targetSlug) {
+      loading = false;
+      return;
+    }
     try {
       const [projRes, svcRes, dbRes] = await Promise.all([
-        fetch(`/api/v1/projects/${slug}`, { credentials: 'include' }),
-        fetch(`/api/v1/services?projectId=${slug}`, { credentials: 'include' }),
-        fetch(`/api/v1/databases?projectId=${slug}`, { credentials: 'include' }),
+        fetch(`/api/v1/projects/${encodeURIComponent(targetSlug)}`, { credentials: 'include' }),
+        fetch(`/api/v1/services?projectId=${encodeURIComponent(targetSlug)}`, { credentials: 'include' }),
+        fetch(`/api/v1/databases?projectId=${encodeURIComponent(targetSlug)}`, { credentials: 'include' }),
       ]);
       if (projRes.ok) {
         project = await projRes.json();

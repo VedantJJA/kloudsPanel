@@ -4,7 +4,7 @@
   import { onMount } from 'svelte';
   import { Loader2, Box, FolderOpen, Trash2 } from 'lucide-svelte';
 
-  const { slug } = $derived($page.params);
+  const slug = $derived($page.params.slug);
   let workspace = $state<any>(null);
   let projects = $state<any[]>([]);
   let loading = $state(true);

@@ -39,7 +39,8 @@
   } from 'lucide-svelte';
   import FrameworkIcon from '$lib/components/icons/FrameworkIcon.svelte';
 
-  const { id, tab } = $derived($page.params);
+  const id = $derived($page.params.id);
+  const tab = $derived($page.params.tab);
   const tabs = ['overview', 'query', 'visualizer', 'logs', 'settings'];
 
   let database = $state<any>(null);
