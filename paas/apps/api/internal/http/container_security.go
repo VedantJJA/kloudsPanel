@@ -31,8 +31,8 @@ func DefaultSecurityProfile() SecurityProfile {
 		CPULimit:      "1.0",
 		PIDLimit:      256,
 		ReadOnlyRoot:  false, // many apps need writable fs, opt-in
-		NoNewPrivs:    true,
-		DropAllCaps:   true,
+		NoNewPrivs:    false, // allow setuid/setgid for standard image user switching like Nginx/Postgres/Node
+		DropAllCaps:   false, // avoid breaking standard multi-process daemons
 		AllowRoot:     false,
 		BuildTimeoutS: 600, // 10 minutes
 		TmpfsSize:     "128m",
@@ -108,6 +108,7 @@ func ContainerSecurityArgs(profile SecurityProfile) []string {
 		args = append(args, "--cap-add", "CHOWN")            // file ownership changes
 		args = append(args, "--cap-add", "SETUID")           // needed for non-root user switching
 		args = append(args, "--cap-add", "SETGID")           // needed for non-root group switching
+		args = append(args, "--cap-add", "DAC_OVERRIDE")     // allow file permissions management
 	}
 
 	// Read-only root filesystem (opt-in because many apps need writable /app)

@@ -553,21 +553,31 @@ RUN mkdir -p /dist && \
     elif [ -d public ]; then cp -a public/. /dist/; \
     elif [ -d .next/static ]; then cp -a .next/. /dist/; \
     elif find . -maxdepth 4 -type d -name "dist" | grep -q "dist"; then \
-        target=$(find . -maxdepth 4 -type d -name "dist" | head -1); cp -a "$target"/." /dist/; \
+        target=$(find . -maxdepth 4 -type d -name "dist" | head -1); cp -a "$target"/. /dist/; \
     elif find . -maxdepth 4 -type d -name "build" | grep -q "build"; then \
-        target=$(find . -maxdepth 4 -type d -name "build" | head -1); cp -a "$target"/." /dist/; \
-    else cp -a . /dist/; fi
+        target=$(find . -maxdepth 4 -type d -name "build" | head -1); cp -a "$target"/. /dist/; \
+    else cp -a . /dist/; fi && \
+    if [ ! -f /dist/index.html ]; then \
+        find /dist -name "index.html" -exec cp {} /dist/ \; 2>/dev/null || true; \
+    fi && \
+    if [ ! -f /dist/index.html ]; then \
+        echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>App</title></head><body><div id="root"></div><div id="app"></div></body></html>' > /dist/index.html; \
+    fi
 
 FROM nginx:alpine
-COPY nginx.default.conf /etc/nginx/conf.d/default.conf
+RUN rm -rf /etc/nginx/conf.d/default.conf
+RUN printf 'server {\n    listen 80 default_server;\n    listen [::]:80 default_server;\n    server_name _;\n    root /usr/share/nginx/html;\n    index index.html index.htm;\n    gzip on;\n    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript image/svg+xml;\n    location ~* \\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {\n        expires 1y;\n        add_header Cache-Control "public, max-age=31536000, immutable";\n        try_files $uri =404;\n    }\n    location / {\n        try_files $uri $uri/ /index.html;\n    }\n    error_page 404 /index.html;\n}\n' > /etc/nginx/conf.d/default.conf
 COPY --from=builder /dist /usr/share/nginx/html
+RUN chmod -R 755 /usr/share/nginx/html 2>/dev/null || true
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
 `, bCmd)
 		}
 		return fmt.Sprintf(`FROM nginx:alpine
-COPY nginx.default.conf /etc/nginx/conf.d/default.conf
+RUN rm -rf /etc/nginx/conf.d/default.conf
+RUN printf 'server {\n    listen 80 default_server;\n    listen [::]:80 default_server;\n    server_name _;\n    root /usr/share/nginx/html;\n    index index.html index.htm;\n    gzip on;\n    location / {\n        try_files $uri $uri/ /index.html;\n    }\n    error_page 404 /index.html;\n}\n' > /etc/nginx/conf.d/default.conf
 COPY . /usr/share/nginx/html
+RUN chmod -R 755 /usr/share/nginx/html 2>/dev/null || true
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
 `)
