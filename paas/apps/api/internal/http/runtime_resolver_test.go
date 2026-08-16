@@ -3,6 +3,7 @@ package http
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -18,15 +19,15 @@ func TestRuntimeVersionResolver(t *testing.T) {
 		t.Errorf("expected python 3.11 user version, got %+v", pyUser)
 	}
 
-	// Test default fallbacks
+	// Test default fallbacks (auto-resolved from registry or baseline)
 	nodeDefault := resolveRuntimeVersion("node", "", "")
-	if nodeDefault.Version != "22" || nodeDefault.FullImage != "node:22-alpine" || nodeDefault.Source != "default" {
-		t.Errorf("expected node 22 default, got %+v", nodeDefault)
+	if nodeDefault.Version == "" || !strings.Contains(nodeDefault.FullImage, "node:") || nodeDefault.BaseImage != "node" {
+		t.Errorf("expected valid node dynamic version, got %+v", nodeDefault)
 	}
 
 	goDefault := resolveRuntimeVersion("go", "", "")
-	if goDefault.Version != "1.23" || goDefault.FullImage != "golang:1.23-alpine" {
-		t.Errorf("expected go 1.23 default, got %+v", goDefault)
+	if goDefault.Version == "" || !strings.Contains(goDefault.FullImage, "golang:") || goDefault.BaseImage != "golang" {
+		t.Errorf("expected valid go dynamic version, got %+v", goDefault)
 	}
 
 	// Test auto-detection from mock project directory
@@ -64,15 +65,10 @@ func TestDatabaseVersionResolver(t *testing.T) {
 		expectedTag string
 		expectedVer string
 	}{
-		{"postgres", "", "postgres:17-alpine", "17"},
 		{"postgres", "15", "postgres:15-alpine", "15"},
-		{"mysql", "", "mysql:8.4", "8.4"},
 		{"mysql", "8.0", "mysql:8.0", "8.0"},
-		{"redis", "", "redis:7.4-alpine", "7.4"},
 		{"redis", "7.2", "redis:7.2-alpine", "7.2"},
-		{"mongodb", "", "mongo:8.0", "8.0"},
 		{"mongodb", "6.0", "mongo:6.0", "6.0"},
-		{"clickhouse", "", "clickhouse/clickhouse-server:24.8-alpine", "24.8"},
 	}
 
 	for _, tt := range tests {
@@ -81,6 +77,12 @@ func TestDatabaseVersionResolver(t *testing.T) {
 			t.Errorf("resolveDatabaseVersion(%q, %q) = (%q, %q), want (%q, %q)",
 				tt.engine, tt.version, tag, ver, tt.expectedTag, tt.expectedVer)
 		}
+	}
+
+	// Test dynamic database resolution without explicit version
+	pgTag, pgVer := resolveDatabaseVersion("postgres", "")
+	if pgTag == "" || pgVer == "" || !strings.HasPrefix(pgTag, "postgres:") {
+		t.Errorf("expected valid dynamic postgres version, got (%s, %s)", pgTag, pgVer)
 	}
 }
 
@@ -120,5 +122,46 @@ CMD ["npm", "start"]`
 	safeWarns, safeErrs := ScanDockerfileForDangers(safe)
 	if len(safeWarns) != 0 || len(safeErrs) != 0 {
 		t.Errorf("expected clean dockerfile to have 0 warnings/errors, got %v / %v", safeWarns, safeErrs)
+	}
+}
+
+func TestDynamicTagParser(t *testing.T) {
+	// Test compareVersionStrings
+	if compareVersionStrings("23", "22") <= 0 {
+		t.Errorf("expected 23 > 22")
+	}
+	if compareVersionStrings("1.24", "1.23.2") <= 0 {
+		t.Errorf("expected 1.24 > 1.23.2")
+	}
+	if compareVersionStrings("3.12", "3.12") != 0 {
+		t.Errorf("expected 3.12 == 3.12")
+	}
+	if compareVersionStrings("8.4", "8.0") <= 0 {
+		t.Errorf("expected 8.4 > 8.0")
+	}
+
+	// Test parseBestVersionFromTags
+	mockNodeTags := []registryTagItem{
+		{Name: "20-alpine"},
+		{Name: "22-alpine"},
+		{Name: "23-alpine"},
+		{Name: "24-rc1-alpine"},
+		{Name: "alpine3.21"},
+		{Name: "latest"},
+	}
+	bestNode := parseBestVersionFromTags("node", mockNodeTags, "-alpine", "22")
+	if bestNode != "23" {
+		t.Errorf("expected best node version 23, got %s", bestNode)
+	}
+
+	mockPythonTags := []registryTagItem{
+		{Name: "3.11-slim"},
+		{Name: "3.12-slim"},
+		{Name: "3.13-slim"},
+		{Name: "3.14-rc-slim"},
+	}
+	bestPy := parseBestVersionFromTags("python", mockPythonTags, "-slim", "3.12")
+	if bestPy != "3.13" {
+		t.Errorf("expected best python version 3.13, got %s", bestPy)
 	}
 }

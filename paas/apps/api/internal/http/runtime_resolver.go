@@ -1,33 +1,38 @@
 package http
 
 import (
+	"encoding/json"
 	"fmt"
+	nethttp "net/http"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
+	"sync"
+	"time"
 )
 
-// ─── Runtime Version Resolver ────────────────────────────────────────────────
-// Resolves Docker image tags dynamically from project files instead of
-// hardcoding versions. Supports user-specified versions, auto-detection
-// from project files, and fallback to latest stable.
+// --- Runtime Version Resolver ------------------------------------------------
+// Resolves Docker image tags dynamically from project files or live from
+// container registries (Docker Hub / GHCR). Automatically queries the registry
+// for the latest stable releases with intelligent TTL caching and instant fallback.
 
 // RuntimeVersionInfo holds the resolved image tag and metadata.
 type RuntimeVersionInfo struct {
-	BaseImage      string // e.g. "node", "python", "golang"
-	Version        string // e.g. "20", "3.12", "1.23"
-	Tag            string // e.g. "20-alpine", "3.12-slim"
-	FullImage      string // e.g. "node:20-alpine"
-	Source         string // "user", "project-file", "default"
-	DetectedFrom   string // e.g. ".node-version", "go.mod", "package.json engines"
+	BaseImage    string // e.g. "node", "python", "golang"
+	Version      string // e.g. "22", "3.12", "1.23"
+	Tag          string // e.g. "22-alpine", "3.12-slim"
+	FullImage    string // e.g. "node:22-alpine"
+	Source       string // "user", "project-file", "registry-latest", "default"
+	DetectedFrom string // e.g. ".node-version", "go.mod", "docker-hub-live"
 }
 
-// runtimeDefaults maps preset names to their default image configuration.
+// runtimeDefaults maps preset names to their baseline image configuration.
 var runtimeDefaults = map[string]struct {
-	base       string
-	version    string
-	tagSuffix  string // "-alpine", "-slim", etc.
+	base      string
+	version   string
+	tagSuffix string // "-alpine", "-slim", etc.
 }{
 	"node":       {"node", "22", "-alpine"},
 	"nodejs":     {"node", "22", "-alpine"},
@@ -61,8 +66,193 @@ var runtimeDefaults = map[string]struct {
 	"dart":       {"dart", "stable", ""},
 }
 
+// --- Dynamic Registry Tag Auto-Fetcher ---------------------------------------
+
+type registryTagItem struct {
+	Name string `json:"name"`
+}
+
+type registryTagsResponse struct {
+	Results []registryTagItem `json:"results"`
+}
+
+type cachedDynamicTag struct {
+	version   string
+	tag       string
+	fullImage string
+	cachedAt  time.Time
+}
+
+var (
+	registryCacheMu sync.RWMutex
+	registryCache   = make(map[string]cachedDynamicTag)
+	regHttpClient   = &nethttp.Client{Timeout: 3 * time.Second}
+)
+
+// compareVersionStrings compares two version strings numerically (e.g. "23" vs "22.1", "1.24" vs "1.23").
+func compareVersionStrings(v1, v2 string) int {
+	clean1 := strings.TrimPrefix(strings.ToLower(v1), "v")
+	clean2 := strings.TrimPrefix(strings.ToLower(v2), "v")
+
+	parts1 := strings.Split(clean1, ".")
+	parts2 := strings.Split(clean2, ".")
+	maxLen := len(parts1)
+	if len(parts2) > maxLen {
+		maxLen = len(parts2)
+	}
+
+	for i := 0; i < maxLen; i++ {
+		var n1, n2 int
+		if i < len(parts1) {
+			if v, err := strconv.Atoi(parts1[i]); err == nil {
+				n1 = v
+			}
+		}
+		if i < len(parts2) {
+			if v, err := strconv.Atoi(parts2[i]); err == nil {
+				n2 = v
+			}
+		}
+		if n1 > n2 {
+			return 1
+		} else if n1 < n2 {
+			return -1
+		}
+	}
+	return 0
+}
+
+// parseBestVersionFromTags inspects a list of registry tags and finds the latest numeric stable release.
+func parseBestVersionFromTags(baseImage string, tags []registryTagItem, tagSuffix string, fallbackVersion string) string {
+	var bestVer string
+
+	isMajorOnly := !strings.Contains(fallbackVersion, ".")
+
+	var re *regexp.Regexp
+	escapedSuffix := regexp.QuoteMeta(tagSuffix)
+	if isMajorOnly {
+		if tagSuffix == "" {
+			re = regexp.MustCompile(`^(\d+)$`)
+		} else {
+			re = regexp.MustCompile(fmt.Sprintf(`^(\d+)(?:%s)$`, escapedSuffix))
+		}
+	} else {
+		if tagSuffix == "" {
+			re = regexp.MustCompile(`^(\d+\.\d+)$`)
+		} else {
+			re = regexp.MustCompile(fmt.Sprintf(`^(\d+\.\d+)(?:%s)$`, escapedSuffix))
+		}
+	}
+
+	for _, t := range tags {
+		tagName := strings.ToLower(strings.TrimSpace(t.Name))
+
+		// Ignore pre-releases, release candidates, and development builds
+		if strings.Contains(tagName, "-rc") ||
+			strings.Contains(tagName, "-beta") ||
+			strings.Contains(tagName, "-alpha") ||
+			strings.Contains(tagName, "-preview") ||
+			strings.Contains(tagName, "-dev") ||
+			strings.Contains(tagName, "-nightly") ||
+			strings.Contains(tagName, "snapshot") ||
+			strings.Contains(tagName, "bookworm") ||
+			strings.Contains(tagName, "bullseye") ||
+			strings.Contains(tagName, "windowsservercore") {
+			continue
+		}
+
+		m := re.FindStringSubmatch(tagName)
+		if len(m) > 1 {
+			candidateVer := m[1]
+
+			// Sanity filters to avoid experimental/internal branch numbers
+			if isMajorOnly {
+				candNum, _ := strconv.Atoi(candidateVer)
+				fallNum, _ := strconv.Atoi(fallbackVersion)
+				if candNum > fallNum+5 || candNum < fallNum-5 {
+					continue
+				}
+			} else {
+				parts := strings.Split(candidateVer, ".")
+				fallParts := strings.Split(fallbackVersion, ".")
+				if len(parts) >= 1 && len(fallParts) >= 1 {
+					candMajor, _ := strconv.Atoi(parts[0])
+					fallMajor, _ := strconv.Atoi(fallParts[0])
+					if candMajor > fallMajor+2 || candMajor < fallMajor-2 {
+						continue
+					}
+				}
+			}
+
+			if bestVer == "" || compareVersionStrings(candidateVer, bestVer) > 0 {
+				bestVer = candidateVer
+			}
+		}
+	}
+
+	if bestVer == "" {
+		return fallbackVersion
+	}
+	return bestVer
+}
+
+// fetchLatestRegistryTag queries the Docker Hub API for the latest matching tag.
+// If the registry cannot be reached or rate limited, it returns the baseline default.
+func fetchLatestRegistryTag(baseImage, tagSuffix string, fallbackVersion string) (version string, tag string) {
+	cacheKey := fmt.Sprintf("%s:%s", baseImage, tagSuffix)
+
+	// 1. Check in-memory cache (TTL: 6 hours)
+	registryCacheMu.RLock()
+	if c, ok := registryCache[cacheKey]; ok && time.Since(c.cachedAt) < 6*time.Hour {
+		registryCacheMu.RUnlock()
+		return c.version, c.tag
+	}
+	registryCacheMu.RUnlock()
+
+	// 2. Format Docker Hub API URL
+	apiUrl := fmt.Sprintf("https://registry.hub.docker.com/v2/repositories/library/%s/tags?page_size=100&ordering=last_updated", baseImage)
+	if strings.Contains(baseImage, "/") {
+		apiUrl = fmt.Sprintf("https://registry.hub.docker.com/v2/repositories/%s/tags?page_size=100&ordering=last_updated", baseImage)
+	}
+
+	req, err := nethttp.NewRequest("GET", apiUrl, nil)
+	if err != nil {
+		return fallbackVersion, fallbackVersion + tagSuffix
+	}
+	req.Header.Set("User-Agent", "kloudsPanel-VersionResolver/1.0")
+
+	resp, err := regHttpClient.Do(req)
+	if err != nil || resp.StatusCode != 200 {
+		return fallbackVersion, fallbackVersion + tagSuffix
+	}
+	defer resp.Body.Close()
+
+	var data registryTagsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil || len(data.Results) == 0 {
+		return fallbackVersion, fallbackVersion + tagSuffix
+	}
+
+	bestVer := parseBestVersionFromTags(baseImage, data.Results, tagSuffix, fallbackVersion)
+	bestTag := bestVer + tagSuffix
+	if tagSuffix == "" {
+		bestTag = bestVer
+	}
+
+	// 3. Store in cache
+	registryCacheMu.Lock()
+	registryCache[cacheKey] = cachedDynamicTag{
+		version:   bestVer,
+		tag:       bestTag,
+		fullImage: fmt.Sprintf("%s:%s", baseImage, bestTag),
+		cachedAt:  time.Now(),
+	}
+	registryCacheMu.Unlock()
+
+	return bestVer, bestTag
+}
+
 // resolveRuntimeVersion determines the Docker image tag for a given preset.
-// Priority: requestedVersion (user/blueprint) > project file detection > default.
+// Priority: requestedVersion (user/blueprint) > project file detection > live registry auto-fetch > default.
 func resolveRuntimeVersion(preset, contextDir, requestedVersion string) RuntimeVersionInfo {
 	preset = strings.ToLower(preset)
 	defaults, ok := runtimeDefaults[preset]
@@ -107,14 +297,15 @@ func resolveRuntimeVersion(preset, contextDir, requestedVersion string) RuntimeV
 		}
 	}
 
-	// 3. Fallback to defaults
-	tag := defaults.version + defaults.tagSuffix
+	// 3. Dynamically fetch latest version from container registry API (with instant cache & baseline fallback)
+	dynVer, dynTag := fetchLatestRegistryTag(defaults.base, defaults.tagSuffix, defaults.version)
 	return RuntimeVersionInfo{
-		BaseImage: defaults.base,
-		Version:   defaults.version,
-		Tag:       tag,
-		FullImage: fmt.Sprintf("%s:%s", defaults.base, tag),
-		Source:    "default",
+		BaseImage:    defaults.base,
+		Version:      dynVer,
+		Tag:          dynTag,
+		FullImage:    fmt.Sprintf("%s:%s", defaults.base, dynTag),
+		Source:       "registry-latest",
+		DetectedFrom: "docker-hub-registry",
 	}
 }
 
@@ -507,41 +698,46 @@ func getDotnetBaseImage(version string, stage string) string {
 // --- Database Version Resolver -----------------------------------------------
 
 // resolveDatabaseVersion returns the full Docker image and resolved version
-// for supported database engines, honoring user version selection or falling back to stable defaults.
+// for supported database engines, honoring user version selection or dynamically fetching from registry.
 func resolveDatabaseVersion(engine, requestedVersion string) (imageTag string, resolvedVersion string) {
 	engine = strings.ToLower(strings.TrimSpace(engine))
 	cleanVer := sanitizeVersionString(requestedVersion)
 
 	switch engine {
 	case "postgres", "postgresql":
-		if cleanVer == "" {
-			cleanVer = "17"
+		if cleanVer != "" {
+			return fmt.Sprintf("postgres:%s-alpine", cleanVer), cleanVer
 		}
-		return fmt.Sprintf("postgres:%s-alpine", cleanVer), cleanVer
+		ver, tag := fetchLatestRegistryTag("postgres", "-alpine", "17")
+		return fmt.Sprintf("postgres:%s", tag), ver
 
 	case "mysql":
-		if cleanVer == "" {
-			cleanVer = "8.4"
+		if cleanVer != "" {
+			return fmt.Sprintf("mysql:%s", cleanVer), cleanVer
 		}
-		return fmt.Sprintf("mysql:%s", cleanVer), cleanVer
+		ver, tag := fetchLatestRegistryTag("mysql", "", "8.4")
+		return fmt.Sprintf("mysql:%s", tag), ver
 
 	case "redis":
-		if cleanVer == "" {
-			cleanVer = "7.4"
+		if cleanVer != "" {
+			return fmt.Sprintf("redis:%s-alpine", cleanVer), cleanVer
 		}
-		return fmt.Sprintf("redis:%s-alpine", cleanVer), cleanVer
+		ver, tag := fetchLatestRegistryTag("redis", "-alpine", "7.4")
+		return fmt.Sprintf("redis:%s", tag), ver
 
 	case "mongodb", "mongo":
-		if cleanVer == "" {
-			cleanVer = "8.0"
+		if cleanVer != "" {
+			return fmt.Sprintf("mongo:%s", cleanVer), cleanVer
 		}
-		return fmt.Sprintf("mongo:%s", cleanVer), cleanVer
+		ver, tag := fetchLatestRegistryTag("mongo", "", "8.0")
+		return fmt.Sprintf("mongo:%s", tag), ver
 
 	case "clickhouse":
-		if cleanVer == "" {
-			cleanVer = "24.8"
+		if cleanVer != "" {
+			return fmt.Sprintf("clickhouse/clickhouse-server:%s-alpine", cleanVer), cleanVer
 		}
-		return fmt.Sprintf("clickhouse/clickhouse-server:%s-alpine", cleanVer), cleanVer
+		ver, tag := fetchLatestRegistryTag("clickhouse/clickhouse-server", "-alpine", "24.8")
+		return fmt.Sprintf("clickhouse/clickhouse-server:%s", tag), ver
 
 	default:
 		if cleanVer != "" {
