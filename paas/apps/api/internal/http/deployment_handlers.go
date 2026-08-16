@@ -730,9 +730,20 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 			buildArgs = append(buildArgs, "--build-arg", fmt.Sprintf("%s=%s", k, v))
 		}
 		buildArgs = append(buildArgs, contextDir)
+
+		// First try with BuildKit
 		buildCmd := exec.Command("docker", buildArgs...)
 		buildCmd.Env = append(os.Environ(), "DOCKER_BUILDKIT=1", "BUILDKIT_PROGRESS=plain")
 		buildOut, err := buildCmd.CombinedOutput()
+
+		// If BuildKit failed because buildx is missing or broken on the host, fallback to standard builder
+		if err != nil && (strings.Contains(string(buildOut), "buildx component is missing") || strings.Contains(string(buildOut), "BuildKit is enabled but the buildx component")) {
+			appendLog(serviceID, depID, "build", "[builder] Docker buildx plugin not found on host. Falling back to standard container builder...")
+			fallbackCmd := exec.Command("docker", buildArgs...)
+			fallbackCmd.Env = append(os.Environ(), "DOCKER_BUILDKIT=0")
+			buildOut, err = fallbackCmd.CombinedOutput()
+		}
+
 		for _, line := range strings.Split(string(buildOut), "\n") {
 			if strings.TrimSpace(line) != "" {
 				appendLog(serviceID, depID, "build", line)

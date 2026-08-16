@@ -123,13 +123,14 @@ if [ -n "${SUDO_USER:-}" ]; then
     $SUDO usermod -aG docker "$SUDO_USER" || true
 fi
 
-# Ensure Docker Compose plugin is available
-if ! docker compose version >/dev/null 2>&1; then
-    echo -e "${YELLOW}==> Installing Docker Compose plugin...${NC}"
+# Ensure Docker Compose & Buildx plugins are available
+if ! docker compose version >/dev/null 2>&1 || ! docker buildx version >/dev/null 2>&1; then
+    echo -e "${YELLOW}==> Installing Docker Compose & Buildx plugins...${NC}"
     if [ "$PKG_MANAGER" = "apt" ]; then
-        $SUDO apt-get install -y docker-compose-plugin || true
+        $SUDO apt-get update -qq || true
+        $SUDO apt-get install -y docker-compose-plugin docker-buildx-plugin || true
     elif [ "$PKG_MANAGER" = "dnf" ] || [ "$PKG_MANAGER" = "yum" ]; then
-        $SUDO dnf install -y docker-compose-plugin || true
+        $SUDO dnf install -y docker-compose-plugin docker-buildx-plugin || true
     fi
 fi
 
