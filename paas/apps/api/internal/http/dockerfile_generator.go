@@ -14,7 +14,7 @@ import (
 // for both single-package repos and monorepos.
 func nodePnpmSupportedArchSetup() string {
 	return `if [ ! -f pnpm-workspace.yaml ]; then printf 'packages:\n  - "."\n' > pnpm-workspace.yaml; fi; ` +
-		`grep -q 'supportedArchitectures:' pnpm-workspace.yaml || printf '\nsupportedArchitectures:\n  os:\n    - current\n  cpu:\n    - current\n  libc:\n    - current\n' >> pnpm-workspace.yaml`
+		`grep -q 'supportedArchitectures:' pnpm-workspace.yaml || { printf '\nsupportedArchitectures:\n  os:\n    - current\n  cpu:\n    - current\n  libc:\n    - current\n' >> pnpm-workspace.yaml; rm -f pnpm-lock.yaml; }`
 }
 
 // detectNodePackageManager returns the install and build commands based on lockfile presence.
