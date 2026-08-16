@@ -15,9 +15,9 @@ func detectNodeInstallCommand(buildCmd string) string {
 	}
 	// Default: try to detect at build time via lockfile presence
 	return `if [ -f bun.lockb ]; then bun install --frozen-lockfile; \
-elif [ -f pnpm-lock.yaml ]; then corepack enable && pnpm install --frozen-lockfile; \
-elif [ -f yarn.lock ]; then corepack enable && yarn install --frozen-lockfile; \
-elif [ -f package-lock.json ]; then npm ci; \
+elif [ -f pnpm-lock.yaml ]; then corepack enable && (if [ -f pnpm-workspace.yaml ]; then grep -q 'supportedArchitectures:' pnpm-workspace.yaml || printf '\nsupportedArchitectures:\n  os:\n    - linux\n  cpu:\n    - x64\n    - arm64\n' >> pnpm-workspace.yaml; fi) && (pnpm install --no-frozen-lockfile 2>/dev/null || pnpm install) && (node -e 'const fs=require("fs"),path=require("path"),{execSync}=require("child_process"),pnpmDir="node_modules/.pnpm";if(fs.existsSync(pnpmDir)){const arch=process.arch;for(const d of fs.readdirSync(pnpmDir)){for(const name of["rollup","lightningcss","@swc/core"]){const p=path.join(pnpmDir,d,"node_modules",name),pkgFile=path.join(p,"package.json");if(fs.existsSync(pkgFile)){try{const pkg=JSON.parse(fs.readFileSync(pkgFile,"utf8"));if(pkg.optionalDependencies){for(const[dep,ver]of Object.entries(pkg.optionalDependencies)){if(dep.includes(arch)&&dep.includes("linux")){const targetDir=path.join(pnpmDir,d,"node_modules");if(!fs.existsSync(path.join(targetDir,dep))){console.log("[pnpm-resolver] Installing "+dep+"@"+ver+" into "+d);execSync("npm install --no-save --prefix \""+targetDir+"\" "+dep+"@"+ver,{stdio:"ignore"});if(name==="lightningcss"){const binDir=path.join(targetDir,dep);if(fs.existsSync(binDir)){for(const f of fs.readdirSync(binDir)){if(f.endsWith(".node"))fs.copyFileSync(path.join(binDir,f),path.join(p,f));}}}}}}}}catch(e){}}}}}' 2>/dev/null || true) && (pnpm rebuild 2>/dev/null || true); \
+elif [ -f yarn.lock ]; then corepack enable && (yarn install --frozen-lockfile || yarn install); \
+elif [ -f package-lock.json ]; then (npm ci || npm install); \
 elif [ -f package.json ]; then npm install; fi && \
 if grep -q '"build":' package.json 2>/dev/null; then \
   if [ -f bun.lockb ]; then bun run build; \
@@ -106,12 +106,14 @@ CMD ["sh", "-c", "%s"]
 			}
 			if strings.Contains(bCmd, "pnpm") {
 				usesBash = true
+				nodeResolver := "node -e 'const fs=require(\"fs\"),path=require(\"path\"),{execSync}=require(\"child_process\"),pnpmDir=\"node_modules/.pnpm\";if(fs.existsSync(pnpmDir)){const arch=process.arch;for(const d of fs.readdirSync(pnpmDir)){for(const name of[\"rollup\",\"lightningcss\",\"@swc/core\"]){const p=path.join(pnpmDir,d,\"node_modules\",name),pkgFile=path.join(p,\"package.json\");if(fs.existsSync(pkgFile)){try{const pkg=JSON.parse(fs.readFileSync(pkgFile,\"utf8\"));if(pkg.optionalDependencies){for(const[dep,ver]of Object.entries(pkg.optionalDependencies)){if(dep.includes(arch)&&dep.includes(\"linux\")){const targetDir=path.join(pnpmDir,d,\"node_modules\");if(!fs.existsSync(path.join(targetDir,dep))){console.log(\"[pnpm-resolver] Installing \"+dep+\"@\"+ver+\" into \"+d);execSync(\"npm install --no-save --prefix \\\"\"+targetDir+\"\\\" \"+dep+\"@\"+ver,{stdio:\"ignore\"});if(name===\"lightningcss\"){const binDir=path.join(targetDir,dep);if(fs.existsSync(binDir)){for(const f of fs.readdirSync(binDir)){if(f.endsWith(\".node\"))fs.copyFileSync(path.join(binDir,f),path.join(p,f));}}}}}}}}catch(e){}}}}}'"
 				archSetup := "if [ -f pnpm-workspace.yaml ]; then grep -q 'supportedArchitectures:' pnpm-workspace.yaml || printf '\\nsupportedArchitectures:\\n  os:\\n    - linux\\n  cpu:\\n    - x64\\n    - arm64\\n' >> pnpm-workspace.yaml; fi; printf 'supported-architectures.os[]=linux\\nsupported-architectures.cpu[]=x64\\nsupported-architectures.cpu[]=arm64\\n' >> .npmrc 2>/dev/null || true; pnpm config set verify-store-integrity false 2>/dev/null || true"
 				bCmd = fmt.Sprintf("%s; %s", archSetup, bCmd)
 				const pnpmFrozenSentinel = "__PNPM_INSTALL_FROZEN__"
 				bCmd = strings.ReplaceAll(bCmd, "pnpm install --frozen-lockfile", pnpmFrozenSentinel)
-				bCmd = strings.ReplaceAll(bCmd, "pnpm install", "{ pnpm install --no-frozen-lockfile --prefer-frozen-lockfile=false 2>/dev/null || pnpm install --no-frozen-lockfile 2>/dev/null || pnpm install; } && (pnpm rebuild 2>/dev/null || true)")
-				bCmd = strings.ReplaceAll(bCmd, pnpmFrozenSentinel, "{ pnpm install --no-frozen-lockfile --prefer-frozen-lockfile=false 2>/dev/null || pnpm install --no-frozen-lockfile 2>/dev/null || pnpm install; } && (pnpm rebuild 2>/dev/null || true)")
+				installStep := fmt.Sprintf("{ pnpm install --no-frozen-lockfile --prefer-frozen-lockfile=false 2>/dev/null || pnpm install --no-frozen-lockfile 2>/dev/null || pnpm install; } && (%s 2>/dev/null || true) && (pnpm rebuild 2>/dev/null || true)", nodeResolver)
+				bCmd = strings.ReplaceAll(bCmd, "pnpm install", installStep)
+				bCmd = strings.ReplaceAll(bCmd, pnpmFrozenSentinel, installStep)
 			}
 			if strings.Contains(bCmd, "npm") {
 				bCmd = fmt.Sprintf("npm config set audit false 2>/dev/null || true; npm config set fund false 2>/dev/null || true; npm config set progress false 2>/dev/null || true; %s", bCmd)
@@ -563,12 +565,14 @@ CMD ["sh", "-c", "%s"]
 				bCmd = strings.ReplaceAll(bCmd, "npm ci", "{ npm ci || npm install; }")
 			}
 			if strings.Contains(bCmd, "pnpm") {
+				nodeResolver2 := "node -e 'const fs=require(\"fs\"),path=require(\"path\"),{execSync}=require(\"child_process\"),pnpmDir=\"node_modules/.pnpm\";if(fs.existsSync(pnpmDir)){const arch=process.arch;for(const d of fs.readdirSync(pnpmDir)){for(const name of[\"rollup\",\"lightningcss\",\"@swc/core\"]){const p=path.join(pnpmDir,d,\"node_modules\",name),pkgFile=path.join(p,\"package.json\");if(fs.existsSync(pkgFile)){try{const pkg=JSON.parse(fs.readFileSync(pkgFile,\"utf8\"));if(pkg.optionalDependencies){for(const[dep,ver]of Object.entries(pkg.optionalDependencies)){if(dep.includes(arch)&&dep.includes(\"linux\")){const targetDir=path.join(pnpmDir,d,\"node_modules\");if(!fs.existsSync(path.join(targetDir,dep))){console.log(\"[pnpm-resolver] Installing \"+dep+\"@\"+ver+\" into \"+d);execSync(\"npm install --no-save --prefix \\\"\"+targetDir+\"\\\" \"+dep+\"@\"+ver,{stdio:\"ignore\"});if(name===\"lightningcss\"){const binDir=path.join(targetDir,dep);if(fs.existsSync(binDir)){for(const f of fs.readdirSync(binDir)){if(f.endsWith(\".node\"))fs.copyFileSync(path.join(binDir,f),path.join(p,f));}}}}}}}}catch(e){}}}}}'"
 				archSetup2 := "if [ -f pnpm-workspace.yaml ]; then grep -q 'supportedArchitectures:' pnpm-workspace.yaml || printf '\\nsupportedArchitectures:\\n  os:\\n    - linux\\n  cpu:\\n    - x64\\n    - arm64\\n' >> pnpm-workspace.yaml; fi; printf 'supported-architectures.os[]=linux\\nsupported-architectures.cpu[]=x64\\nsupported-architectures.cpu[]=arm64\\n' >> .npmrc 2>/dev/null || true; pnpm config set verify-store-integrity false 2>/dev/null || true"
 				bCmd = fmt.Sprintf("%s; %s", archSetup2, bCmd)
 				const pnpmFrozenSentinel2 = "__PNPM_INSTALL_FROZEN2__"
 				bCmd = strings.ReplaceAll(bCmd, "pnpm install --frozen-lockfile", pnpmFrozenSentinel2)
-				bCmd = strings.ReplaceAll(bCmd, "pnpm install", "{ pnpm install --no-frozen-lockfile --prefer-frozen-lockfile=false 2>/dev/null || pnpm install --no-frozen-lockfile 2>/dev/null || pnpm install; } && (pnpm rebuild 2>/dev/null || true)")
-				bCmd = strings.ReplaceAll(bCmd, pnpmFrozenSentinel2, "{ pnpm install --no-frozen-lockfile --prefer-frozen-lockfile=false 2>/dev/null || pnpm install --no-frozen-lockfile 2>/dev/null || pnpm install; } && (pnpm rebuild 2>/dev/null || true)")
+				installStep2 := fmt.Sprintf("{ pnpm install --no-frozen-lockfile --prefer-frozen-lockfile=false 2>/dev/null || pnpm install --no-frozen-lockfile 2>/dev/null || pnpm install; } && (%s 2>/dev/null || true) && (pnpm rebuild 2>/dev/null || true)", nodeResolver2)
+				bCmd = strings.ReplaceAll(bCmd, "pnpm install", installStep2)
+				bCmd = strings.ReplaceAll(bCmd, pnpmFrozenSentinel2, installStep2)
 			}
 			if strings.Contains(bCmd, "npm") {
 				bCmd = fmt.Sprintf("npm config set audit false 2>/dev/null || true; npm config set fund false 2>/dev/null || true; npm config set progress false 2>/dev/null || true; %s", bCmd)
