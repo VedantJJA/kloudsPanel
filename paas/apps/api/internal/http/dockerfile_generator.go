@@ -129,13 +129,14 @@ CMD ["sh", "-c", "%s"]
 		}
 		return fmt.Sprintf(`FROM %s
 WORKDIR /app
-RUN if command -v apt-get >/dev/null 2>&1; then \
-        apt-get update && apt-get install -y --no-install-recommends git ca-certificates curl bash && rm -rf /var/lib/apt/lists/*; \
-    else \
-        apk add --no-cache bash curl git; \
+RUN if ! command -v git >/dev/null 2>&1; then \
+        if command -v apt-get >/dev/null 2>&1; then \
+            apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*; \
+        else \
+            apk add --no-cache git ca-certificates; \
+        fi; \
     fi && \
-    (corepack enable 2>/dev/null || true) && \
-    (npm install -g pnpm@latest yarn@latest 2>/dev/null || true)
+    corepack enable 2>/dev/null || true
 COPY . /app
 RUN %s
 ENV PORT=%d HOST=0.0.0.0 NODE_ENV=production
@@ -576,8 +577,10 @@ CMD ["sh", "-c", "%s"]
 			}
 			return fmt.Sprintf(`FROM node:22-bookworm-slim AS builder
 WORKDIR /app
-RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates curl bash && rm -rf /var/lib/apt/lists/*
-RUN (corepack enable 2>/dev/null || true) && (npm install -g pnpm@latest yarn@latest 2>/dev/null || true)
+RUN if ! command -v git >/dev/null 2>&1; then \
+        apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*; \
+    fi && \
+    corepack enable 2>/dev/null || true
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
 ARG API_URL

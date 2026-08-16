@@ -251,10 +251,8 @@ func NonRootDirective(preset string) string {
 	}
 	return `
 # Security: Run as non-root user
-RUN addgroup -g 1001 -S appgroup 2>/dev/null || true && \
-    adduser -u 1001 -S appuser -G appgroup 2>/dev/null || \
-    (groupadd -g 1001 appgroup 2>/dev/null || true && useradd -u 1001 -g appgroup -s /bin/sh appuser 2>/dev/null || true)
-RUN chown -R 1001:1001 /app 2>/dev/null || true
+RUN (getent group appgroup >/dev/null 2>&1 || groupadd -g 1001 appgroup 2>/dev/null || addgroup -g 1001 -S appgroup 2>/dev/null || true) && \
+    (id -u appuser >/dev/null 2>&1 || useradd -u 1001 -g 1001 -M -s /bin/sh appuser 2>/dev/null || adduser -u 1001 -G appgroup -S -s /bin/sh appuser 2>/dev/null || true)
 USER 1001
 `
 }
