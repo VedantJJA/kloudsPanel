@@ -1715,6 +1715,55 @@
         <Code size={18} style="color: var(--color-accent);" /> Service & Runtime Specification
       </h3>
 
+      <!-- Blueprint Multi-Service Stack Switcher -->
+      {#if detectedServices.length > 1}
+        <div style="background: var(--color-surface-subtle); border: 1.5px solid var(--color-accent); border-radius: var(--radius-md); padding: 0.85rem 1rem; margin-bottom: 1.5rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem; flex-wrap: wrap; gap: 0.5rem;">
+            <div style="display: flex; align-items: center; gap: 0.5rem; font-weight: 700; font-size: 0.875rem; color: var(--color-ink);">
+              <Sparkles size={16} style="color: var(--color-accent);" />
+              <span>Blueprint Stack Services ({detectedServices.length}):</span>
+            </div>
+            <button
+              type="button"
+              class="btn btn-secondary"
+              style="padding: 2px 8px; font-size: 0.72rem;"
+              onclick={() => activeTab = 'stack'}
+            >
+              View Grid Overview
+            </button>
+          </div>
+
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            {#each detectedServices as s, idx}
+              <button
+                type="button"
+                class="btn"
+                style="
+                  padding: 6px 14px;
+                  font-size: 0.8125rem;
+                  display: flex;
+                  align-items: center;
+                  gap: 8px;
+                  border: 1.5px solid {selectedBlueprintIndex === idx ? 'var(--color-accent)' : 'var(--color-border)'};
+                  background: {selectedBlueprintIndex === idx ? 'var(--color-accent)' : 'var(--color-surface)'};
+                  color: {selectedBlueprintIndex === idx ? 'var(--color-accent-contrast)' : 'var(--color-ink)'};
+                  border-radius: var(--radius-md);
+                  font-weight: {selectedBlueprintIndex === idx ? '700' : '500'};
+                  cursor: pointer;
+                "
+                onclick={() => applyDetectedService(s, idx)}
+              >
+                <FrameworkIcon name={s.preset || s.env || s.kind} size={15} />
+                <span>{s.name}</span>
+                <span class="badge" style="font-size: 0.65rem; background: rgba(0,0,0,0.18); color: inherit;">
+                  {s.runtime_version || 'auto'}
+                </span>
+              </button>
+            {/each}
+          </div>
+        </div>
+      {/if}
+
       <!-- Basic Identification -->
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
         <div class="form-group" style="margin:0;">
@@ -1891,8 +1940,57 @@
   {#if activeTab === 'environment'}
     <div class="card" style="padding: 1.5rem; margin-bottom: 1.5rem; border-radius: var(--radius-lg);">
       <h3 style="margin: 0 0 1rem 0; font-size: 1.05rem; display: flex; align-items: center; gap: 0.5rem;">
-        <Sliders size={18} style="color: var(--color-accent);" /> Environment & Resource Limits
+        <Sliders size={18} style="color: var(--color-accent);" /> Environment & Resource Limits: {name}
       </h3>
+
+      <!-- Blueprint Multi-Service Stack Switcher -->
+      {#if detectedServices.length > 1}
+        <div style="background: var(--color-surface-subtle); border: 1.5px solid var(--color-accent); border-radius: var(--radius-md); padding: 0.85rem 1rem; margin-bottom: 1.5rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem; flex-wrap: wrap; gap: 0.5rem;">
+            <div style="display: flex; align-items: center; gap: 0.5rem; font-weight: 700; font-size: 0.875rem; color: var(--color-ink);">
+              <Sparkles size={16} style="color: var(--color-accent);" />
+              <span>Configure Environment For Service ({detectedServices.length} in stack):</span>
+            </div>
+            <button
+              type="button"
+              class="btn btn-secondary"
+              style="padding: 2px 8px; font-size: 0.72rem;"
+              onclick={() => activeTab = 'stack'}
+            >
+              View Grid Overview
+            </button>
+          </div>
+
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            {#each detectedServices as s, idx}
+              <button
+                type="button"
+                class="btn"
+                style="
+                  padding: 6px 14px;
+                  font-size: 0.8125rem;
+                  display: flex;
+                  align-items: center;
+                  gap: 8px;
+                  border: 1.5px solid {selectedBlueprintIndex === idx ? 'var(--color-accent)' : 'var(--color-border)'};
+                  background: {selectedBlueprintIndex === idx ? 'var(--color-accent)' : 'var(--color-surface)'};
+                  color: {selectedBlueprintIndex === idx ? 'var(--color-accent-contrast)' : 'var(--color-ink)'};
+                  border-radius: var(--radius-md);
+                  font-weight: {selectedBlueprintIndex === idx ? '700' : '500'};
+                  cursor: pointer;
+                "
+                onclick={() => applyDetectedService(s, idx)}
+              >
+                <FrameworkIcon name={s.preset || s.env || s.kind} size={15} />
+                <span>{s.name}</span>
+                <span class="badge" style="font-size: 0.65rem; background: rgba(0,0,0,0.18); color: inherit;">
+                  {Object.keys(s.env_vars || {}).length} vars
+                </span>
+              </button>
+            {/each}
+          </div>
+        </div>
+      {/if}
 
       <!-- Container Limits & Non-Root Sandbox -->
       <div style="background: var(--color-canvas); padding: 1.25rem; border-radius: var(--radius-md); border: 1px solid var(--color-border); margin-bottom: 1.5rem;">

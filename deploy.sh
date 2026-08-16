@@ -100,19 +100,9 @@ run_deployment() {
     ensure_prerequisites
 
     if [ "$LOCAL_MODE" = false ]; then
-        # Check if there are local uncommitted changes
-        local has_local_changes=false
-        if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
-            has_local_changes=true
-        fi
-
-        if [ "$has_local_changes" = false ]; then
-            echo "==> Pulling latest changes from origin/$BRANCH..."
-            git fetch origin "$BRANCH" --quiet 2>/dev/null || true
-            git reset --hard "origin/$BRANCH" 2>/dev/null || git pull --rebase origin "$BRANCH" 2>/dev/null || true
-        else
-            echo -e "${YELLOW}==> Uncommitted local changes detected. Skipping git hard reset.${NC}"
-        fi
+        echo "==> Pulling latest changes from origin/$BRANCH..."
+        git fetch origin "$BRANCH" 2>/dev/null || true
+        git reset --hard "origin/$BRANCH" 2>/dev/null || git pull origin "$BRANCH" 2>/dev/null || true
     else
         echo -e "${YELLOW}==> Local mode active: building directly from current workspace.${NC}"
     fi
@@ -141,17 +131,11 @@ run_deployment() {
 if [ "$LOCAL_MODE" = true ]; then
     run_deployment "Local workspace deployment"
 else
-    echo -e "${CYAN}==> Checking repository status on branch ${BOLD}$BRANCH${NC}..."
+    echo -e "${CYAN}==> Syncing to latest remote commit on branch ${BOLD}$BRANCH${NC}..."
     git fetch origin "$BRANCH" --quiet 2>/dev/null || true
-
-    LOCAL_HASH="$(git rev-parse HEAD 2>/dev/null || echo "")"
-    REMOTE_HASH="$(git rev-parse "origin/$BRANCH" 2>/dev/null || git rev-parse FETCH_HEAD 2>/dev/null || echo "")"
-
-    if [ "$LOCAL_HASH" != "$REMOTE_HASH" ] && [ -n "$REMOTE_HASH" ]; then
-        run_deployment "Syncing to latest remote commit (${REMOTE_HASH:0:7})"
-    else
-        run_deployment "Platform startup & container build (${LOCAL_HASH:0:7})"
-    fi
+    git reset --hard "origin/$BRANCH" 2>/dev/null || git pull origin "$BRANCH" 2>/dev/null || true
+    LATEST_HASH="$(git rev-parse --short HEAD 2>/dev/null || echo "latest")"
+    run_deployment "Syncing to latest commit ($LATEST_HASH)"
 fi
 
 if [ "$ONCE_MODE" = true ] || [ "$LOCAL_MODE" = true ]; then
