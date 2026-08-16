@@ -244,7 +244,7 @@ PREPULL_IMAGES=(
     "mongo:7.0"
     "clickhouse/clickhouse-server:24.3-alpine"
     "nginx:alpine"
-    "node:20-alpine"
+    "node:22-alpine"
     "python:3.12-slim"
     "golang:1.23-alpine"
     "rust:1.82-alpine"

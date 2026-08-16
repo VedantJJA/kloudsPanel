@@ -29,8 +29,8 @@ var runtimeDefaults = map[string]struct {
 	version    string
 	tagSuffix  string // "-alpine", "-slim", etc.
 }{
-	"node":    {"node", "20", "-alpine"},
-	"nodejs":  {"node", "20", "-alpine"},
+	"node":    {"node", "22", "-alpine"},
+	"nodejs":  {"node", "22", "-alpine"},
 	"python":  {"python", "3.12", "-slim"},
 	"go":      {"golang", "1.23", "-alpine"},
 	"golang":  {"golang", "1.23", "-alpine"},

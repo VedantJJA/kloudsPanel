@@ -20,8 +20,8 @@ func TestRuntimeVersionResolver(t *testing.T) {
 
 	// Test default fallbacks
 	nodeDefault := resolveRuntimeVersion("node", "", "")
-	if nodeDefault.Version != "20" || nodeDefault.FullImage != "node:20-alpine" || nodeDefault.Source != "default" {
-		t.Errorf("expected node 20 default, got %+v", nodeDefault)
+	if nodeDefault.Version != "22" || nodeDefault.FullImage != "node:22-alpine" || nodeDefault.Source != "default" {
+		t.Errorf("expected node 22 default, got %+v", nodeDefault)
 	}
 
 	goDefault := resolveRuntimeVersion("go", "", "")

@@ -552,6 +552,22 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 					dest := strings.TrimSpace(cr.Destination)
 					rType := strings.ToLower(strings.TrimSpace(cr.Type))
 
+					// Interpolate references like ${services.api-server.url} in route destinations
+					for _, otherSvc := range projectServices {
+						otherUrl := fmt.Sprintf("https://%s.%s", otherSvc.Slug, rootDomain)
+						otherPort := 8080
+						if otherSvc.InternalPort != nil && *otherSvc.InternalPort > 0 {
+							otherPort = *otherSvc.InternalPort
+						}
+						otherIntUrl := fmt.Sprintf("http://paas-svc-%s:%d", otherSvc.Slug, otherPort)
+						dest = strings.ReplaceAll(dest, fmt.Sprintf("${services.%s.url}", otherSvc.Name), otherUrl)
+						dest = strings.ReplaceAll(dest, fmt.Sprintf("${services.%s.url}", otherSvc.Slug), otherUrl)
+						dest = strings.ReplaceAll(dest, fmt.Sprintf("${%s.url}", otherSvc.Name), otherUrl)
+						dest = strings.ReplaceAll(dest, fmt.Sprintf("${%s.url}", otherSvc.Slug), otherUrl)
+						dest = strings.ReplaceAll(dest, fmt.Sprintf("${services.%s.internalUrl}", otherSvc.Name), otherIntUrl)
+						dest = strings.ReplaceAll(dest, fmt.Sprintf("${services.%s.internalUrl}", otherSvc.Slug), otherIntUrl)
+					}
+
 					locPath := "/" + strings.Trim(strings.TrimSuffix(src, "/*"), "/")
 					if locPath != "/" {
 						locPath += "/"
@@ -713,6 +729,7 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 		}
 		buildArgs = append(buildArgs, contextDir)
 		buildCmd := exec.Command("docker", buildArgs...)
+		buildCmd.Env = append(os.Environ(), "DOCKER_BUILDKIT=1", "BUILDKIT_PROGRESS=plain")
 		buildOut, err := buildCmd.CombinedOutput()
 		for _, line := range strings.Split(string(buildOut), "\n") {
 			if strings.TrimSpace(line) != "" {
@@ -828,6 +845,15 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 				dst, _ := rMap["destination"].(string)
 				t, _ := rMap["type"].(string)
 				if src != "" && dst != "" {
+					if projectServices, err := h.store.Services().ListForProject(context.Background(), service.ProjectID); err == nil {
+						for _, otherSvc := range projectServices {
+							otherUrl := fmt.Sprintf("https://%s.%s", otherSvc.Slug, rootDomain)
+							dst = strings.ReplaceAll(dst, fmt.Sprintf("${services.%s.url}", otherSvc.Name), otherUrl)
+							dst = strings.ReplaceAll(dst, fmt.Sprintf("${services.%s.url}", otherSvc.Slug), otherUrl)
+							dst = strings.ReplaceAll(dst, fmt.Sprintf("${%s.url}", otherSvc.Name), otherUrl)
+							dst = strings.ReplaceAll(dst, fmt.Sprintf("${%s.url}", otherSvc.Slug), otherUrl)
+						}
+					}
 					postDepRoutes = append(postDepRoutes, ServiceRouteItem{
 						Source:      src,
 						Destination: dst,

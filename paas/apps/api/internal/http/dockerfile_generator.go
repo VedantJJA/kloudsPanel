@@ -530,9 +530,9 @@ CMD ["sh", "-c", "%s"]
 			if strings.Contains(bCmd, "npm ci") {
 				bCmd = strings.ReplaceAll(bCmd, "npm ci", "(npm ci || npm install)")
 			}
-			return fmt.Sprintf(`FROM node:20-alpine AS builder
+			return fmt.Sprintf(`FROM node:22-alpine AS builder
 WORKDIR /app
-RUN apk add --no-cache bash curl
+RUN apk add --no-cache bash curl git
 RUN corepack enable 2>/dev/null || npm install -g pnpm@latest yarn@latest 2>/dev/null || true
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
@@ -549,9 +549,13 @@ RUN mkdir -p /dist && \
     elif [ -d dist/public ]; then cp -a dist/public/. /dist/; \
     elif [ -d dist ]; then cp -a dist/. /dist/; \
     elif [ -d build ]; then cp -a build/. /dist/; \
-    elif [ -d public ]; then cp -a public/. /dist/; \
     elif [ -d out ]; then cp -a out/. /dist/; \
+    elif [ -d public ]; then cp -a public/. /dist/; \
     elif [ -d .next/static ]; then cp -a .next/. /dist/; \
+    elif find . -maxdepth 4 -type d -name "dist" | grep -q "dist"; then \
+        target=$(find . -maxdepth 4 -type d -name "dist" | head -1); cp -a "$target"/." /dist/; \
+    elif find . -maxdepth 4 -type d -name "build" | grep -q "build"; then \
+        target=$(find . -maxdepth 4 -type d -name "build" | head -1); cp -a "$target"/." /dist/; \
     else cp -a . /dist/; fi
 
 FROM nginx:alpine
