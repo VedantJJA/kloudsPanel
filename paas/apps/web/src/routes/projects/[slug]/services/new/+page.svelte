@@ -32,12 +32,18 @@
     Wand2,
     Sliders,
     Info,
-    ShieldCheck
+    ShieldCheck,
+    ChevronRight,
+    ChevronLeft,
+    Package
   } from 'lucide-svelte';
   import FrameworkIcon from '$lib/components/icons/FrameworkIcon.svelte';
 
   const slug = $derived($page.params.slug);
   let project = $state<any>(null);
+
+  // Studio Active Tab / Step: 'source' | 'stack' | 'config' | 'environment'
+  let activeTab = $state<'source' | 'stack' | 'config' | 'environment'>('source');
 
   // Source Type: 'git_public' | 'git_provider' | 'image'
   let sourceType = $state<'git_public' | 'git_provider' | 'image'>('git_public');
@@ -138,7 +144,7 @@
   let svcSlug = $state('');
   let slugEdited = false;
   let kind = $state('web');
-  let imageRef = $state('node:20-alpine');
+  let imageRef = $state('node:22-alpine');
   let internalPort = $state(3000);
   let buildCommand = $state('npm install && npm run build');
   let startCommand = $state('npm start');
@@ -274,7 +280,7 @@
       defaultBuild: './mvnw clean package -DskipTests',
       defaultStart: 'java -jar target/*.jar',
       versions: [
-        { value: 'auto', label: 'Auto-Detect (.java-version / pom.xml)', default: true },
+        { value: 'auto', label: 'Auto-Detect (Latest / .java-version)', default: true },
         { value: '21', label: 'Java 21 (LTS / Recommended)' },
         { value: '17', label: 'Java 17 (LTS)' },
         { value: '11', label: 'Java 11 (LTS)' }
@@ -294,7 +300,7 @@
       defaultBuild: 'composer install --no-dev --optimize-autoloader',
       defaultStart: 'apache2-foreground',
       versions: [
-        { value: 'auto', label: 'Auto-Detect (composer.json)', default: true },
+        { value: 'auto', label: 'Auto-Detect (Latest / composer.json)', default: true },
         { value: '8.3', label: 'PHP 8.3 (Latest)' },
         { value: '8.2', label: 'PHP 8.2' },
         { value: '8.1', label: 'PHP 8.1' }
@@ -314,7 +320,7 @@
       defaultBuild: 'bundle install && rails assets:precompile',
       defaultStart: 'bundle exec puma -C config/puma.rb',
       versions: [
-        { value: 'auto', label: 'Auto-Detect (.ruby-version / Gemfile)', default: true },
+        { value: 'auto', label: 'Auto-Detect (Latest / .ruby-version)', default: true },
         { value: '3.3', label: 'Ruby 3.3 (Latest)' },
         { value: '3.2', label: 'Ruby 3.2' }
       ]
@@ -399,84 +405,84 @@
     },
     {
       id: 'scala',
-      title: 'Scala (sbt / Play / Akka / Http4s)',
+      title: 'Scala (Play / Akka / Http4s / sbt)',
       description: 'Functional and object-oriented JVM services compiled with sbt',
       category: 'web',
       kind: 'web',
-      image: 'sbtscala/scala-sbt:eclipse-temurin-jammy-21.0.6_7_1.10.11_3.6.4',
+      image: 'eclipse-temurin:21-jdk-alpine',
       port: 9000,
       badge: 'Scala sbt',
-      iconColor: '#dc322f',
+      iconColor: '#dc2626',
       iconText: 'Scala',
       defaultBuild: 'sbt stage',
       defaultStart: './target/universal/stage/bin/*',
       versions: [
-        { value: 'auto', label: 'Auto-Detect (build.sbt)', default: true },
-        { value: '21', label: 'Java 21 (Temurin)' },
-        { value: '17', label: 'Java 17 (Temurin)' }
+        { value: 'auto', label: 'Auto-Detect (Latest / build.sbt)', default: true },
+        { value: '21', label: 'Java 21 Runtime' },
+        { value: '17', label: 'Java 17 Runtime' }
       ]
     },
     {
       id: 'kotlin',
       title: 'Kotlin (Ktor / Spring Boot / Micronaut)',
-      description: 'Modern concise server-side Kotlin applications built with Gradle',
+      description: 'Concise modern JVM applications built with Gradle or Maven wrapper',
       category: 'web',
       kind: 'web',
       image: 'eclipse-temurin:21-jdk-alpine',
       port: 8080,
-      badge: 'Kotlin Gradle',
+      badge: 'Kotlin JVM',
       iconColor: '#7f52ff',
       iconText: 'Kotlin',
       defaultBuild: './gradlew build -x test',
       defaultStart: 'java -jar build/libs/*.jar',
       versions: [
-        { value: 'auto', label: 'Auto-Detect (build.gradle.kts)', default: true },
-        { value: '21', label: 'Kotlin (Java 21 LTS)' },
-        { value: '17', label: 'Kotlin (Java 17 LTS)' }
+        { value: 'auto', label: 'Auto-Detect (Latest / build.gradle.kts)', default: true },
+        { value: '21', label: 'Java 21 Runtime' },
+        { value: '17', label: 'Java 17 Runtime' }
       ]
     },
     {
       id: 'swift',
-      title: 'Swift (Vapor / Hummingbird)',
-      description: 'Server-side Swift web framework with async/await and non-blocking I/O',
+      title: 'Swift (Vapor / Hummingbird / Server)',
+      description: 'Fast, type-safe compiled backend services with Swift Package Manager',
       category: 'web',
       kind: 'web',
-      image: 'swift:5.10-jammy',
+      image: 'swift:6.0-jammy',
       port: 8080,
       badge: 'Swift Vapor',
       iconColor: '#f05138',
       iconText: 'Swift',
       defaultBuild: 'swift build -c release',
-      defaultStart: '/app/Run serve --env production --hostname 0.0.0.0 --port 8080',
+      defaultStart: './.build/release/App serve --env production --hostname 0.0.0.0 --port 8080',
       versions: [
-        { value: 'auto', label: 'Auto-Detect (Package.swift)', default: true },
-        { value: '5.10', label: 'Swift 5.10 (Jammy)' },
-        { value: '5.9', label: 'Swift 5.9' }
+        { value: 'auto', label: 'Auto-Detect (Latest / Package.swift)', default: true },
+        { value: '6.0', label: 'Swift 6.0 (Latest)' },
+        { value: '5.10', label: 'Swift 5.10' }
       ]
     },
     {
       id: 'haskell',
-      title: 'Haskell (Servant / Yesod / Scotty)',
-      description: 'Purely functional web APIs built with Stack or Cabal',
+      title: 'Haskell (Yesod / Servant / Scotty / Cabal)',
+      description: 'Purely functional statically typed web applications compiled with GHC & Cabal',
       category: 'web',
       kind: 'web',
-      image: 'haskell:9.8-slim',
+      image: 'haskell:9.10-slim',
       port: 8080,
       badge: 'Haskell GHC',
-      iconColor: '#5d4f85',
+      iconColor: '#5e5086',
       iconText: 'Haskell',
-      defaultBuild: 'stack build --copy-bins',
-      defaultStart: '/app/server',
+      defaultBuild: 'cabal update && cabal build --enable-optimization',
+      defaultStart: './dist-newstyle/build/server',
       versions: [
-        { value: 'auto', label: 'Auto-Detect (stack.yaml / cabal)', default: true },
-        { value: '9.8', label: 'GHC 9.8' },
-        { value: '9.6', label: 'GHC 9.6' }
+        { value: 'auto', label: 'Auto-Detect (Latest / cabal.project)', default: true },
+        { value: '9.10', label: 'GHC 9.10 (Latest)' },
+        { value: '9.8', label: 'GHC 9.8' }
       ]
     },
     {
       id: 'clojure',
-      title: 'Clojure (Ring / Compojure / Kit)',
-      description: 'Dynamic functional Lisp dialect targeting the Java Virtual Machine',
+      title: 'Clojure (Ring / Compojure / Leiningen)',
+      description: 'Lisp dialect on the JVM for data-driven backend services and APIs',
       category: 'web',
       kind: 'web',
       image: 'clojure:temurin-21-lein-alpine',
@@ -487,14 +493,13 @@
       defaultBuild: 'lein uberjar',
       defaultStart: 'java -jar target/*-standalone.jar',
       versions: [
-        { value: 'auto', label: 'Auto-Detect (project.clj / deps.edn)', default: true },
-        { value: '21', label: 'Temurin 21 Lein' }
+        { value: 'auto', label: 'Auto-Detect (Latest / project.clj)', default: true }
       ]
     },
     {
       id: 'crystal',
-      title: 'Crystal (Kemal / Lucky / Spider-Gazelle)',
-      description: 'C-like speed with Ruby-like syntax and static type checking',
+      title: 'Crystal (Lucky / Kemal / Amber)',
+      description: 'Ruby-inspired syntax with C-like compiled performance and memory safety',
       category: 'web',
       kind: 'web',
       image: 'crystallang/crystal:latest',
@@ -505,7 +510,7 @@
       defaultBuild: 'shards install && crystal build src/*.cr --release -o app',
       defaultStart: './app',
       versions: [
-        { value: 'auto', label: 'Auto-Detect (shard.yml)', default: true },
+        { value: 'auto', label: 'Auto-Detect (Latest / shard.yml)', default: true },
         { value: 'latest', label: 'Crystal (Latest)' }
       ]
     },
@@ -515,7 +520,7 @@
       description: 'General-purpose programming language and toolchain for robust software',
       category: 'web',
       kind: 'web',
-      image: 'archlinux:latest',
+      image: 'alpine:3.21',
       port: 8080,
       badge: 'Zig Native',
       iconColor: '#f7a41d',
@@ -523,7 +528,7 @@
       defaultBuild: 'zig build -Doptimize=ReleaseFast',
       defaultStart: './zig-out/bin/server',
       versions: [
-        { value: 'auto', label: 'Auto-Detect (build.zig.zon)', default: true },
+        { value: 'auto', label: 'Auto-Detect (Latest / build.zig.zon)', default: true },
         { value: 'latest', label: 'Zig (Latest)' }
       ]
     },
@@ -541,7 +546,7 @@
       defaultBuild: 'dart pub get && dart compile exe bin/server.dart -o server',
       defaultStart: './server',
       versions: [
-        { value: 'auto', label: 'Auto-Detect (pubspec.yaml)', default: true },
+        { value: 'auto', label: 'Auto-Detect (Latest / pubspec.yaml)', default: true },
         { value: 'stable', label: 'Dart (Stable)' }
       ]
     },
@@ -626,7 +631,7 @@
       description: 'Periodic task executed on an automated recurring cron schedule',
       category: 'worker',
       kind: 'cron',
-      image: 'alpine:latest',
+      image: 'alpine:3.21',
       port: 0,
       badge: 'Cron',
       iconColor: '#d97706',
@@ -696,76 +701,6 @@
     window.location.href = `/api/v1/integrations/git/${provider}/authorize?return_to=${encodeURIComponent(returnTo)}`;
   }
 
-  onMount(() => {
-    choosePreset(presets[0]);
-    const projSlug = $page.params.slug || slug || '';
-    if (projSlug) {
-      fetch(`/api/v1/projects/${encodeURIComponent(projSlug)}`, { credentials: 'include' })
-        .then(res => res.ok ? res.json() : { id: projSlug, slug: projSlug, name: projSlug })
-        .then(data => { project = data; })
-        .catch(() => { project = { id: projSlug, slug: projSlug, name: projSlug }; });
-    } else {
-      project = { id: 'default', slug: 'default', name: 'Default Project' };
-    }
-
-    // Load background Git integrations asynchronously
-    loadIntegrations().catch(() => {});
-    loadProviderRepos('github').catch(() => {});
-  });
-
-  let autoDetectDebounce: any = null;
-
-  function handleRepoUrlChange(url: string) {
-    gitRepoUrl = url.trim();
-    if (!gitRepoUrl) return;
-
-    try {
-      const clean = gitRepoUrl.replace(/\.git$/, '').replace(/\/$/, '');
-      const parts = clean.split('/');
-      const repoBase = parts[parts.length - 1];
-      if (repoBase && !slugEdited) {
-        name = repoBase;
-        svcSlug = repoBase.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
-      }
-    } catch {}
-
-    clearTimeout(autoDetectDebounce);
-    autoDetectDebounce = setTimeout(() => {
-      autoDetectRenderYaml();
-    }, 600);
-  }
-
-  async function autoDetectRenderYaml() {
-    if (!gitRepoUrl.trim()) return;
-    parsingYaml = true;
-    detectedBlueprint = null;
-    detectedServices = [];
-    detectedDatabases = [];
-    yamlParsedInfo = null;
-    try {
-      const res = await fetch('/api/v1/services/parse-render-yaml', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          repoUrl: gitRepoUrl
-        })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.services && data.services.length > 0) {
-          detectedServices = data.services;
-          detectedBlueprint = data.services[0];
-          detectedDatabases = data.databases || [];
-          detectedBlueprintSource = data.blueprintType || 'auto-detected';
-          applyDetectedService(data.services[0], 0);
-        }
-      }
-    } catch {} finally {
-      parsingYaml = false;
-    }
-  }
-
   function getPresetVersions(presetId: string) {
     const p = presets.find(x => x.id === (presetId || '').toLowerCase()) || 
               presets.find(x => x.kind === (presetId || '').toLowerCase()) || 
@@ -817,6 +752,138 @@
     ];
   }
 
+  function updateImageRefFromVersion(presetId: string, ver: string) {
+    runtimeVersion = ver || 'auto';
+    const pId = (presetId || selectedPreset?.id || 'node').toLowerCase();
+
+    if (pId === 'node' || pId === 'nodejs') {
+      if (ver === 'auto' || ver === '22' || !ver) imageRef = 'node:22-alpine';
+      else if (ver === '20') imageRef = 'node:20-alpine';
+      else if (ver === '18') imageRef = 'node:18-alpine';
+      else if (ver === '16') imageRef = 'node:16-alpine';
+      else imageRef = `node:${ver}-alpine`;
+    } else if (pId === 'python') {
+      if (ver === 'auto' || ver === '3.12' || !ver) imageRef = 'python:3.12-slim';
+      else if (ver === '3.11') imageRef = 'python:3.11-slim';
+      else if (ver === '3.10') imageRef = 'python:3.10-slim';
+      else if (ver === '3.9') imageRef = 'python:3.9-slim';
+      else imageRef = `python:${ver}-slim`;
+    } else if (pId === 'go' || pId === 'golang') {
+      if (ver === 'auto' || ver === '1.23' || !ver) imageRef = 'golang:1.23-alpine';
+      else if (ver === '1.22') imageRef = 'golang:1.22-alpine';
+      else if (ver === '1.21') imageRef = 'golang:1.21-alpine';
+      else imageRef = `golang:${ver}-alpine`;
+    } else if (pId === 'rust') {
+      if (ver === 'auto' || ver === '1.84' || !ver) imageRef = 'rust:1.84-alpine';
+      else if (ver === '1.82') imageRef = 'rust:1.82-alpine';
+      else if (ver === '1.80') imageRef = 'rust:1.80-alpine';
+      else imageRef = `rust:${ver}-alpine`;
+    } else if (pId === 'java') {
+      if (ver === 'auto' || ver === '21' || !ver) imageRef = 'eclipse-temurin:21-jdk-alpine';
+      else if (ver === '17') imageRef = 'eclipse-temurin:17-jdk-alpine';
+      else if (ver === '11') imageRef = 'eclipse-temurin:11-jdk-alpine';
+      else imageRef = `eclipse-temurin:${ver}-jdk-alpine`;
+    } else if (pId === 'php') {
+      if (ver === 'auto' || ver === '8.3' || !ver) imageRef = 'php:8.3-apache';
+      else if (ver === '8.2') imageRef = 'php:8.2-apache';
+      else if (ver === '8.1') imageRef = 'php:8.1-apache';
+      else imageRef = `php:${ver}-apache`;
+    } else if (pId === 'ruby') {
+      if (ver === 'auto' || ver === '3.3' || !ver) imageRef = 'ruby:3.3-alpine';
+      else if (ver === '3.2') imageRef = 'ruby:3.2-alpine';
+      else imageRef = `ruby:${ver}-alpine`;
+    } else if (pId === 'elixir' || pId === 'phoenix') {
+      if (ver === 'auto' || ver === '1.18' || !ver) imageRef = 'elixir:1.18-alpine';
+      else if (ver === '1.17') imageRef = 'elixir:1.17-alpine';
+      else if (ver === '1.16') imageRef = 'elixir:1.16-alpine';
+      else imageRef = `elixir:${ver}-alpine`;
+    } else if (pId === 'dotnet' || pId === 'csharp' || pId === 'aspnet') {
+      if (ver === 'auto' || ver === '9.0' || !ver) imageRef = 'mcr.microsoft.com/dotnet/sdk:9.0-alpine';
+      else if (ver === '8.0') imageRef = 'mcr.microsoft.com/dotnet/sdk:8.0-alpine';
+      else imageRef = `mcr.microsoft.com/dotnet/sdk:${ver}-alpine`;
+    }
+
+    if (detectedServices && detectedServices[selectedBlueprintIndex]) {
+      detectedServices[selectedBlueprintIndex].runtime_version = ver;
+    }
+  }
+
+  onMount(() => {
+    choosePreset(presets[0]);
+    const projSlug = $page.params.slug || slug || '';
+    if (projSlug) {
+      fetch(`/api/v1/projects/${encodeURIComponent(projSlug)}`, { credentials: 'include' })
+        .then(res => res.ok ? res.json() : { id: projSlug, slug: projSlug, name: projSlug })
+        .then(data => { project = data; })
+        .catch(() => { project = { id: projSlug, slug: projSlug, name: projSlug }; });
+    } else {
+      project = { id: 'default', slug: 'default', name: 'Default Project' };
+    }
+
+    loadIntegrations().catch(() => {});
+    loadProviderRepos('github').catch(() => {});
+  });
+
+  let autoDetectDebounce: any = null;
+
+  function handleRepoUrlChange(url: string) {
+    gitRepoUrl = url.trim();
+    if (!gitRepoUrl) return;
+
+    try {
+      const clean = gitRepoUrl.replace(/\.git$/, '').replace(/\/$/, '');
+      const parts = clean.split('/');
+      const repoBase = parts[parts.length - 1];
+      if (repoBase && !slugEdited) {
+        name = repoBase;
+        svcSlug = repoBase.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+      }
+    } catch {}
+
+    clearTimeout(autoDetectDebounce);
+    autoDetectDebounce = setTimeout(() => {
+      autoDetectRenderYaml();
+    }, 600);
+  }
+
+  async function autoDetectRenderYaml() {
+    if (!gitRepoUrl.trim()) return;
+    parsingYaml = true;
+    detectedBlueprint = null;
+    detectedServices = [];
+    detectedDatabases = [];
+    yamlParsedInfo = null;
+    try {
+      const res = await fetch('/api/v1/services/parse-render-yaml', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          repoUrl: gitRepoUrl
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.services && data.services.length > 0) {
+          detectedServices = data.services.map((s: any) => ({
+            ...s,
+            runtime_version: s.runtime_version || s.runtimeVersion || 'auto'
+          }));
+          detectedBlueprint = detectedServices[0];
+          detectedDatabases = (data.databases || []).map((db: any) => ({
+            ...db,
+            version: db.version || 'auto'
+          }));
+          detectedBlueprintSource = data.blueprintType || 'auto-detected';
+          applyDetectedService(detectedServices[0], 0);
+          activeTab = 'stack';
+        }
+      }
+    } catch {} finally {
+      parsingYaml = false;
+    }
+  }
+
   function applyDetectedService(svc: any, idx: number) {
     selectedBlueprintIndex = idx;
     detectedBlueprint = svc;
@@ -839,8 +906,8 @@
                           presets[0];
     choosePreset(matchingPreset);
 
-    runtimeVersion = svc.runtime_version || svc.runtimeVersion || 'auto';
-    svc.runtime_version = runtimeVersion;
+    const ver = svc.runtime_version || svc.runtimeVersion || 'auto';
+    updateImageRefFromVersion(matchingPreset.id, ver);
 
     if (svc.build_command) buildCommand = svc.build_command;
     if (svc.buildCommand) buildCommand = svc.buildCommand;
@@ -936,13 +1003,12 @@
   function choosePreset(p: ServicePreset) {
     selectedPreset = p;
     kind = p.kind;
-    imageRef = p.image;
     internalPort = p.port || 80;
     buildCommand = p.defaultBuild || '';
     startCommand = p.defaultStart || '';
-    runtimeVersion = p.versions?.find(v => v.default)?.value || 'auto';
+    const defVer = p.versions?.find(v => v.default)?.value || 'auto';
+    updateImageRefFromVersion(p.id, defVer);
 
-    // For static sites, automatically clean -backend / -api / -server / -frontend suffixes so the site has its clean primary name
     if (p.kind === 'static' || p.id === 'static-spa' || p.id === 'nginx') {
       if (!slugEdited && name) {
         const cleaned = cleanStaticName(name);
@@ -957,44 +1023,6 @@
   $effect(() => {
     if (!slugEdited && name) {
       svcSlug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
-    }
-  });
-
-  $effect(() => {
-    if (selectedPreset?.id === 'node') {
-      if (runtimeVersion === 'auto' || runtimeVersion === '22') {
-        imageRef = 'node:22-alpine';
-      } else if (runtimeVersion === '20') {
-        imageRef = 'node:20-alpine';
-      } else if (runtimeVersion === '18') {
-        imageRef = 'node:18-alpine';
-      } else if (runtimeVersion === '16') {
-        imageRef = 'node:16-alpine';
-      }
-    } else if (selectedPreset?.id === 'python') {
-      if (runtimeVersion === 'auto' || runtimeVersion === '3.12') {
-        imageRef = 'python:3.12-slim';
-      } else if (runtimeVersion === '3.11') {
-        imageRef = 'python:3.11-slim';
-      } else if (runtimeVersion === '3.10') {
-        imageRef = 'python:3.10-slim';
-      }
-    } else if (selectedPreset?.id === 'go') {
-      if (runtimeVersion === 'auto' || runtimeVersion === '1.23') {
-        imageRef = 'golang:1.23-alpine';
-      } else if (runtimeVersion === '1.22') {
-        imageRef = 'golang:1.22-alpine';
-      }
-    } else if (selectedPreset?.id === 'rust') {
-      if (runtimeVersion === 'auto' || runtimeVersion === '1.84') {
-        imageRef = 'rust:1.84-alpine';
-      } else if (runtimeVersion === '1.82') {
-        imageRef = 'rust:1.82-alpine';
-      }
-    }
-
-    if (detectedServices && detectedServices[selectedBlueprintIndex]) {
-      detectedServices[selectedBlueprintIndex].runtime_version = runtimeVersion;
     }
   });
 
@@ -1071,7 +1099,6 @@
       const created = await res.json();
       const svcId = created.id || created.ID;
 
-      // Trigger initial deployment automatically
       try {
         await fetch(`/api/v1/services/${svcId}/deploy`, { method: 'POST', credentials: 'include' });
       } catch {}
@@ -1086,412 +1113,314 @@
 </script>
 
 <svelte:head>
-  <title>Deploy a Service - kloudsPanel</title>
+  <title>Deploy Service Studio - kloudsPanel</title>
 </svelte:head>
 
-<!-- Header -->
-<div class="page-header" style="margin-bottom: 2rem;">
+<!-- Studio Header -->
+<div class="page-header" style="margin-bottom: 1.5rem;">
+  <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
     <div style="display: flex; align-items: center; gap: 1rem;">
       <button 
         class="btn btn-secondary" 
         onclick={() => goto(`/projects/${slug}`)} 
-        style="padding: 0; width: 40px; height: 40px; min-height: 40px; border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; flex-shrink: 0;"
+        style="padding: 0; width: 38px; height: 38px; min-height: 38px; border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; flex-shrink: 0;"
         aria-label="Back to Project"
       >
         <ArrowLeft size={18} />
       </button>
       <div>
-        <h1 class="page-title">Deploy a Service</h1>
-        <p class="page-subtitle">Clone public repositories, link Git accounts, or deploy container images with automatic render.yaml detection.</p>
+        <div class="page-breadcrumbs" style="margin-bottom: 0.2rem;">
+          <a href="/workspaces">Workspaces</a>
+          <span>/</span>
+          <a href="/projects/{slug}">{project?.name || slug}</a>
+          <span>/</span>
+          <span>Deploy Studio</span>
+        </div>
+        <h1 class="page-title" style="display: flex; align-items: center; gap: 0.5rem; margin: 0; font-size: 1.35rem;">
+          <Rocket size={22} style="color: var(--color-accent);" /> Deploy Service Studio
+        </h1>
       </div>
     </div>
+
+    <!-- Blueprint Quick Status Badge -->
+    {#if detectedServices.length > 0}
+      <div style="display: flex; align-items: center; gap: 0.5rem; background: var(--color-surface-subtle); border: 1px solid var(--color-accent); padding: 5px 12px; border-radius: var(--radius-md);">
+        <Sparkles size={16} style="color: var(--color-accent);" />
+        <span style="font-size: 0.8125rem; font-weight: 600; color: var(--color-ink);">
+          {detectedBlueprintSource}: {detectedServices.length} Services ({detectedDatabases.length} DBs)
+        </span>
+        <button 
+          type="button"
+          class="badge" 
+          style="background: var(--color-accent); color: var(--color-accent-contrast); border: none; cursor: pointer; font-size: 0.7rem; padding: 2px 8px;"
+          onclick={() => activeTab = 'stack'}
+        >
+          View Stack
+        </button>
+      </div>
+    {/if}
   </div>
+</div>
 
-  <!-- Source Type Selection Tabs -->
-  <div class="card" style="margin-bottom: 2rem; padding: 1.5rem; background: var(--color-surface); border: 1px solid var(--color-border);">
-    <div style="margin-bottom: 1.25rem;">
-      <div style="font-size: 1rem; font-weight: 700; margin-bottom: 0.25rem;">1. Choose Repository / Deployment Source</div>
-      <p class="text-xs text-muted" style="margin:0;">Select how you want kloudsPanel to fetch or configure your application source code.</p>
-    </div>
+<!-- Studio Workflow Tabs Navigation -->
+<div style="display: flex; align-items: center; gap: 0.5rem; background: var(--color-surface); padding: 6px; border-radius: var(--radius-lg); border: 1px solid var(--color-border); margin-bottom: 1.5rem; overflow-x: auto;">
+  <button 
+    type="button"
+    class="btn btn-secondary"
+    style="
+      flex: 1; 
+      min-width: 140px; 
+      font-size: 0.8125rem; 
+      font-weight: {activeTab === 'source' ? '700' : '500'}; 
+      background: {activeTab === 'source' ? 'var(--color-surface-subtle)' : 'transparent'}; 
+      border-color: {activeTab === 'source' ? 'var(--color-accent)' : 'transparent'};
+      color: {activeTab === 'source' ? 'var(--color-ink)' : 'var(--color-ink-muted)'};
+      display: flex; 
+      align-items: center; 
+      justify-content: center; 
+      gap: 6px;
+    "
+    onclick={() => activeTab = 'source'}
+  >
+    <FolderGit2 size={15} style="color: {activeTab === 'source' ? 'var(--color-accent)' : 'inherit'};" />
+    <span>1. Source & Repo</span>
+  </button>
 
-    <!-- Source Type Radios / Tabs -->
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem; margin-bottom: 1.5rem;">
-      <button 
-        type="button" 
-        class="card"
-        style="
-          cursor: pointer; 
-          text-align: left; 
-          padding: 1rem; 
-          border: 2px solid {sourceType === 'git_public' ? 'var(--color-accent)' : 'var(--color-border)'}; 
-          background: {sourceType === 'git_public' ? 'var(--color-surface-subtle)' : 'var(--color-surface)'};
-        "
-        onclick={() => sourceType = 'git_public'}
-      >
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
-          <div style="display: flex; align-items: center; gap: 0.5rem; font-weight: 600;">
-            <Unlock size={18} style="color: var(--color-accent);" /> Public Git Repo
-          </div>
-          <span class="badge badge-running" style="font-size: 0.65rem;">Instant</span>
-        </div>
-        <p class="text-xs text-muted" style="margin: 0;">Clone any public GitHub, Bitbucket, or GitLab URL.</p>
-      </button>
+  {#if detectedServices.length > 0}
+    <button 
+      type="button"
+      class="btn btn-secondary"
+      style="
+        flex: 1; 
+        min-width: 160px; 
+        font-size: 0.8125rem; 
+        font-weight: {activeTab === 'stack' ? '700' : '500'}; 
+        background: {activeTab === 'stack' ? 'var(--color-surface-subtle)' : 'transparent'}; 
+        border-color: {activeTab === 'stack' ? 'var(--color-accent)' : 'transparent'};
+        color: {activeTab === 'stack' ? 'var(--color-ink)' : 'var(--color-ink-muted)'};
+        display: flex; 
+        align-items: center; 
+        justify-content: center; 
+        gap: 6px;
+      "
+      onclick={() => activeTab = 'stack'}
+    >
+      <Sparkles size={15} style="color: var(--color-accent);" />
+      <span>2. Blueprint Stack ({detectedServices.length})</span>
+    </button>
+  {/if}
 
-      <button 
-        type="button" 
-        class="card"
-        style="
-          cursor: pointer; 
-          text-align: left; 
-          padding: 1rem; 
-          border: 2px solid {sourceType === 'git_provider' ? 'var(--color-accent)' : 'var(--color-border)'}; 
-          background: {sourceType === 'git_provider' ? 'var(--color-surface-subtle)' : 'var(--color-surface)'};
-        "
-        onclick={() => sourceType = 'git_provider'}
-      >
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
-          <div style="display: flex; align-items: center; gap: 0.5rem; font-weight: 600;">
-            <FolderGit2 size={18} style="color: var(--color-info);" /> Linked Git Accounts
-          </div>
-          <span class="badge" style="background:var(--color-info-subtle); color:var(--color-info); font-size: 0.65rem;">GitHub / Bitbucket</span>
-        </div>
-        <p class="text-xs text-muted" style="margin: 0;">Browse and select repositories from linked accounts.</p>
-      </button>
+  <button 
+    type="button"
+    class="btn btn-secondary"
+    style="
+      flex: 1; 
+      min-width: 150px; 
+      font-size: 0.8125rem; 
+      font-weight: {activeTab === 'config' ? '700' : '500'}; 
+      background: {activeTab === 'config' ? 'var(--color-surface-subtle)' : 'transparent'}; 
+      border-color: {activeTab === 'config' ? 'var(--color-accent)' : 'transparent'};
+      color: {activeTab === 'config' ? 'var(--color-ink)' : 'var(--color-ink-muted)'};
+      display: flex; 
+      align-items: center; 
+      justify-content: center; 
+      gap: 6px;
+    "
+    onclick={() => activeTab = 'config'}
+  >
+    <Code size={15} style="color: {activeTab === 'config' ? 'var(--color-accent)' : 'inherit'};" />
+    <span>{detectedServices.length > 0 ? '3' : '2'}. Build & Runtime</span>
+  </button>
 
-      <button 
-        type="button" 
-        class="card"
-        style="
-          cursor: pointer; 
-          text-align: left; 
-          padding: 1rem; 
-          border: 2px solid {sourceType === 'image' ? 'var(--color-accent)' : 'var(--color-border)'}; 
-          background: {sourceType === 'image' ? 'var(--color-surface-subtle)' : 'var(--color-surface)'};
-        "
-        onclick={() => sourceType = 'image'}
-      >
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
-          <div style="display: flex; align-items: center; gap: 0.5rem; font-weight: 600;">
-            <Server size={18} style="color: var(--color-ink-secondary);" /> Container Image
-          </div>
-          <span class="badge" style="background:var(--color-surface-subtle); color:var(--color-ink-secondary); font-size: 0.65rem;">Registry</span>
-        </div>
-        <p class="text-xs text-muted" style="margin: 0;">Deploy container image directly from Docker Hub or GHCR.</p>
-      </button>
-    </div>
+  <button 
+    type="button"
+    class="btn btn-secondary"
+    style="
+      flex: 1; 
+      min-width: 150px; 
+      font-size: 0.8125rem; 
+      font-weight: {activeTab === 'environment' ? '700' : '500'}; 
+      background: {activeTab === 'environment' ? 'var(--color-surface-subtle)' : 'transparent'}; 
+      border-color: {activeTab === 'environment' ? 'var(--color-accent)' : 'transparent'};
+      color: {activeTab === 'environment' ? 'var(--color-ink)' : 'var(--color-ink-muted)'};
+      display: flex; 
+      align-items: center; 
+      justify-content: center; 
+      gap: 6px;
+    "
+    onclick={() => activeTab = 'environment'}
+  >
+    <Sliders size={15} style="color: {activeTab === 'environment' ? 'var(--color-accent)' : 'inherit'};" />
+    <span>{detectedServices.length > 0 ? '4' : '3'}. Env & Resources</span>
+  </button>
+</div>
 
-    <!-- Conditional Source Inputs -->
-    {#if sourceType === 'git_public'}
-      <div style="background: rgba(0,0,0,0.02); padding: 1.25rem; border-radius: var(--radius-md); border: 1px solid var(--color-border);">
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; align-items: flex-end;">
-          <div class="form-group" style="margin:0; min-width: 220px; flex: 2;">
-            <label for="public-repo-url" class="form-label">Public Repository URL</label>
-            <input 
-              id="public-repo-url" 
-              type="url" 
-              class="form-input font-mono" 
-              placeholder="https://github.com/username/repository" 
-              bind:value={gitRepoUrl} 
-              oninput={(e: any) => handleRepoUrlChange(e.target.value)}
-              required 
-            />
-          </div>
+{#if error}
+  <div style="background: var(--color-danger-subtle); border: 1px solid var(--color-danger); color: var(--color-danger); border-radius: var(--radius-md); padding: 0.75rem 1rem; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem;">
+    <AlertTriangle size={16} /> {error}
+  </div>
+{/if}
 
-          <div class="form-group" style="margin:0;">
-            <label for="public-repo-branch" class="form-label">Branch</label>
-            <input 
-              id="public-repo-branch" 
-              type="text" 
-              class="form-input font-mono" 
-              placeholder="main" 
-              bind:value={gitBranch} 
-              required 
-            />
-          </div>
+<form onsubmit={handleSubmit}>
+  <!-- ========================================================================= -->
+  <!-- TAB 1: SOURCE & CODEBASE                                                  -->
+  <!-- ========================================================================= -->
+  {#if activeTab === 'source'}
+    <div class="card" style="padding: 1.5rem; margin-bottom: 1.5rem; border-radius: var(--radius-lg);">
+      <h3 style="margin: 0 0 1rem 0; font-size: 1.05rem; display: flex; align-items: center; gap: 0.5rem;">
+        <FolderGit2 size={18} style="color: var(--color-accent);" /> Select Codebase Source
+      </h3>
 
-          <div class="form-group" style="margin:0;">
-            <label for="public-repo-root" class="form-label">Root Dir</label>
-            <input 
-              id="public-repo-root" 
-              type="text" 
-              class="form-input font-mono" 
-              placeholder="." 
-              bind:value={rootDirectory} 
-              required 
-            />
-          </div>
-        </div>
-
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.75rem; flex-wrap:wrap; gap:0.5rem;">
-          <p class="text-xs text-muted" style="margin: 0;">
-            Paste any public Git repository URL (e.g. <code>https://github.com/username/repository</code>).
-          </p>
-          <button 
-            type="button" 
-            class="btn btn-secondary" 
-            style="font-size:0.75rem; padding:4px 10px; color:var(--color-accent);"
-            onclick={() => autoDetectRenderYaml()}
-            disabled={parsingYaml || !gitRepoUrl}
-          >
-            {#if parsingYaml}<Loader2 size={12} class="animate-spin" /> Checking Repo...{:else}<Sparkles size={12} /> Auto-Detect klouds.yaml / Blueprint in Repo{/if}
-          </button>
-        </div>
-
-        {#if detectedServices.length > 0}
-          {@const unfilledEnvList = getBlueprintUnfilledEnvVars()}
-          <div style="background: {detectedBlueprintSource === 'auto-detected' ? 'rgba(37,99,235,0.06)' : 'rgba(16,185,129,0.06)'}; border: 1.5px solid {detectedBlueprintSource === 'auto-detected' ? 'var(--color-accent)' : '#10b981'}; border-radius: var(--radius-md); padding: 1rem 1.25rem; margin-top: 1rem; overflow: hidden; width: 100%; box-sizing: border-box;">
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.85rem;">
-              <div style="display: flex; align-items: center; gap: 0.75rem; min-width: 0;">
-                <Sparkles size={22} style="color: {detectedBlueprintSource === 'auto-detected' ? 'var(--color-accent)' : '#059669'}; flex-shrink: 0;" />
-                <div style="min-width: 0;">
-                  <div style="font-weight: 700; color: {detectedBlueprintSource === 'auto-detected' ? 'var(--color-ink)' : '#065f46'}; font-size: 0.9375rem; overflow: hidden; text-overflow: ellipsis;">
-                    {#if detectedBlueprintSource === 'auto-detected'}
-                      Smart Framework & Runtime Detected ({detectedServices.length} Component{detectedServices.length > 1 ? 's' : ''})
-                    {:else if detectedBlueprintSource === 'both'}
-                      klouds.yaml detected (render.yaml also found) ({detectedServices.length} Service{detectedServices.length > 1 ? 's' : ''})
-                    {:else if detectedBlueprintSource === 'klouds.yaml'}
-                      klouds.yaml blueprint detected ({detectedServices.length} Service{detectedServices.length > 1 ? 's' : ''})
-                    {:else if detectedBlueprintSource === 'render.yaml'}
-                      render.yaml blueprint detected ({detectedServices.length} Service{detectedServices.length > 1 ? 's' : ''})
-                    {:else}
-                      Blueprint detected ({detectedServices.length} Service{detectedServices.length > 1 ? 's' : ''})
-                    {/if}
-                  </div>
-                  <div class="text-xs" style="color: {detectedBlueprintSource === 'auto-detected' ? 'var(--color-ink-muted)' : '#047857'}; margin-top: 2px;">
-                    {#if detectedBlueprintSource === 'auto-detected'}
-                      Analyzed repository structure and auto-configured runtime, build, and start parameters.
-                    {:else}
-                      This repository defines a multi-service stack. Review required environment variables below, or deploy all services together.
-                    {/if}
-                  </div>
-                </div>
-              </div>
-
-              <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-                <button
-                  type="button"
-                  class="btn btn-secondary"
-                  style="font-size: 0.8125rem; padding: 7px 12px; display: flex; align-items: center; gap: 5px; color: #065f46; border-color: #10b981; background: var(--color-surface);"
-                  onclick={() => { pendingAction = 'blueprint'; showEnvPromptModal = true; }}
-                >
-                  <Sliders size={14} /> Configure Env Vars
-                </button>
-                {#if detectedServices.length > 1 || detectedDatabases.length > 0}
-                  <button 
-                    type="button" 
-                    class="btn btn-primary" 
-                    style="font-size: 0.8125rem; padding: 7px 16px; background: #059669; border-color: #059669; display: flex; align-items: center; gap: 6px;"
-                    onclick={requestDeployBlueprint}
-                    disabled={deployingBlueprint}
-                  >
-                    {#if deployingBlueprint}
-                      <Loader2 size={14} class="animate-spin" /> Deploying All Services...
-                    {:else}
-                      <Rocket size={14} /> Deploy All {detectedServices.length + detectedDatabases.length} Stack Services
-                    {/if}
-                  </button>
-                {/if}
-              </div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+        <button 
+          type="button" 
+          class="card"
+          style="
+            cursor: pointer; 
+            text-align: left; 
+            padding: 1.1rem; 
+            border: 2px solid {sourceType === 'git_public' ? 'var(--color-accent)' : 'var(--color-border)'}; 
+            background: {sourceType === 'git_public' ? 'var(--color-surface-subtle)' : 'var(--color-surface)'};
+            border-radius: var(--radius-md);
+          "
+          onclick={() => sourceType = 'git_public'}
+        >
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
+            <div style="display: flex; align-items: center; gap: 0.5rem; font-weight: 700;">
+              <Unlock size={18} style="color: var(--color-accent);" /> Public Git Repo
             </div>
+            <span class="badge badge-running" style="font-size: 0.65rem;">Instant</span>
+          </div>
+          <p class="text-xs text-muted" style="margin: 0;">Clone any public GitHub, Bitbucket, or GitLab URL with automated build detection.</p>
+        </button>
 
-            <!-- Required Environment Variables Setup Prompt Card -->
-            {#if unfilledEnvList.length > 0}
-              <div style="background: rgba(245,158,11,0.09); border: 1px solid rgba(245,158,11,0.4); border-radius: var(--radius-md); padding: 0.85rem 1rem; margin-bottom: 0.85rem;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem; flex-wrap: wrap; gap: 0.5rem;">
-                  <div style="display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 0.8125rem; color: #92400e;">
-                    <AlertTriangle size={15} style="color: #d97706;" />
-                    Setup Required Environment Variables ({unfilledEnvList.length})
-                  </div>
-                  <button
-                    type="button"
-                    class="btn btn-secondary"
-                    style="font-size: 0.72rem; padding: 3px 8px; background: var(--color-surface); display: flex; align-items: center; gap: 4px; color: #92400e; border-color: rgba(245,158,11,0.4);"
-                    onclick={autoFillAllSecrets}
-                  >
-                    <Wand2 size={12} /> Auto-Generate Secrets
-                  </button>
-                </div>
-
-                <div style="display: flex; flex-direction: column; gap: 0.45rem;">
-                  {#each unfilledEnvList as item}
-                    <div style="display: grid; grid-template-columns: 140px 180px 1fr auto; gap: 0.5rem; align-items: center; background: var(--color-surface); padding: 4px 8px; border-radius: var(--radius-sm); border: 1px solid rgba(0,0,0,0.06);">
-                      <span class="badge" style="background: rgba(0,166,166,0.12); color: var(--color-accent); font-size: 0.68rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                        {item.svcName}
-                      </span>
-                      <span class="font-mono text-xs" style="font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title={item.key}>
-                        {item.key}
-                      </span>
-                      <input
-                        type="text"
-                        class="form-input font-mono text-xs"
-                        placeholder={item.isSecret ? "Enter or generate secret..." : "Enter value..."}
-                        value={item.value}
-                        oninput={(e: any) => updateDetectedEnv(item.svcIdx, item.key, e.target.value)}
-                        style="padding: 3px 8px; height: 26px; border-color: {!item.value ? '#f59e0b' : 'var(--color-border)'};"
-                      />
-                      {#if item.isSecret}
-                        <button
-                          type="button"
-                          class="btn btn-secondary"
-                          style="padding: 2px 6px; min-height: 24px; font-size: 0.68rem;"
-                          title="Generate random secret"
-                          onclick={() => updateDetectedEnv(item.svcIdx, item.key, generateRandomSecret(32))}
-                        >
-                          <Wand2 size={11} />
-                        </button>
-                      {/if}
-                    </div>
-                  {/each}
-                </div>
-              </div>
-            {/if}
-
-            <!-- Discovered Items Grid with Individual Service Version Selectors -->
-            <div style="display: flex; flex-direction: column; gap: 0.5rem; border-top: 1px solid rgba(16,185,129,0.2); padding-top: 0.75rem;">
-              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
-                <div class="text-xs" style="font-weight: 700; color: #065f46; text-transform: uppercase; letter-spacing: 0.04em;">
-                  Declared Blueprint Stack Services ({detectedServices.length + detectedDatabases.length}):
-                </div>
-                <span class="text-xs text-muted">
-                  Configure individual versions below or click to edit service
-                </span>
-              </div>
-              <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 0.6rem; width: 100%;">
-                {#each detectedServices as s, idx}
-                  <div
-                    class="card"
-                    style="
-                      padding: 10px 12px; 
-                      background: {selectedBlueprintIndex === idx ? 'var(--color-surface-subtle)' : 'var(--color-surface)'};
-                      border: 1.5px solid {selectedBlueprintIndex === idx ? 'var(--color-accent)' : 'var(--color-border)'};
-                      border-radius: var(--radius-md);
-                      display: flex;
-                      flex-direction: column;
-                      gap: 6px;
-                    "
-                  >
-                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-                      <div style="font-weight: 700; font-size: 0.8125rem; color: var(--color-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                        {s.name}
-                      </div>
-                      <button
-                        type="button"
-                        class="badge"
-                        style="background: {selectedBlueprintIndex === idx ? 'var(--color-accent)' : 'var(--color-border)'}; color: {selectedBlueprintIndex === idx ? 'var(--color-accent-contrast)' : 'var(--color-ink)'}; font-size: 0.68rem; border: none; cursor: pointer;"
-                        onclick={() => applyDetectedService(s, idx)}
-                      >
-                        {selectedBlueprintIndex === idx ? 'Editing' : 'Customize'}
-                      </button>
-                    </div>
-
-                    <div class="text-xs text-muted" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                      {s.kind} | {s.env || s.preset || 'custom'} {s.root_dir ? `| /${s.root_dir}` : ''} | :{s.internal_port}
-                    </div>
-
-                    <!-- Individual Service Runtime Version Selector -->
-                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 2px; padding-top: 4px; border-top: 1px solid var(--color-border);">
-                      <span class="text-xs text-muted" style="font-size: 0.72rem; font-weight: 600;">Version:</span>
-                      <select
-                        class="form-select font-mono text-xs"
-                        style="padding: 2px 6px; height: 24px; font-size: 0.72rem; width: auto; max-width: 170px;"
-                        bind:value={s.runtime_version}
-                        onclick={(e) => e.stopPropagation()}
-                        onchange={() => {
-                          if (selectedBlueprintIndex === idx) {
-                            runtimeVersion = s.runtime_version;
-                          }
-                        }}
-                      >
-                        {#each getPresetVersions(s.preset || s.env || s.kind) as v}
-                          <option value={v.value}>{v.label}</option>
-                        {/each}
-                      </select>
-                    </div>
-                  </div>
-                {/each}
-
-                {#each detectedDatabases as db}
-                  <div 
-                    class="card"
-                    style="
-                      padding: 10px 12px; 
-                      border-radius: var(--radius-md); 
-                      background: var(--color-surface); 
-                      border: 1px solid var(--color-border);
-                      display: flex;
-                      flex-direction: column;
-                      gap: 6px;
-                    "
-                  >
-                    <div style="display: flex; align-items: center; gap: 0.5rem;">
-                      <Database size={16} style="color: var(--color-info); flex-shrink: 0;" />
-                      <div style="font-weight: 700; font-size: 0.8125rem; color: var(--color-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                        {db.name}
-                      </div>
-                    </div>
-                    <div class="text-xs text-muted">
-                      Managed {db.engine || 'postgres'} database
-                    </div>
-                    <!-- Individual Database Version Selector -->
-                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 2px; padding-top: 4px; border-top: 1px solid var(--color-border);">
-                      <span class="text-xs text-muted" style="font-size: 0.72rem; font-weight: 600;">Version:</span>
-                      <select
-                        class="form-select font-mono text-xs"
-                        style="padding: 2px 6px; height: 24px; font-size: 0.72rem; width: auto; max-width: 170px;"
-                        bind:value={db.version}
-                      >
-                        {#each getDatabaseVersions(db.engine) as v}
-                          <option value={v.value}>{v.label}</option>
-                        {/each}
-                      </select>
-                    </div>
-                  </div>
-                {/each}
-              </div>
+        <button 
+          type="button" 
+          class="card"
+          style="
+            cursor: pointer; 
+            text-align: left; 
+            padding: 1.1rem; 
+            border: 2px solid {sourceType === 'git_provider' ? 'var(--color-accent)' : 'var(--color-border)'}; 
+            background: {sourceType === 'git_provider' ? 'var(--color-surface-subtle)' : 'var(--color-surface)'};
+            border-radius: var(--radius-md);
+          "
+          onclick={() => { sourceType = 'git_provider'; loadProviderRepos(selectedProvider); }}
+        >
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
+            <div style="display: flex; align-items: center; gap: 0.5rem; font-weight: 700;">
+              <FolderGit2 size={18} style="color: var(--color-info);" /> Linked Accounts
             </div>
+            <span class="badge" style="background:var(--color-info-subtle); color:var(--color-info); font-size: 0.65rem;">GitHub / GitLab</span>
           </div>
-        {/if}
+          <p class="text-xs text-muted" style="margin: 0;">Browse and select repositories directly from your connected Git accounts.</p>
+        </button>
 
-        {#if yamlParsedInfo}
-          <div style="background:#d1fae5; border:1px solid #6ee7b7; color:#065f46; border-radius:var(--radius-md); padding:0.6rem 0.85rem; font-size:0.8125rem; margin-top:0.75rem; display: flex; align-items: center; gap: 0.5rem;">
-            <Check size={16} /> {yamlParsedInfo}
+        <button 
+          type="button" 
+          class="card"
+          style="
+            cursor: pointer; 
+            text-align: left; 
+            padding: 1.1rem; 
+            border: 2px solid {sourceType === 'image' ? 'var(--color-accent)' : 'var(--color-border)'}; 
+            background: {sourceType === 'image' ? 'var(--color-surface-subtle)' : 'var(--color-surface)'};
+            border-radius: var(--radius-md);
+          "
+          onclick={() => sourceType = 'image'}
+        >
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
+            <div style="display: flex; align-items: center; gap: 0.5rem; font-weight: 700;">
+              <Server size={18} style="color: var(--color-ink-secondary);" /> Container Image
+            </div>
+            <span class="badge" style="background:var(--color-surface-subtle); color:var(--color-ink-secondary); font-size: 0.65rem;">Registry</span>
           </div>
-        {/if}
+          <p class="text-xs text-muted" style="margin: 0;">Deploy pre-built container image directly from Docker Hub or GitHub Container Registry.</p>
+        </button>
       </div>
 
-    {:else if sourceType === 'git_provider'}
-      <div style="background: rgba(0,0,0,0.02); padding: 1.25rem; border-radius: var(--radius-md); border: 1px solid var(--color-border);">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
-          <div style="display: flex; gap: 0.5rem;">
-            <button 
-              type="button" 
-              class="btn btn-secondary" 
-              style="padding: 4px 12px; font-size: 0.8125rem; font-weight: {selectedProvider === 'github' ? '700' : '500'}; background: {selectedProvider === 'github' ? 'var(--color-surface)' : 'transparent'};"
-              onclick={() => { selectedProvider = 'github'; loadProviderRepos('github'); }}
-            >
-              GitHub
-            </button>
-            <button 
-              type="button" 
-              class="btn btn-secondary" 
-              style="padding: 4px 12px; font-size: 0.8125rem; font-weight: {selectedProvider === 'bitbucket' ? '700' : '500'}; background: {selectedProvider === 'bitbucket' ? 'var(--color-surface)' : 'transparent'};"
-              onclick={() => { selectedProvider = 'bitbucket'; loadProviderRepos('bitbucket'); }}
-            >
-              Bitbucket
-            </button>
-            <button 
-              type="button" 
-              class="btn btn-secondary" 
-              style="padding: 4px 12px; font-size: 0.8125rem; font-weight: {selectedProvider === 'gitlab' ? '700' : '500'}; background: {selectedProvider === 'gitlab' ? 'var(--color-surface)' : 'transparent'};"
-              onclick={() => { selectedProvider = 'gitlab'; loadProviderRepos('gitlab'); }}
-            >
-              GitLab
-            </button>
+      {#if sourceType === 'git_public'}
+        <div style="background: var(--color-surface); padding: 1.25rem; border-radius: var(--radius-md); border: 1px solid var(--color-border);">
+          <div class="form-group">
+            <label for="git-repo-input" class="form-label">Public Git Repository URL</label>
+            <div style="position: relative;">
+              <input 
+                id="git-repo-input" 
+                type="url" 
+                class="form-input font-mono" 
+                placeholder="https://github.com/organization/repository" 
+                value={gitRepoUrl} 
+                oninput={(e: any) => handleRepoUrlChange(e.target.value)} 
+                required 
+              />
+              {#if parsingYaml}
+                <div style="position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%); display: flex; align-items: center; gap: 0.35rem; font-size: 0.75rem; color: var(--color-accent);">
+                  <Loader2 size={13} class="animate-spin" /> Auto-detecting stack...
+                </div>
+              {/if}
+            </div>
+            <p class="text-xs text-muted" style="margin-top:0.35rem;">
+              Supports any public Git repository (GitHub, Bitbucket, GitLab, Gitea).
+            </p>
           </div>
 
-          <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group" style="margin:0;">
+              <label for="git-branch-input" class="form-label">Branch</label>
+              <input 
+                id="git-branch-input" 
+                type="text" 
+                class="form-input font-mono" 
+                placeholder="main" 
+                bind:value={gitBranch} 
+                required 
+              />
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label for="root-dir-input" class="form-label">Root Directory</label>
+              <input 
+                id="root-dir-input" 
+                type="text" 
+                class="form-input font-mono" 
+                placeholder="." 
+                bind:value={rootDirectory} 
+              />
+            </div>
+          </div>
+        </div>
+
+      {:else if sourceType === 'git_provider'}
+        <div style="background: var(--color-surface); padding: 1.25rem; border-radius: var(--radius-md); border: 1px solid var(--color-border);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+            <div style="display: flex; gap: 0.5rem;">
+              <button 
+                type="button" 
+                class="btn btn-secondary" 
+                style="padding: 4px 12px; font-size: 0.8125rem; font-weight: {selectedProvider === 'github' ? '700' : '500'}; background: {selectedProvider === 'github' ? 'var(--color-surface-subtle)' : 'transparent'};"
+                onclick={() => { selectedProvider = 'github'; loadProviderRepos('github'); }}
+              >
+                GitHub
+              </button>
+              <button 
+                type="button" 
+                class="btn btn-secondary" 
+                style="padding: 4px 12px; font-size: 0.8125rem; font-weight: {selectedProvider === 'bitbucket' ? '700' : '500'}; background: {selectedProvider === 'bitbucket' ? 'var(--color-surface-subtle)' : 'transparent'};"
+                onclick={() => { selectedProvider = 'bitbucket'; loadProviderRepos('bitbucket'); }}
+              >
+                Bitbucket
+              </button>
+              <button 
+                type="button" 
+                class="btn btn-secondary" 
+                style="padding: 4px 12px; font-size: 0.8125rem; font-weight: {selectedProvider === 'gitlab' ? '700' : '500'}; background: {selectedProvider === 'gitlab' ? 'var(--color-surface-subtle)' : 'transparent'};"
+                onclick={() => { selectedProvider = 'gitlab'; loadProviderRepos('gitlab'); }}
+              >
+                GitLab
+              </button>
+            </div>
+
             {#if currentProviderInfo?.connected}
-              <div style="display: flex; align-items: center; gap: 0.5rem; background: var(--color-surface); padding: 3px 10px; border-radius: var(--radius-md); border: 1px solid var(--color-border);">
+              <div style="display: flex; align-items: center; gap: 0.5rem; background: var(--color-surface-subtle); padding: 3px 10px; border-radius: var(--radius-md); border: 1px solid var(--color-border);">
                 {#if currentProviderInfo.avatar_url}
                   <img src={currentProviderInfo.avatar_url} alt="" style="width: 20px; height: 20px; border-radius: 50%;" />
                 {/if}
@@ -1512,431 +1441,447 @@
               <button 
                 type="button" 
                 class="btn btn-primary" 
-                style="font-size: 0.8125rem; padding: 4px 14px; background: {selectedProvider === 'github' ? '#24292f' : selectedProvider === 'gitlab' ? '#fc6d26' : '#0052cc'}; border-color: transparent; display: flex; align-items: center; gap: 6px;"
+                style="font-size: 0.8125rem; padding: 4px 14px; display: flex; align-items: center; gap: 6px;"
                 onclick={() => authorizeGitOAuth(selectedProvider)}
               >
                 <FolderGit2 size={14} /> Connect with {selectedProvider.charAt(0).toUpperCase() + selectedProvider.slice(1)}
               </button>
             {/if}
           </div>
-        </div>
 
-        {#if providerRepos.length === 0}
-          <div style="text-align: center; padding: 1.5rem 0;">
-            <p class="text-sm text-muted" style="margin-bottom: 0.75rem;">No linked {selectedProvider} repositories found.</p>
-            <button 
-              type="button" 
-              class="btn btn-primary" 
-              style="font-size: 0.8125rem; background: {selectedProvider === 'github' ? '#24292f' : selectedProvider === 'gitlab' ? '#fc6d26' : '#0052cc'}; border-color: transparent; display: inline-flex; align-items: center; gap: 6px;" 
-              onclick={() => authorizeGitOAuth(selectedProvider)}
-            >
-              <FolderGit2 size={14} /> Connect {selectedProvider.charAt(0).toUpperCase() + selectedProvider.slice(1)} (1-Click Auth)
-            </button>
-          </div>
-        {:else}
-          <div class="form-group" style="margin-bottom: 0.75rem;">
-            <div style="position: relative;">
-              <input 
-                type="text" 
-                class="form-input" 
-                placeholder="Search your repositories..." 
-                bind:value={repoSearchQuery} 
-                style="padding-left: 2rem;" 
-              />
-              <Search size={14} style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: var(--color-ink-muted);" />
-            </div>
-          </div>
-
-          <div style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 220px; overflow-y: auto;">
-            {#each providerRepos.filter(r => r.name.toLowerCase().includes(repoSearchQuery.toLowerCase())) as repo}
-              <div 
-                style="
-                  display: flex; 
-                  align-items: center; 
-                  justify-content: space-between; 
-                  padding: 0.6rem 0.85rem; 
-                  border-radius: var(--radius-md); 
-                  border: 1px solid {gitRepoUrl === repo.url ? 'var(--color-accent)' : 'var(--color-border)'}; 
-                  background: {gitRepoUrl === repo.url ? 'rgba(0,166,166,0.08)' : 'var(--color-surface)'};
-                "
+          {#if providerRepos.length === 0}
+            <div style="text-align: center; padding: 1.5rem 0;">
+              <p class="text-sm text-muted" style="margin-bottom: 0.75rem;">No linked {selectedProvider} repositories found.</p>
+              <button 
+                type="button" 
+                class="btn btn-primary" 
+                style="font-size: 0.8125rem; display: inline-flex; align-items: center; gap: 6px;" 
+                onclick={() => authorizeGitOAuth(selectedProvider)}
               >
-                <div>
-                  <div style="font-weight: 600; font-size: 0.875rem;">{repo.full_name || repo.name}</div>
-                  <div class="text-xs text-muted" style="display: flex; gap: 0.75rem; margin-top: 2px;">
-                    <span>Branch: <span class="font-mono">{repo.default_branch || 'main'}</span></span>
-                    {#if repo.language}<span>{repo.language}</span>{/if}
-                  </div>
-                </div>
+                <FolderGit2 size={14} /> Connect {selectedProvider.charAt(0).toUpperCase() + selectedProvider.slice(1)}
+              </button>
+            </div>
+          {:else}
+            <div class="form-group" style="margin-bottom: 0.75rem;">
+              <div style="position: relative;">
+                <input 
+                  type="text" 
+                  class="form-input" 
+                  placeholder="Search your repositories..." 
+                  bind:value={repoSearchQuery} 
+                  style="padding-left: 2rem;" 
+                />
+                <Search size={14} style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: var(--color-ink-muted);" />
+              </div>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 240px; overflow-y: auto;">
+              {#each providerRepos.filter(r => r.name.toLowerCase().includes(repoSearchQuery.toLowerCase())) as repo}
                 <button 
-                  type="button" 
-                  class="btn {gitRepoUrl === repo.url ? 'btn-primary' : 'btn-secondary'}" 
-                  style="font-size: 0.75rem; padding: 4px 10px;"
+                  type="button"
+                  class="card"
+                  style="
+                    display: flex; 
+                    align-items: center; 
+                    justify-content: space-between; 
+                    padding: 8px 12px; 
+                    border: 1px solid {gitRepoUrl === repo.url ? 'var(--color-accent)' : 'var(--color-border)'}; 
+                    background: {gitRepoUrl === repo.url ? 'var(--color-surface-subtle)' : 'var(--color-surface)'};
+                    border-radius: var(--radius-md);
+                    cursor: pointer;
+                    text-align: left;
+                    width: 100%;
+                  "
                   onclick={() => selectProviderRepo(repo)}
                 >
-                  {gitRepoUrl === repo.url ? 'Selected' : 'Select'}
+                  <div style="min-width: 0;">
+                    <div style="font-weight: 700; font-size: 0.875rem; color: var(--color-ink);">{repo.full_name || repo.name}</div>
+                    <div class="text-xs text-muted">Branch: {repo.default_branch || 'main'} | Language: {repo.language || 'Multi-language'}</div>
+                  </div>
+                  <span class="badge" style="background: {gitRepoUrl === repo.url ? 'var(--color-accent)' : 'var(--color-border)'}; color: {gitRepoUrl === repo.url ? 'var(--color-accent-contrast)' : 'var(--color-ink)'}; font-size: 0.72rem;">
+                    {gitRepoUrl === repo.url ? 'Selected' : 'Select'}
+                  </span>
                 </button>
-              </div>
-            {/each}
-          </div>
-        {/if}
-
-        {#if detectedServices.length > 0}
-          <div style="background: {detectedBlueprintSource === 'auto-detected' ? 'rgba(37,99,235,0.06)' : 'rgba(16,185,129,0.06)'}; border: 1.5px solid {detectedBlueprintSource === 'auto-detected' ? 'var(--color-accent)' : '#10b981'}; border-radius: var(--radius-md); padding: 1rem 1.25rem; margin-top: 1rem;">
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.85rem;">
-              <div style="display: flex; align-items: center; gap: 0.75rem;">
-                <Sparkles size={22} style="color: {detectedBlueprintSource === 'auto-detected' ? 'var(--color-accent)' : '#059669'}; flex-shrink: 0;" />
-                <div>
-                  <div style="font-weight: 700; color: {detectedBlueprintSource === 'auto-detected' ? 'var(--color-ink)' : '#065f46'}; font-size: 0.9375rem;">
-                    {#if detectedBlueprintSource === 'auto-detected'}
-                      Smart Framework & Runtime Detected ({detectedServices.length} Component{detectedServices.length > 1 ? 's' : ''})
-                    {:else}
-                      render.yaml / Blueprint detected ({detectedServices.length} Service{detectedServices.length > 1 ? 's' : ''}{detectedDatabases.length > 0 ? `, ${detectedDatabases.length} Database` : ''})
-                    {/if}
-                  </div>
-                  <div class="text-xs" style="color: {detectedBlueprintSource === 'auto-detected' ? 'var(--color-ink-muted)' : '#047857'}; margin-top: 2px;">
-                    {#if detectedBlueprintSource === 'auto-detected'}
-                      Analyzed repository structure and auto-configured runtime, build, and start parameters.
-                    {:else}
-                      This repository defines a multi-service stack. Deploy all services together or customize individually.
-                    {/if}
-                  </div>
-                </div>
-              </div>
-
-              {#if detectedServices.length > 1 || detectedDatabases.length > 0}
-                <button 
-                  type="button" 
-                  class="btn btn-primary" 
-                  style="font-size: 0.8125rem; padding: 7px 16px; background: #059669; border-color: #059669; display: flex; align-items: center; gap: 6px;"
-                  onclick={deployEntireBlueprint}
-                  disabled={deployingBlueprint}
-                >
-                  {#if deployingBlueprint}
-                    <Loader2 size={14} class="animate-spin" /> Deploying All Services...
-                  {:else}
-                    <Rocket size={14} /> Deploy All {detectedServices.length + detectedDatabases.length} Stack Services
-                  {/if}
-                </button>
-              {/if}
+              {/each}
             </div>
-
-            <!-- Discovered Items Grid -->
-            <div style="display: flex; flex-direction: column; gap: 0.5rem; border-top: 1px solid rgba(16,185,129,0.2); padding-top: 0.75rem;">
-              <div class="text-xs" style="font-weight: 700; color: #065f46; text-transform: uppercase; letter-spacing: 0.04em;">
-                Declared Blueprint Services & Databases:
-              </div>
-              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.5rem;">
-                {#each detectedServices as s, idx}
-                  <button
-                    type="button"
-                    class="btn btn-secondary"
-                    style="
-                      text-align: left; 
-                      display: flex; 
-                      align-items: center; 
-                      justify-content: space-between; 
-                      padding: 8px 12px; 
-                      background: {selectedBlueprintIndex === idx ? 'rgba(5,150,105,0.15)' : 'var(--color-surface)'};
-                      border-color: {selectedBlueprintIndex === idx ? '#059669' : 'var(--color-border)'};
-                    "
-                    onclick={() => applyDetectedService(s, idx)}
-                  >
-                    <div>
-                      <div style="font-weight: 700; font-size: 0.8125rem; color: var(--color-ink);">{s.name}</div>
-                      <div class="text-xs text-muted">
-                        {s.kind} | {s.env || s.preset || 'custom'} {s.root_dir ? `| /${s.root_dir}` : ''} | :{s.internal_port}
-                      </div>
-                    </div>
-                    <span class="badge" style="background: rgba(16,185,129,0.2); color: #065f46; font-size: 0.7rem;">
-                      {selectedBlueprintIndex === idx ? 'Active' : 'Customize'}
-                    </span>
-                  </button>
-                {/each}
-
-                {#each detectedDatabases as db}
-                  <div style="display: flex; align-items: center; gap: 0.5rem; padding: 8px 12px; border-radius: var(--radius-md); background: var(--color-surface); border: 1px solid var(--color-border);">
-                    <Database size={16} style="color: #0369a1;" />
-                    <div>
-                      <div style="font-weight: 700; font-size: 0.8125rem; color: var(--color-ink);">{db.name}</div>
-                      <div class="text-xs text-muted">Managed {db.engine || 'postgres'} database</div>
-                    </div>
-                  </div>
-                {/each}
-              </div>
-            </div>
-          </div>
-        {/if}
-
-        {#if yamlParsedInfo}
-          <div style="background:#d1fae5; border:1px solid #6ee7b7; color:#065f46; border-radius:var(--radius-md); padding:0.6rem 0.85rem; font-size:0.8125rem; margin-top:0.75rem; display: flex; align-items: center; gap: 0.5rem;">
-            <Check size={16} /> {yamlParsedInfo}
-          </div>
-        {/if}
-      </div>
-
-    {:else if sourceType === 'image'}
-      <div style="background: rgba(0,0,0,0.02); padding: 1.25rem; border-radius: var(--radius-md); border: 1px solid var(--color-border);">
-        <div class="form-group" style="margin-bottom: 0.85rem;">
-          <label for="direct-image-ref" class="form-label">Docker Container Image Tag</label>
-          <input 
-            id="direct-image-ref" 
-            type="text" 
-            class="form-input font-mono" 
-            placeholder="e.g. nginx:alpine, redis:7.2-alpine, mongo:7.0, or ghcr.io/org/image:tag" 
-            bind:value={imageRef} 
-            required 
-          />
-          <p class="text-xs text-muted" style="margin-top: 0.4rem;">
-            Pulled directly from Docker Hub, GHCR, or your specified registry without building source code.
-          </p>
+          {/if}
         </div>
 
-        <div>
-          <div class="text-xs text-muted" style="margin-bottom: 0.4rem; font-weight: 600;">Popular Docker Images:</div>
-          <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
-            {#each [
-              { name: 'Nginx', img: 'nginx:alpine', port: 80, kind: 'web' },
-              { name: 'Redis', img: 'redis:7.2-alpine', port: 6379, kind: 'web' },
-              { name: 'PostgreSQL', img: 'postgres:16-alpine', port: 5432, kind: 'web' },
-              { name: 'MySQL', img: 'mysql:8.0', port: 3306, kind: 'web' },
-              { name: 'MongoDB', img: 'mongo:7.0', port: 27017, kind: 'web' },
-              { name: 'ClickHouse', img: 'clickhouse/clickhouse-server:24.3-alpine', port: 8123, kind: 'web' },
-              { name: 'Metabase', img: 'metabase/metabase:latest', port: 3000, kind: 'web' },
-              { name: 'RabbitMQ', img: 'rabbitmq:3-management', port: 15672, kind: 'web' }
-            ] as pop}
-              <button
-                type="button"
-                class="btn btn-secondary"
-                style="padding: 3px 8px; font-size: 0.75rem;"
-                onclick={() => {
-                  imageRef = pop.img;
-                  if (!name) name = pop.name.toLowerCase();
-                  internalPort = pop.port;
-                  kind = pop.kind as any;
-                }}
-              >
-                {pop.name} ({pop.img})
-              </button>
-            {/each}
+      {:else}
+        <div style="background: var(--color-surface); padding: 1.25rem; border-radius: var(--radius-md); border: 1px solid var(--color-border);">
+          <div class="form-group" style="margin: 0;">
+            <label for="image-source-input" class="form-label">Docker Registry Image Tag</label>
+            <input 
+              id="image-source-input" 
+              type="text" 
+              class="form-input font-mono" 
+              placeholder="e.g. redis:7.4-alpine, postgres:17-alpine, nginx:alpine" 
+              bind:value={imageRef} 
+              required 
+            />
+            <p class="text-xs text-muted" style="margin-top:0.35rem;">
+              Full container image identifier from Docker Hub, GHCR, or a public registry.
+            </p>
           </div>
-        </div>
-      </div>
-    {/if}
-  </div>
-
-  <!-- Runtime / Framework Presets -->
-  <div class="card" style="margin-bottom: 2rem; padding: 1.5rem; background: var(--color-surface); border: 1px solid var(--color-border);">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
-      <div>
-        <div style="font-size: 1rem; font-weight: 700; margin-bottom: 0.25rem;">2. Select Runtime / Framework Preset</div>
-        <p class="text-xs text-muted" style="margin:0;">Choose the execution environment for building and running your service.</p>
-      </div>
-
-      <!-- Filter Buttons -->
-      <div style="display: flex; gap: 0.35rem; background: rgba(0,0,0,0.03); padding: 3px; border-radius: var(--radius-md);">
-        <button 
-          type="button" 
-          class="btn" 
-          style="padding: 4px 10px; font-size: 0.75rem; font-weight: {activeCategory === 'all' ? '700' : '500'}; background: {activeCategory === 'all' ? 'var(--color-surface)' : 'transparent'}; box-shadow: {activeCategory === 'all' ? 'var(--shadow-sm)' : 'none'};"
-          onclick={() => activeCategory = 'all'}
-        >
-          All ({presets.length})
-        </button>
-        <button 
-          type="button" 
-          class="btn" 
-          style="padding: 4px 10px; font-size: 0.75rem; font-weight: {activeCategory === 'web' ? '700' : '500'}; background: {activeCategory === 'web' ? 'var(--color-surface)' : 'transparent'}; box-shadow: {activeCategory === 'web' ? 'var(--shadow-sm)' : 'none'};"
-          onclick={() => activeCategory = 'web'}
-        >
-          Web Apps & APIs
-        </button>
-        <button 
-          type="button" 
-          class="btn" 
-          style="padding: 4px 10px; font-size: 0.75rem; font-weight: {activeCategory === 'static' ? '700' : '500'}; background: {activeCategory === 'static' ? 'var(--color-surface)' : 'transparent'}; box-shadow: {activeCategory === 'static' ? 'var(--shadow-sm)' : 'none'};"
-          onclick={() => activeCategory = 'static'}
-        >
-          Static Sites
-        </button>
-        <button 
-          type="button" 
-          class="btn" 
-          style="padding: 4px 10px; font-size: 0.75rem; font-weight: {activeCategory === 'worker' ? '700' : '500'}; background: {activeCategory === 'worker' ? 'var(--color-surface)' : 'transparent'}; box-shadow: {activeCategory === 'worker' ? 'var(--shadow-sm)' : 'none'};"
-          onclick={() => activeCategory = 'worker'}
-        >
-          Background & Cron
-        </button>
-      </div>
-    </div>
-
-    <!-- Presets Grid -->
-    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem;">
-      {#each filteredPresets as preset}
-        <button
-          type="button"
-          class="card"
-          style="
-            cursor: pointer; 
-            text-align: left; 
-            padding: 1.15rem; 
-            border: 2px solid {selectedPreset?.id === preset.id ? 'var(--color-accent)' : 'var(--color-border)'}; 
-            background: {selectedPreset?.id === preset.id ? 'rgba(0,166,166,0.06)' : 'var(--color-surface)'};
-            border-radius: var(--radius-lg);
-            display: flex; 
-            flex-direction: column; 
-            justify-content: space-between;
-            transition: all 0.15s ease;
-          "
-          onclick={() => choosePreset(preset)}
-        >
-          <div>
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
-              <div style="display: flex; align-items: center; gap: 0.6rem;">
-                <div style="width: 34px; height: 34px; border-radius: var(--radius-sm); background: rgba(0,0,0,0.03); border: 1px solid var(--color-border); display: flex; align-items: center; justify-content: center; padding: 4px;">
-                  <FrameworkIcon name={preset.id} size={22} />
-                </div>
-                <span class="badge" style="background: rgba(0,0,0,0.04); font-size: 0.7rem; font-weight: 600;">{preset.badge}</span>
-              </div>
-              {#if selectedPreset?.id === preset.id}
-                <span class="badge badge-running" style="padding: 2px 8px; font-size: 0.7rem;"><Check size={11} /> Selected</span>
-              {/if}
-            </div>
-            <div style="display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 0.9375rem; color: var(--color-ink); margin-top: 0.25rem;">
-              <span 
-                title={preset.description} 
-                style="display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: var(--color-canvas); border: 1px solid var(--color-border); color: var(--color-ink-muted); cursor: help; flex-shrink: 0;"
-              >
-                <Info size={12} />
-              </span>
-              <span>{preset.title}</span>
-            </div>
-          </div>
-        </button>
-      {/each}
-    </div>
-  </div>
-
-  <!-- Form Configuration -->
-  <form onsubmit={handleSubmit}>
-    <div class="card" style="margin-bottom: 2rem; padding: 1.5rem; background: var(--color-surface); border: 1px solid var(--color-border);">
-      <div style="margin-bottom: 1.25rem;">
-        <div style="font-size: 1rem; font-weight: 700; margin-bottom: 0.25rem;">3. Service Configuration & Commands</div>
-        <p class="text-xs text-muted" style="margin:0;">Fine-tune build commands, runtime execution commands, and environment variables.</p>
-      </div>
-
-      {#if error}
-        <div style="background:#fee2e2; border:1px solid #fca5a5; color:#991b1b; border-radius:var(--radius-md); padding:0.75rem 1rem; font-size:0.875rem; margin-bottom:1.5rem">
-          {error}
         </div>
       {/if}
 
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.25rem; margin-bottom: 1.25rem;">
-        <div class="form-group" style="margin:0;">
-          <label for="svc-name-input" class="form-label">Service Name</label>
-          <input id="svc-name-input" type="text" class="form-input" placeholder="e.g. my-api-service" bind:value={name} required />
+      <div style="display: flex; justify-content: flex-end; margin-top: 1.5rem;">
+        <button 
+          type="button" 
+          class="btn btn-primary"
+          onclick={() => {
+            if (detectedServices.length > 0) activeTab = 'stack';
+            else activeTab = 'config';
+          }}
+        >
+          <span>Next: Configure Service</span>
+          <ChevronRight size={16} />
+        </button>
+      </div>
+    </div>
+  {/if}
+
+  <!-- ========================================================================= -->
+  <!-- TAB 2: BLUEPRINT MULTI-SERVICE STACK                                      -->
+  <!-- ========================================================================= -->
+  {#if activeTab === 'stack' && detectedServices.length > 0}
+    <div class="card" style="padding: 1.5rem; margin-bottom: 1.5rem; border-radius: var(--radius-lg); border: 1.5px solid var(--color-accent);">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
+        <div>
+          <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+            <Sparkles size={20} style="color: var(--color-accent);" />
+            <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700;">
+              Discovered Full Stack Blueprint ({detectedBlueprintSource})
+            </h3>
+          </div>
+          <p class="text-xs text-muted" style="margin: 0;">
+            Review and choose individual runtime versions for each service before launching the entire stack.
+          </p>
         </div>
 
-        <div class="form-group" style="margin:0;">
-          <label for="svc-slug-input" class="form-label">URL Slug</label>
-          <div style="display: flex; align-items: center;">
-            <input 
-              id="svc-slug-input" 
-              type="text" 
-              class="form-input font-mono" 
-              placeholder="my-api-service" 
-              bind:value={svcSlug} 
-              oninput={() => slugEdited = true} 
-              required 
-            />
-          </div>
-          <p class="text-xs text-muted" style="margin-top:0.25rem;">
-            Preview URL: <strong>https://{svcSlug || 'app'}.{typeof window !== 'undefined' ? window.location.hostname : 'yourdomain.com'}</strong>
-          </p>
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <button 
+            type="button" 
+            class="btn btn-secondary"
+            style="font-size: 0.8125rem;"
+            onclick={() => { pendingAction = 'blueprint'; showEnvPromptModal = true; }}
+          >
+            <Sliders size={14} /> Configure Env Vars
+          </button>
+          <button 
+            type="button" 
+            class="btn btn-primary" 
+            style="font-size: 0.8125rem; padding: 7px 16px; display: flex; align-items: center; gap: 6px;"
+            onclick={requestDeployBlueprint}
+            disabled={deployingBlueprint}
+          >
+            {#if deployingBlueprint}
+              <Loader2 size={14} class="animate-spin" /> Deploying Stack...
+            {:else}
+              <Rocket size={14} /> Deploy All {detectedServices.length + detectedDatabases.length} Stack Services
+            {/if}
+          </button>
         </div>
       </div>
 
-      <!-- Build and Start Commands -->
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.25rem; margin-bottom: 1.25rem;">
+      <!-- Services & Databases List with Individual Version Dropdowns -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 0.75rem; margin-bottom: 1.25rem;">
+        {#each detectedServices as s, idx}
+          <div
+            class="card"
+            style="
+              padding: 12px 14px; 
+              background: {selectedBlueprintIndex === idx ? 'var(--color-surface-subtle)' : 'var(--color-surface)'};
+              border: 1.5px solid {selectedBlueprintIndex === idx ? 'var(--color-accent)' : 'var(--color-border)'};
+              border-radius: var(--radius-md);
+              display: flex;
+              flex-direction: column;
+              gap: 8px;
+            "
+          >
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <FrameworkIcon name={s.preset || s.env || s.kind} size={18} />
+                <span style="font-weight: 700; font-size: 0.875rem; color: var(--color-ink);">{s.name}</span>
+              </div>
+              <button
+                type="button"
+                class="badge"
+                style="background: {selectedBlueprintIndex === idx ? 'var(--color-accent)' : 'var(--color-border)'}; color: {selectedBlueprintIndex === idx ? 'var(--color-accent-contrast)' : 'var(--color-ink)'}; font-size: 0.68rem; border: none; cursor: pointer;"
+                onclick={() => { applyDetectedService(s, idx); activeTab = 'config'; }}
+              >
+                {selectedBlueprintIndex === idx ? 'Editing' : 'Customize'}
+              </button>
+            </div>
+
+            <div class="text-xs text-muted">
+              {s.kind.toUpperCase()} {s.root_dir ? `| /${s.root_dir}` : ''} | Port :{s.internal_port || 8080}
+            </div>
+
+            <!-- Individual Runtime Version Selector -->
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-top: 6px; border-top: 1px solid var(--color-border);">
+              <span class="text-xs text-muted" style="font-size: 0.72rem; font-weight: 600;">Runtime:</span>
+              <select
+                class="form-select font-mono text-xs"
+                style="padding: 2px 6px; height: 26px; font-size: 0.75rem; width: auto; max-width: 180px;"
+                bind:value={s.runtime_version}
+                onchange={(e: any) => {
+                  if (selectedBlueprintIndex === idx) {
+                    updateImageRefFromVersion(s.preset || s.env || s.kind, e.target.value);
+                  }
+                }}
+              >
+                {#each getPresetVersions(s.preset || s.env || s.kind) as v}
+                  <option value={v.value}>{v.label}</option>
+                {/each}
+              </select>
+            </div>
+          </div>
+        {/each}
+
+        {#each detectedDatabases as db}
+          <div 
+            class="card"
+            style="
+              padding: 12px 14px; 
+              border-radius: var(--radius-md); 
+              background: var(--color-surface); 
+              border: 1px solid var(--color-border);
+              display: flex;
+              flex-direction: column;
+              gap: 8px;
+            "
+          >
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <Database size={18} style="color: var(--color-info); flex-shrink: 0;" />
+              <span style="font-weight: 700; font-size: 0.875rem; color: var(--color-ink);">{db.name}</span>
+            </div>
+            <div class="text-xs text-muted">
+              Managed {db.engine || 'postgres'} database
+            </div>
+            <!-- Individual Database Version Selector -->
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-top: 6px; border-top: 1px solid var(--color-border);">
+              <span class="text-xs text-muted" style="font-size: 0.72rem; font-weight: 600;">Engine Ver:</span>
+              <select
+                class="form-select font-mono text-xs"
+                style="padding: 2px 6px; height: 26px; font-size: 0.75rem; width: auto; max-width: 180px;"
+                bind:value={db.version}
+              >
+                {#each getDatabaseVersions(db.engine) as v}
+                  <option value={v.value}>{v.label}</option>
+                {/each}
+              </select>
+            </div>
+          </div>
+        {/each}
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--color-border); padding-top: 1rem;">
+        <button type="button" class="btn btn-secondary" onclick={() => activeTab = 'source'}>
+          <ChevronLeft size={16} /> Back to Source
+        </button>
+        <button type="button" class="btn btn-primary" onclick={() => activeTab = 'config'}>
+          <span>Customize Active Service</span> <ChevronRight size={16} />
+        </button>
+      </div>
+    </div>
+  {/if}
+
+  <!-- ========================================================================= -->
+  <!-- TAB 3: BUILD & RUNTIME CONFIGURATION                                      -->
+  <!-- ========================================================================= -->
+  {#if activeTab === 'config'}
+    <div class="card" style="padding: 1.5rem; margin-bottom: 1.5rem; border-radius: var(--radius-lg);">
+      <h3 style="margin: 0 0 1rem 0; font-size: 1.05rem; display: flex; align-items: center; gap: 0.5rem;">
+        <Code size={18} style="color: var(--color-accent);" /> Service & Runtime Specification
+      </h3>
+
+      <!-- Basic Identification -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
         <div class="form-group" style="margin:0;">
-          <label for="build-cmd-input" class="form-label">Build Command</label>
+          <label for="svc-name-input" class="form-label">Service Name</label>
           <input 
-            id="build-cmd-input" 
+            id="svc-name-input" 
             type="text" 
-            class="form-input font-mono text-sm" 
-            placeholder="pip install -r requirements.txt" 
-            bind:value={buildCommand} 
+            class="form-input" 
+            placeholder="my-web-app" 
+            bind:value={name} 
+            required 
           />
         </div>
-
         <div class="form-group" style="margin:0;">
+          <label for="svc-slug-input" class="form-label">Internal Hostname / Slug</label>
+          <input 
+            id="svc-slug-input" 
+            type="text" 
+            class="form-input font-mono" 
+            placeholder="my-web-app" 
+            bind:value={svcSlug} 
+            oninput={() => slugEdited = true} 
+            required 
+          />
+        </div>
+      </div>
+
+      <!-- Framework / Preset Selector -->
+      <div style="margin-bottom: 1.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;">
+          <span class="form-label" style="margin: 0; font-weight: 600;">Framework & Runtime Stack</span>
+          <div style="display: flex; gap: 0.35rem;">
+            <button 
+              type="button" 
+              class="btn btn-secondary" 
+              style="padding: 2px 10px; font-size: 0.75rem; background: {activeCategory === 'all' ? 'var(--color-surface-subtle)' : 'transparent'};" 
+              onclick={() => activeCategory = 'all'}
+            >
+              All
+            </button>
+            <button 
+              type="button" 
+              class="btn btn-secondary" 
+              style="padding: 2px 10px; font-size: 0.75rem; background: {activeCategory === 'web' ? 'var(--color-surface-subtle)' : 'transparent'};" 
+              onclick={() => activeCategory = 'web'}
+            >
+              Web / APIs
+            </button>
+            <button 
+              type="button" 
+              class="btn btn-secondary" 
+              style="padding: 2px 10px; font-size: 0.75rem; background: {activeCategory === 'static' ? 'var(--color-surface-subtle)' : 'transparent'};" 
+              onclick={() => activeCategory = 'static'}
+            >
+              Static SPA
+            </button>
+            <button 
+              type="button" 
+              class="btn btn-secondary" 
+              style="padding: 2px 10px; font-size: 0.75rem; background: {activeCategory === 'worker' ? 'var(--color-surface-subtle)' : 'transparent'};" 
+              onclick={() => activeCategory = 'worker'}
+            >
+              Workers
+            </button>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); gap: 0.6rem; max-height: 220px; overflow-y: auto; padding: 4px;">
+          {#each filteredPresets as p}
+            <button
+              type="button"
+              class="card"
+              style="
+                padding: 10px 12px; 
+                text-align: left; 
+                cursor: pointer; 
+                border: 2px solid {selectedPreset?.id === p.id ? 'var(--color-accent)' : 'var(--color-border)'}; 
+                background: {selectedPreset?.id === p.id ? 'var(--color-surface-subtle)' : 'var(--color-surface)'};
+                border-radius: var(--radius-md);
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+              "
+              onclick={() => choosePreset(p)}
+            >
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <FrameworkIcon name={p.id} size={20} />
+                <span class="badge" style="font-size: 0.65rem;">{p.badge}</span>
+              </div>
+              <div style="font-weight: 700; font-size: 0.8125rem; color: var(--color-ink); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                {p.title}
+              </div>
+            </button>
+          {/each}
+        </div>
+      </div>
+
+      <!-- Runtime Version & Base Image Specification -->
+      <div style="background: var(--color-canvas); padding: 1.25rem; border-radius: var(--radius-md); border: 1px solid var(--color-border); margin-bottom: 1.5rem;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+          <div class="form-group" style="margin: 0;">
+            <label for="runtime-version-select" class="form-label">Runtime Version</label>
+            <select 
+              id="runtime-version-select" 
+              class="form-select font-mono text-sm" 
+              bind:value={runtimeVersion}
+              onchange={(e: any) => updateImageRefFromVersion(selectedPreset?.id, e.target.value)}
+            >
+              {#each selectedPreset?.versions || getPresetVersions(selectedPreset?.id) as v}
+                <option value={v.value}>{v.label}</option>
+              {/each}
+            </select>
+          </div>
+
+          <div class="form-group" style="margin: 0;">
+            <label for="image-ref-input" class="form-label">Runtime Base Image (Resolved)</label>
+            <input 
+              id="image-ref-input" 
+              type="text" 
+              class="form-input font-mono text-sm" 
+              bind:value={imageRef} 
+              required 
+            />
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 1rem;">
+          <div class="form-group" style="margin: 0;">
+            <label for="port-input" class="form-label">Internal Port</label>
+            <input 
+              id="port-input" 
+              type="number" 
+              class="form-input font-mono text-sm" 
+              bind:value={internalPort} 
+              required={kind === 'web' || kind === 'static'} 
+            />
+          </div>
+          <div class="form-group" style="margin: 0;">
+            <label for="build-cmd-input" class="form-label">Build Command</label>
+            <input 
+              id="build-cmd-input" 
+              type="text" 
+              class="form-input font-mono text-sm" 
+              bind:value={buildCommand} 
+            />
+          </div>
+        </div>
+
+        <div class="form-group" style="margin: 1rem 0 0 0;">
           <label for="start-cmd-input" class="form-label">Start / Run Command</label>
           <input 
             id="start-cmd-input" 
             type="text" 
             class="form-input font-mono text-sm" 
-            placeholder="gunicorn app:app --bind 0.0.0.0:5000" 
             bind:value={startCommand} 
           />
         </div>
       </div>
 
-      <!-- Port and Base Image -->
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.25rem;">
-        <div class="form-group" style="margin:0;">
-          <label for="port-input" class="form-label">Internal Port</label>
-          <input 
-            id="port-input" 
-            type="number" 
-            class="form-input font-mono" 
-            placeholder="5000" 
-            bind:value={internalPort} 
-            required={kind === 'web' || kind === 'static'} 
-          />
-          <p class="text-xs text-muted" style="margin-top:0.25rem;">
-            Port your app listens on inside the container (e.g. 5000 for Flask, 3000 for Node/Express, 8080 for Go).
-          </p>
-        </div>
-
-        <div class="form-group" style="margin:0;">
-          <label for="image-ref-input" class="form-label">Runtime Base Image</label>
-          <input 
-            id="image-ref-input" 
-            type="text" 
-            class="form-input font-mono" 
-            placeholder="node:20-alpine" 
-            bind:value={imageRef} 
-            required 
-          />
-        </div>
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <button type="button" class="btn btn-secondary" onclick={() => activeTab = detectedServices.length > 0 ? 'stack' : 'source'}>
+          <ChevronLeft size={16} /> Previous
+        </button>
+        <button type="button" class="btn btn-primary" onclick={() => activeTab = 'environment'}>
+          <span>Next: Environment & Limits</span> <ChevronRight size={16} />
+        </button>
       </div>
+    </div>
+  {/if}
 
-      <!-- Dynamic Runtime Version Selection -->
-      {#if selectedPreset?.versions && selectedPreset.versions.length > 1}
-        <div style="background: var(--color-canvas); padding: 1rem 1.25rem; border-radius: var(--radius-md); border: 1px solid var(--color-border); margin-bottom: 1.25rem;">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
-            <div>
-              <label for="runtime-version-select" class="form-label" style="margin: 0; font-size: 0.875rem;">
-                {selectedPreset.title} Runtime Version
-              </label>
-              <p class="text-xs text-muted" style="margin: 2px 0 0 0;">
-                Choose an explicit version or let kloudsPanel auto-detect from repository manifest files (.node-version, go.mod, etc.).
-              </p>
-            </div>
-          </div>
-          <select id="runtime-version-select" class="form-select font-mono text-sm" bind:value={runtimeVersion}>
-            {#each selectedPreset.versions as v}
-              <option value={v.value}>{v.label}</option>
-            {/each}
-          </select>
-        </div>
-      {/if}
+  <!-- ========================================================================= -->
+  <!-- TAB 4: ENVIRONMENT VARIABLES & CONTAINER LIMITS                           -->
+  <!-- ========================================================================= -->
+  {#if activeTab === 'environment'}
+    <div class="card" style="padding: 1.5rem; margin-bottom: 1.5rem; border-radius: var(--radius-lg);">
+      <h3 style="margin: 0 0 1rem 0; font-size: 1.05rem; display: flex; align-items: center; gap: 0.5rem;">
+        <Sliders size={18} style="color: var(--color-accent);" /> Environment & Resource Limits
+      </h3>
 
-      <!-- Container Resource Limits & Security Hardening Box -->
+      <!-- Container Limits & Non-Root Sandbox -->
       <div style="background: var(--color-canvas); padding: 1.25rem; border-radius: var(--radius-md); border: 1px solid var(--color-border); margin-bottom: 1.5rem;">
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
           <div style="display: flex; align-items: center; gap: 0.5rem;">
             <ShieldCheck size={18} style="color: var(--color-accent);" />
-            <span style="font-size: 0.875rem; font-weight: 700;">Resource Limits & Security Hardening</span>
+            <span style="font-size: 0.875rem; font-weight: 700;">Security Hardening & Limits</span>
           </div>
           <span class="badge" style="background: var(--color-success-subtle); color: var(--color-success); font-size: 0.7rem; display: flex; align-items: center; gap: 4px;">
             <ShieldCheck size={12} /> Non-Root Sandbox Active
@@ -1969,24 +1914,36 @@
 
         <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem;">
           <span class="badge" style="background: var(--color-surface); border: 1px solid var(--color-border); font-size: 0.7rem; display: flex; align-items: center; gap: 4px;">
-            <Lock size={11} /> Process Limit: {pidsLimit} PIDs (Fork-Bomb Protected)
+            <Lock size={11} /> Process Limit: {pidsLimit} PIDs
           </span>
           <span class="badge" style="background: var(--color-surface); border: 1px solid var(--color-border); font-size: 0.7rem; display: flex; align-items: center; gap: 4px;">
-            <Sliders size={11} /> User 1001 (Non-Root Execution)
-          </span>
-          <span class="badge" style="background: var(--color-surface); border: 1px solid var(--color-border); font-size: 0.7rem; display: flex; align-items: center; gap: 4px;">
-            <ShieldCheck size={11} /> Linux Capabilities Dropped
+            <Sliders size={11} /> User 1001 Non-Root
           </span>
         </div>
       </div>
 
-      <!-- Environment Variables -->
-      <div style="border-top: 1px solid var(--color-border); padding-top: 1.25rem; margin-bottom: 1.5rem;">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
-          <div style="font-weight: 600; font-size: 0.9375rem;">Environment Variables</div>
-          <button type="button" class="btn btn-secondary" style="padding: 2px 10px; min-height: 28px; font-size: 0.75rem;" onclick={addEnv}>
-            <Plus size={12} /> Add Variable
-          </button>
+      <!-- Environment Variables Table -->
+      <div style="margin-bottom: 1.5rem;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
+          <div style="font-weight: 700; font-size: 0.9375rem;">Environment Variables</div>
+          <div style="display: flex; gap: 0.5rem;">
+            <button 
+              type="button" 
+              class="btn btn-secondary" 
+              style="padding: 2px 10px; min-height: 28px; font-size: 0.75rem;" 
+              onclick={autoFillAllSecrets}
+            >
+              <Wand2 size={12} /> Generate Secrets
+            </button>
+            <button 
+              type="button" 
+              class="btn btn-secondary" 
+              style="padding: 2px 10px; min-height: 28px; font-size: 0.75rem;" 
+              onclick={addEnv}
+            >
+              <Plus size={12} /> Add Variable
+            </button>
+          </div>
         </div>
 
         {#if envVars.length === 0}
@@ -2008,13 +1965,13 @@
                   class="form-input font-mono text-xs" 
                   placeholder="value" 
                   bind:value={env.value} 
-                  style="flex: 2; border-color: {!env.value && env.key ? '#f59e0b' : 'var(--color-border)'};" 
+                  style="flex: 2; border-color: {!env.value && env.key ? 'var(--color-accent)' : 'var(--color-border)'};" 
                 />
                 <button
                   type="button"
                   class="btn btn-secondary"
                   style="padding: 2px 8px; min-height: 28px; font-size: 0.72rem; display: flex; align-items: center; gap: 4px;"
-                  title="Generate a random secure 32-character secret"
+                  title="Generate secret"
                   onclick={() => env.value = generateRandomSecret(32)}
                 >
                   <Wand2 size={12} /> Secret
@@ -2022,7 +1979,7 @@
                 <button 
                   type="button" 
                   class="btn btn-secondary" 
-                  style="padding: 4px; color: var(--color-error); min-height: 28px;" 
+                  style="padding: 4px; color: var(--color-danger); min-height: 28px;" 
                   onclick={() => removeEnv(i)}
                   aria-label="Remove variable"
                 >
@@ -2034,21 +1991,15 @@
         {/if}
       </div>
 
-      <!-- Submit button -->
-      <div style="display: flex; justify-content: flex-end; gap: 0.75rem;">
-        <button 
-          type="button" 
-          class="btn btn-secondary" 
-          onclick={() => goto(`/projects/${slug}`)} 
-          disabled={submitting}
-        >
-          Cancel
+      <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--color-border); padding-top: 1rem;">
+        <button type="button" class="btn btn-secondary" onclick={() => activeTab = 'config'}>
+          <ChevronLeft size={16} /> Back to Build Config
         </button>
         <button 
           type="submit" 
           class="btn btn-primary" 
           disabled={submitting || !name || !svcSlug}
-          style="padding: 0.625rem 1.5rem;"
+          style="padding: 0.625rem 1.75rem;"
         >
           {#if submitting}
             <Loader2 size={16} class="animate-spin" /> Provisioning & Deploying...
@@ -2058,7 +2009,8 @@
         </button>
       </div>
     </div>
-  </form>
+  {/if}
+</form>
 
 <!-- Modal: Required Environment Variables Setup Prompt -->
 {#if showEnvPromptModal}
@@ -2075,9 +2027,9 @@
       </div>
 
       <div style="padding: 1.25rem; overflow-y: auto; flex: 1;">
-        <div style="background: rgba(245,158,11,0.08); border: 1px solid #f59e0b; border-radius: var(--radius-md); padding: 0.75rem 1rem; margin-bottom: 1.25rem; display: flex; align-items: flex-start; gap: 0.75rem;">
-          <AlertTriangle size={18} style="color: #d97706; flex-shrink: 0; margin-top: 2px;" />
-          <div class="text-xs" style="color: #92400e; line-height: 1.5;">
+        <div style="background: var(--color-surface-subtle); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 0.75rem 1rem; margin-bottom: 1.25rem; display: flex; align-items: flex-start; gap: 0.75rem;">
+          <AlertTriangle size={18} style="color: var(--color-accent); flex-shrink: 0; margin-top: 2px;" />
+          <div class="text-xs" style="line-height: 1.5;">
             <strong>Setup Required:</strong> Some environment variables are empty or use placeholders. Please fill in your values or click <strong>Auto-Generate Secrets</strong> before starting the deployment.
           </div>
         </div>
@@ -2089,7 +2041,7 @@
             style="font-size: 0.75rem; padding: 4px 10px; display: flex; align-items: center; gap: 5px;"
             onclick={autoFillAllSecrets}
           >
-            <Wand2 size={13} /> Auto-Generate All Secrets (JWT, Keys, Tokens)
+            <Wand2 size={13} /> Auto-Generate All Secrets
           </button>
         </div>
 
@@ -2097,9 +2049,9 @@
           <div style="display: flex; flex-direction: column; gap: 1rem;">
             {#each detectedServices as svc, sIdx}
               {#if svc.env_vars && Object.keys(svc.env_vars).length > 0}
-                <div style="border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 0.85rem; background: rgba(0,0,0,0.015);">
+                <div style="border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 0.85rem; background: var(--color-surface-subtle);">
                   <div style="font-weight: 700; font-size: 0.8125rem; margin-bottom: 0.6rem; color: var(--color-ink); display: flex; align-items: center; gap: 6px;">
-                    <span class="badge" style="background: rgba(0,166,166,0.15); color: var(--color-accent); font-size: 0.7rem;">{svc.name}</span>
+                    <span class="badge" style="background: var(--color-accent); color: var(--color-accent-contrast); font-size: 0.7rem;">{svc.name}</span>
                     <span class="text-muted text-xs">Environment Variables</span>
                   </div>
                   <div style="display: flex; flex-direction: column; gap: 0.5rem;">
@@ -2114,13 +2066,12 @@
                           placeholder="Enter value..."
                           value={val}
                           oninput={(e: any) => updateDetectedEnv(sIdx, key, e.target.value)}
-                          style="border-color: {!val ? '#f59e0b' : 'var(--color-border)'};"
                         />
                         <button
                           type="button"
                           class="btn btn-secondary"
                           style="padding: 4px 8px; min-height: 28px; font-size: 0.7rem;"
-                          title="Generate random 32-char secret"
+                          title="Generate random secret"
                           onclick={() => updateDetectedEnv(sIdx, key, generateRandomSecret(32))}
                         >
                           <Wand2 size={12} />
@@ -2144,13 +2095,12 @@
                   class="form-input font-mono text-xs"
                   placeholder="Enter value..."
                   bind:value={env.value}
-                  style="border-color: {!env.value && env.key ? '#f59e0b' : 'var(--color-border)'};"
                 />
                 <button
                   type="button"
                   class="btn btn-secondary"
                   style="padding: 4px 8px; min-height: 28px; font-size: 0.7rem;"
-                  title="Generate random 32-char secret"
+                  title="Generate secret"
                   onclick={() => env.value = generateRandomSecret(32)}
                 >
                   <Wand2 size={12} />
