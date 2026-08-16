@@ -238,16 +238,16 @@ docker network create platform-control >/dev/null 2>&1 || true
 
 echo -e "==> Pre-pulling standard runtime & database images for instant service boots..."
 PREPULL_IMAGES=(
-    "postgres:16-alpine"
-    "mysql:8.0"
-    "redis:7.2-alpine"
-    "mongo:7.0"
-    "clickhouse/clickhouse-server:24.3-alpine"
+    "postgres:17-alpine"
+    "mysql:8.4"
+    "redis:7.4-alpine"
+    "mongo:8.0"
+    "clickhouse/clickhouse-server:24.8-alpine"
     "nginx:alpine"
     "node:22-alpine"
     "python:3.12-slim"
     "golang:1.23-alpine"
-    "rust:1.82-alpine"
+    "rust:1.84-alpine"
     "eclipse-temurin:21-jdk-alpine"
 )
 

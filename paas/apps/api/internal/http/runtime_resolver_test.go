@@ -64,15 +64,15 @@ func TestDatabaseVersionResolver(t *testing.T) {
 		expectedTag string
 		expectedVer string
 	}{
-		{"postgres", "", "postgres:16-alpine", "16"},
+		{"postgres", "", "postgres:17-alpine", "17"},
 		{"postgres", "15", "postgres:15-alpine", "15"},
-		{"mysql", "", "mysql:8.0", "8.0"},
-		{"mysql", "8.4", "mysql:8.4", "8.4"},
-		{"redis", "", "redis:7.2-alpine", "7.2"},
-		{"redis", "7.4", "redis:7.4-alpine", "7.4"},
-		{"mongodb", "", "mongo:7.0", "7.0"},
+		{"mysql", "", "mysql:8.4", "8.4"},
+		{"mysql", "8.0", "mysql:8.0", "8.0"},
+		{"redis", "", "redis:7.4-alpine", "7.4"},
+		{"redis", "7.2", "redis:7.2-alpine", "7.2"},
+		{"mongodb", "", "mongo:8.0", "8.0"},
 		{"mongodb", "6.0", "mongo:6.0", "6.0"},
-		{"clickhouse", "", "clickhouse/clickhouse-server:24.3-alpine", "24.3"},
+		{"clickhouse", "", "clickhouse/clickhouse-server:24.8-alpine", "24.8"},
 	}
 
 	for _, tt := range tests {

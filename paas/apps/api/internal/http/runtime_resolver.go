@@ -29,33 +29,36 @@ var runtimeDefaults = map[string]struct {
 	version    string
 	tagSuffix  string // "-alpine", "-slim", etc.
 }{
-	"node":    {"node", "22", "-alpine"},
-	"nodejs":  {"node", "22", "-alpine"},
-	"python":  {"python", "3.12", "-slim"},
-	"go":      {"golang", "1.23", "-alpine"},
-	"golang":  {"golang", "1.23", "-alpine"},
-	"rust":    {"rust", "1.82", "-alpine"},
-	"java":    {"eclipse-temurin", "21", "-jdk-alpine"},
-	"php":     {"php", "8.3", "-apache"},
-	"ruby":    {"ruby", "3.3", "-alpine"},
-	"elixir":  {"elixir", "1.17", "-alpine"},
-	"phoenix": {"elixir", "1.17", "-alpine"},
-	"deno":    {"denoland/deno", "latest", ""},
-	"bun":     {"oven/bun", "latest", ""},
-	"dotnet":  {"mcr.microsoft.com/dotnet/sdk", "8.0", "-alpine"},
-	"csharp":  {"mcr.microsoft.com/dotnet/sdk", "8.0", "-alpine"},
-	"aspnet":  {"mcr.microsoft.com/dotnet/sdk", "8.0", "-alpine"},
-	"scala":   {"eclipse-temurin", "21", "-jdk-alpine"},
-	"sbt":     {"eclipse-temurin", "21", "-jdk-alpine"},
-	"kotlin":  {"eclipse-temurin", "21", "-jdk-alpine"},
-	"ktor":    {"eclipse-temurin", "21", "-jdk-alpine"},
-	"swift":   {"swift", "5.10", "-jammy"},
-	"vapor":   {"swift", "5.10", "-jammy"},
-	"haskell": {"haskell", "9.8", "-slim"},
-	"clojure": {"clojure", "temurin-21-lein", "-alpine"},
-	"crystal": {"crystallang/crystal", "latest", ""},
-	"zig":     {"alpine", "3.21", ""},
-	"dart":    {"dart", "stable", ""},
+	"node":       {"node", "22", "-alpine"},
+	"nodejs":     {"node", "22", "-alpine"},
+	"static":     {"node", "22", "-alpine"},
+	"static-spa": {"node", "22", "-alpine"},
+	"nginx":      {"nginx", "alpine", ""},
+	"python":     {"python", "3.12", "-slim"},
+	"go":         {"golang", "1.23", "-alpine"},
+	"golang":     {"golang", "1.23", "-alpine"},
+	"rust":       {"rust", "1.84", "-alpine"},
+	"java":       {"eclipse-temurin", "21", "-jdk-alpine"},
+	"php":        {"php", "8.3", "-apache"},
+	"ruby":       {"ruby", "3.3", "-alpine"},
+	"elixir":     {"elixir", "1.18", "-alpine"},
+	"phoenix":    {"elixir", "1.18", "-alpine"},
+	"deno":       {"denoland/deno", "latest", ""},
+	"bun":        {"oven/bun", "latest", ""},
+	"dotnet":     {"mcr.microsoft.com/dotnet/sdk", "9.0", "-alpine"},
+	"csharp":     {"mcr.microsoft.com/dotnet/sdk", "9.0", "-alpine"},
+	"aspnet":     {"mcr.microsoft.com/dotnet/sdk", "9.0", "-alpine"},
+	"scala":      {"eclipse-temurin", "21", "-jdk-alpine"},
+	"sbt":        {"eclipse-temurin", "21", "-jdk-alpine"},
+	"kotlin":     {"eclipse-temurin", "21", "-jdk-alpine"},
+	"ktor":       {"eclipse-temurin", "21", "-jdk-alpine"},
+	"swift":      {"swift", "6.0", "-jammy"},
+	"vapor":      {"swift", "6.0", "-jammy"},
+	"haskell":    {"haskell", "9.10", "-slim"},
+	"clojure":    {"clojure", "temurin-21-lein", "-alpine"},
+	"crystal":    {"crystallang/crystal", "latest", ""},
+	"zig":        {"alpine", "3.21", ""},
+	"dart":       {"dart", "stable", ""},
 }
 
 // resolveRuntimeVersion determines the Docker image tag for a given preset.
@@ -501,7 +504,7 @@ func getDotnetBaseImage(version string, stage string) string {
 	return fmt.Sprintf("mcr.microsoft.com/dotnet/sdk:%s-alpine", version)
 }
 
-// ─── Database Version Resolver ───────────────────────────────────────────────
+// --- Database Version Resolver -----------------------------------------------
 
 // resolveDatabaseVersion returns the full Docker image and resolved version
 // for supported database engines, honoring user version selection or falling back to stable defaults.
@@ -512,31 +515,31 @@ func resolveDatabaseVersion(engine, requestedVersion string) (imageTag string, r
 	switch engine {
 	case "postgres", "postgresql":
 		if cleanVer == "" {
-			cleanVer = "16"
+			cleanVer = "17"
 		}
 		return fmt.Sprintf("postgres:%s-alpine", cleanVer), cleanVer
 
 	case "mysql":
 		if cleanVer == "" {
-			cleanVer = "8.0"
+			cleanVer = "8.4"
 		}
 		return fmt.Sprintf("mysql:%s", cleanVer), cleanVer
 
 	case "redis":
 		if cleanVer == "" {
-			cleanVer = "7.2"
+			cleanVer = "7.4"
 		}
 		return fmt.Sprintf("redis:%s-alpine", cleanVer), cleanVer
 
 	case "mongodb", "mongo":
 		if cleanVer == "" {
-			cleanVer = "7.0"
+			cleanVer = "8.0"
 		}
 		return fmt.Sprintf("mongo:%s", cleanVer), cleanVer
 
 	case "clickhouse":
 		if cleanVer == "" {
-			cleanVer = "24.3"
+			cleanVer = "24.8"
 		}
 		return fmt.Sprintf("clickhouse/clickhouse-server:%s-alpine", cleanVer), cleanVer
 
