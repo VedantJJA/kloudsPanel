@@ -428,8 +428,12 @@
         return;
       }
 
-      loadDomains();
-      loadRoutes();
+      if (tab === 'domains' || tab === 'overview') {
+        loadDomains();
+      }
+      if (tab === 'routes' || tab === 'overview') {
+        loadRoutes();
+      }
       
       // Parse existing env vars and service settings if present in resource_json
       try {
@@ -473,15 +477,40 @@
     }
   }
 
+  function scheduleServicePoll() {
+    if (pollTimer) clearTimeout(pollTimer);
+
+    if (typeof document !== 'undefined' && document.hidden) {
+      pollTimer = setTimeout(scheduleServicePoll, 15000);
+      return;
+    }
+
+    loadService().then(() => {
+      const status = service?.runtime_status || '';
+      const isTransitional = status === 'deploying' || status === 'building' || status === 'starting' || status === 'stopping';
+      const delay = isTransitional ? 3000 : 15000;
+      pollTimer = setTimeout(scheduleServicePoll, delay);
+    });
+  }
+
+  function handleTabVisibility() {
+    if (typeof document !== 'undefined' && !document.hidden) {
+      scheduleServicePoll();
+    }
+  }
+
   onMount(() => {
-    loadService();
-    pollTimer = setInterval(() => {
-      loadService();
-    }, 2500);
+    scheduleServicePoll();
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleTabVisibility);
+    }
   });
 
   onDestroy(() => {
-    if (pollTimer) clearInterval(pollTimer);
+    if (pollTimer) clearTimeout(pollTimer);
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', handleTabVisibility);
+    }
   });
 
   async function triggerDeploy() {

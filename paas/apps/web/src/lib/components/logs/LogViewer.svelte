@@ -1,13 +1,16 @@
 <script lang="ts">
-  import { tick } from 'svelte';
+  import { tick, onDestroy } from 'svelte';
 
   let { serviceId, deploymentId }: { serviceId: string; deploymentId?: string } = $props();
 
   let logs = $state<Array<{stream?: string, message?: string, emitted_at?: string, timestamp?: string}>>([]);
   let loading = $state(true);
-  let pollInterval: any = null;
+  let isPolling = $state(true);
+  let pollTimeout: any = null;
   let viewerEl = $state<HTMLDivElement | null>(null);
   let autoScroll = $state(true);
+  let unchangedCount = 0;
+  let lastLogCount = 0;
 
   function handleScroll() {
     if (!viewerEl) return;
@@ -23,17 +26,42 @@
     }
   }
 
-  async function fetchLogs(isInitial = false) {
+  function isTerminalLog(entries: Array<{message?: string}>): boolean {
+    if (!entries || entries.length === 0) return false;
+    const lastFew = entries.slice(-6);
+    for (const e of lastFew) {
+      const msg = (e.message || '').toLowerCase();
+      if (
+        msg.includes('deployment completed') ||
+        msg.includes('deployment succeeded') ||
+        msg.includes('deployment failed') ||
+        msg.includes('build failed') ||
+        msg.includes('container is healthy') ||
+        msg.includes('service started successfully') ||
+        msg.includes('exit status 1') ||
+        msg.includes('returned a non-zero code')
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  async function fetchLogs(isInitial = false): Promise<boolean> {
     if (isInitial && logs.length === 0) loading = true;
+    let isFinished = false;
     try {
       let fetched = false;
       if (deploymentId) {
         const depRes = await fetch(`/api/v1/deployments/${deploymentId}/logs`, { credentials: 'include' });
         if (depRes.ok) {
           const data = await depRes.json();
-          if (data.entries && data.entries.length > 0) {
+          if (data.entries && Array.isArray(data.entries)) {
             logs = data.entries;
             fetched = true;
+            if (isTerminalLog(data.entries)) {
+              isFinished = true;
+            }
           }
         }
       }
@@ -42,13 +70,52 @@
         if (svcRes.ok) {
           const data = await svcRes.json();
           logs = data.entries ?? [];
+          if (isTerminalLog(logs)) {
+            isFinished = true;
+          }
         }
       }
+
+      if (logs.length === lastLogCount) {
+        unchangedCount++;
+      } else {
+        unchangedCount = 0;
+        lastLogCount = logs.length;
+      }
+
       scrollToBottom();
     } catch (e) {
       console.error(e);
     } finally {
       if (isInitial) loading = false;
+    }
+    return isFinished;
+  }
+
+  async function scheduleNextPoll() {
+    if (pollTimeout) clearTimeout(pollTimeout);
+    if (!isPolling) return;
+
+    if (typeof document !== 'undefined' && document.hidden) {
+      // Inactive tab: poll every 12 seconds
+      pollTimeout = setTimeout(scheduleNextPoll, 12000);
+      return;
+    }
+
+    const finished = await fetchLogs(false);
+    if (finished || unchangedCount > 8) {
+      // Deployment has concluded or output has stabilized
+      isPolling = false;
+      return;
+    }
+
+    const delay = unchangedCount > 3 ? 5000 : 2500;
+    pollTimeout = setTimeout(scheduleNextPoll, delay);
+  }
+
+  function handleVisibilityChange() {
+    if (typeof document !== 'undefined' && !document.hidden && isPolling) {
+      scheduleNextPoll();
     }
   }
 
@@ -61,14 +128,31 @@
   }
 
   $effect(() => {
-    fetchLogs(true);
-    pollInterval = setInterval(() => {
-      fetchLogs(false);
-    }, 2000);
+    isPolling = true;
+    unchangedCount = 0;
+    lastLogCount = 0;
+    fetchLogs(true).then((finished) => {
+      if (!finished) {
+        pollTimeout = setTimeout(scheduleNextPoll, 2500);
+      } else {
+        isPolling = false;
+      }
+    });
+
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
 
     return () => {
-      if (pollInterval) clearInterval(pollInterval);
+      if (pollTimeout) clearTimeout(pollTimeout);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }
     };
+  });
+
+  onDestroy(() => {
+    if (pollTimeout) clearTimeout(pollTimeout);
   });
 </script>
 

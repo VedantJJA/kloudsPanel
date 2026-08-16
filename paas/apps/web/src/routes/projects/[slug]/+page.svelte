@@ -49,13 +49,42 @@
     }
   }
 
-  let pollInterval: any = null;
+  let pollTimer: any = null;
+
+  function scheduleProjectPoll() {
+    if (pollTimer) clearTimeout(pollTimer);
+
+    if (typeof document !== 'undefined' && document.hidden) {
+      pollTimer = setTimeout(scheduleProjectPoll, 20000);
+      return;
+    }
+
+    loadProjectData().then(() => {
+      const hasActiveDeployments = (services || []).some((s: any) => {
+        const st = s.runtime_status || s.RuntimeStatus || '';
+        return st === 'deploying' || st === 'building' || st === 'starting';
+      });
+      const delay = hasActiveDeployments ? 4000 : 20000;
+      pollTimer = setTimeout(scheduleProjectPoll, delay);
+    });
+  }
+
+  function handleProjectVisibility() {
+    if (typeof document !== 'undefined' && !document.hidden) {
+      scheduleProjectPoll();
+    }
+  }
 
   onMount(() => {
-    loadProjectData();
-    pollInterval = setInterval(loadProjectData, 4000);
+    scheduleProjectPoll();
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleProjectVisibility);
+    }
     return () => {
-      if (pollInterval) clearInterval(pollInterval);
+      if (pollTimer) clearTimeout(pollTimer);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleProjectVisibility);
+      }
     };
   });
 
