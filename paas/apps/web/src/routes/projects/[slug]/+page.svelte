@@ -322,7 +322,7 @@
   <!-- Databases Section -->
   <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.75rem;">
     <h2 style="font-size:1rem; font-weight:600; color:var(--color-ink); margin:0;">Databases ({databases.length})</h2>
-    <a href="/databases/new" class="btn btn-secondary" style="padding:4px 10px; font-size:0.75rem; min-height:30px;">
+    <a href="/databases/new?projectId={project?.id || project?.ID || slug}&workspaceSlug={project?.workspace_slug || ''}" class="btn btn-secondary" style="padding:4px 10px; font-size:0.75rem; min-height:30px;">
       <Plus size={13} /> New Database
     </a>
   </div>
@@ -332,7 +332,7 @@
       <div class="empty-state-icon"><Database size={36} /></div>
       <h3>No databases attached</h3>
       <p>Provision managed PostgreSQL, MySQL, Redis, MongoDB, or ClickHouse instances.</p>
-      <a href="/databases/new" class="btn btn-secondary" style="margin-top:0.75rem; font-size:0.75rem;">
+      <a href="/databases/new?projectId={project?.id || project?.ID || slug}&workspaceSlug={project?.workspace_slug || ''}" class="btn btn-secondary" style="margin-top:0.75rem; font-size:0.75rem;">
         <Database size={14} /> Provision Database
       </a>
     </div>

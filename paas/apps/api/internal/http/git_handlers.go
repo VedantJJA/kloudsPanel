@@ -272,8 +272,16 @@ func (h *Handler) handleGitOAuthAuthorize(c fiber.Ctx) error {
 	clientID, _ := getProviderOAuthCredentials(provider)
 
 	if clientID == "" {
+		returnTo := c.Query("return_to")
+		if returnTo != "" {
+			sep := "?"
+			if strings.Contains(returnTo, "?") {
+				sep = "&"
+			}
+			return c.Redirect().To(fmt.Sprintf("%s%serror=oauth_not_configured&provider=%s", returnTo, sep, provider))
+		}
 		return c.Status(400).JSON(fiber.Map{
-			"error": fmt.Sprintf("%s OAuth is not configured on this server. The administrator must set the %s Client ID and Client Secret in Administration > Git Providers.", strings.ToUpper(provider), strings.ToUpper(provider)),
+			"error": fmt.Sprintf("%s OAuth is not configured on this server. The administrator must set the %s Client ID and Client Secret in Settings.", strings.ToUpper(provider), strings.ToUpper(provider)),
 		})
 	}
 

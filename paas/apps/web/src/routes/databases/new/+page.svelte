@@ -105,12 +105,41 @@
 
   onMount(async () => {
     try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const queryWs = urlParams.get('workspaceSlug') || urlParams.get('workspaceId');
+      const queryProj = urlParams.get('projectId');
+
       const res = await fetch('/api/v1/workspaces', { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
         workspaces = data.workspaces ?? [];
-        if (workspaces.length === 1) {
+        if (queryWs) {
+          const matchedWs = workspaces.find((w: any) => (w.slug || w.Slug) === queryWs || (w.id || w.ID) === queryWs);
+          if (matchedWs) {
+            selectedWorkspace = matchedWs.id || matchedWs.ID;
+          }
+        } else if (workspaces.length === 1) {
           selectedWorkspace = workspaces[0].id || workspaces[0].ID;
+        }
+
+        if (queryProj) {
+          if (selectedWorkspace) {
+            await fetchProjects(selectedWorkspace);
+            const matchedProj = projects.find((p: any) => (p.slug || p.Slug) === queryProj || (p.id || p.ID) === queryProj);
+            if (matchedProj) {
+              projectId = matchedProj.id || matchedProj.ID;
+            } else {
+              projectId = queryProj;
+            }
+          } else {
+            const projRes = await fetch(`/api/v1/projects/${encodeURIComponent(queryProj)}`, { credentials: 'include' });
+            if (projRes.ok) {
+              const projData = await projRes.json();
+              selectedWorkspace = projData.workspace_id || projData.WorkspaceID;
+              await fetchProjects(selectedWorkspace);
+              projectId = projData.id || projData.ID;
+            }
+          }
         }
       }
     } catch (e) {
@@ -119,11 +148,8 @@
   });
 
   $effect(() => {
-    if (selectedWorkspace) {
+    if (selectedWorkspace && !projectId) {
       fetchProjects(selectedWorkspace);
-    } else {
-      projects = [];
-      projectId = '';
     }
   });
 
@@ -133,7 +159,9 @@
       if (res.ok) {
         const data = await res.json();
         projects = data.projects ?? [];
-        if (projects.length === 1) projectId = projects[0].id || projects[0].ID;
+        if (projects.length === 1 && !projectId) {
+          projectId = projects[0].id || projects[0].ID;
+        }
       }
     } catch (e) {
       console.error(e);

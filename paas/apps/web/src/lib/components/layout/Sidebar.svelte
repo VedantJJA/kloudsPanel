@@ -259,10 +259,9 @@
 
   const projectTabs = $derived([
     { label: 'Services & Overview', href: `/projects/${currentProjectSlug}`, icon: LayoutDashboard },
-    { label: 'New Web / Static Service', href: `/projects/${currentProjectSlug}/services/new`, icon: Rocket },
-    { section: 'Resources', label: '', href: '', icon: null },
-    { label: 'Databases', href: `/workspaces/${targetWsSlug}/databases?projectId=${currentProject?.id || currentProject?.ID || currentProjectSlug}`, icon: Database },
-    { label: 'Workspace Home', href: `/workspaces/${targetWsSlug}`, icon: Home },
+    { label: 'Databases', href: `/projects/${currentProjectSlug}/databases`, icon: Database },
+    { label: 'Environment Groups', href: `/projects/${currentProjectSlug}/variables`, icon: Key },
+    { label: 'Settings', href: `/projects/${currentProjectSlug}/settings`, icon: Settings },
   ]);
 
   const workspaceTabs = $derived([
@@ -612,7 +611,7 @@
           <a
             href={item.href}
             class="nav-item"
-            class:active={pathname === item.href || (item.href.endsWith('/services/new') && pathname.includes('/services/new'))}
+            class:active={pathname === item.href || (item.href !== `/projects/${currentProjectSlug}` && pathname.startsWith(item.href)) || (item.href === `/projects/${currentProjectSlug}` && pathname.includes('/services/new'))}
             aria-current={pathname === item.href ? 'page' : undefined}
             title={item.label}
             onclick={closeMobileNav}
