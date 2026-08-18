@@ -155,6 +155,7 @@ func NewServer(log *slog.Logger, store repository.Store, addr string) *fiber.App
 	admin.Patch("/settings", h.handleUpdatePlatformSettings)
 	admin.Post("/setup", h.handleAdminSetup)
 	admin.Post("/maintenance/prune-storage", h.handlePruneStorage)
+	admin.Post("/maintenance/optimize-containers", h.handleOptimizeContainers)
 
 	return app
 }

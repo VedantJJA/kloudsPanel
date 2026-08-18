@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { Eye, EyeOff, Loader2 } from 'lucide-svelte';
+  import Logo from '$lib/components/Logo.svelte';
 
   let email = $state('');
   let password = $state('');
@@ -55,13 +56,10 @@
   ">
     <!-- Logo -->
     <div style="text-align:center;margin-bottom:1.75rem">
-      <div style="
-        width:40px;height:40px;background:#ffffff;
-        border-radius:var(--radius-sm);display:inline-flex;
-        align-items:center;justify-content:center;
-        font-size:1.25rem;font-weight:800;color:#090a0f;margin-bottom:0.75rem
-      ">K</div>
-      <h1 style="font-size:1.25rem;font-weight:700;color:var(--color-ink);margin:0">kloudsPanel</h1>
+      <div style="display:inline-flex; justify-content:center; margin-bottom:0.75rem;">
+        <Logo size={42} />
+      </div>
+      <h1 style="font-size:1.25rem;font-weight:600;color:var(--color-ink);margin:0">kloudsPanel</h1>
       <p style="font-size:0.8125rem;color:var(--color-ink-muted);margin-top:0.25rem">Sign in to your PaaS deployment console</p>
     </div>
 

@@ -303,3 +303,66 @@ func (h *Handler) handlePruneStorage(c fiber.Ctx) error {
 		"message":             fmt.Sprintf("Storage reclamation complete. Reclaimed %s of build cache, dangling layers, and logs.", reclaimedFormatted),
 	})
 }
+
+func (h *Handler) handleOptimizeContainers(c fiber.Ctx) error {
+	// 1. Gather all active services and databases registered in the database
+	services, err := h.store.Services().ListAll(c.Context())
+	if err != nil {
+		services = []*domain.Service{}
+	}
+	databases, err := h.store.Databases().ListAll(c.Context())
+	if err != nil {
+		databases = []*domain.Database{}
+	}
+
+	knownContainers := make(map[string]bool)
+	for _, s := range services {
+		knownContainers[fmt.Sprintf("paas-svc-%s", s.Slug)] = true
+	}
+	for _, db := range databases {
+		if db.InternalHostname != "" {
+			knownContainers[db.InternalHostname] = true
+		}
+		dbSlug := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(db.Name), "_", "-"))
+		knownContainers[fmt.Sprintf("paas-db-%s", dbSlug)] = true
+		knownContainers[fmt.Sprintf("paas-db-%s", strings.ToLower(db.Name))] = true
+	}
+
+	// 2. Query Docker for all existing container names on the host
+	out, err := exec.Command("docker", "ps", "-a", "--format", "{{.Names}}").Output()
+	var removedContainers []string
+	if err == nil {
+		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+		for _, line := range lines {
+			name := strings.TrimSpace(line)
+			if name == "" {
+				continue
+			}
+			// Identify unmanaged paas service or database containers
+			if strings.HasPrefix(name, "paas-svc-") || strings.HasPrefix(name, "paas-db-") || strings.HasPrefix(name, "paas-build-") {
+				if !knownContainers[name] {
+					// Orphan detected: terminate and purge
+					_ = exec.Command("docker", "rm", "-f", name).Run()
+					removedContainers = append(removedContainers, name)
+
+					// If service container, remove orphaned Traefik dynamic routing
+					if strings.HasPrefix(name, "paas-svc-") {
+						slug := strings.TrimPrefix(name, "paas-svc-")
+						removeTraefikDynamicConfig(slug)
+					}
+				}
+			}
+		}
+	}
+
+	// 3. Prune dangling layers and stopped containers
+	_ = exec.Command("docker", "container", "prune", "-f").Run()
+	_ = exec.Command("docker", "image", "prune", "-f").Run()
+
+	return c.JSON(fiber.Map{
+		"success":            true,
+		"removed_containers": removedContainers,
+		"count":              len(removedContainers),
+		"message":            fmt.Sprintf("Optimizer scan complete. Removed %d orphan container(s) and synced routing state.", len(removedContainers)),
+	})
+}

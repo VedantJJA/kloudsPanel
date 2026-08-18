@@ -103,6 +103,34 @@
   let error = $state('');
 
   let autoApproveSaving = $state(false);
+  let optimizingContainers = $state(false);
+  let optimizeResult = $state<any>(null);
+
+  async function handleOptimizeContainers() {
+    if (!confirm('Scan Docker daemon for unmanaged or orphaned containers and purge them? Only unmanaged containers not found in your database will be terminated.')) {
+      return;
+    }
+    optimizingContainers = true;
+    optimizeResult = null;
+    try {
+      const res = await fetch('/api/v1/admin/maintenance/optimize-containers', {
+        method: 'POST',
+        credentials: 'include'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        optimizeResult = data;
+        setTimeout(() => { optimizeResult = null; }, 10000);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Failed to optimize containers');
+      }
+    } catch (e: any) {
+      alert('Error during container optimization: ' + e.message);
+    } finally {
+      optimizingContainers = false;
+    }
+  }
 
   async function handleReclaimStorage() {
     if (!confirm('Are you sure you want to reclaim storage? This will prune BuildKit build caches, dangling Docker layers, ephemeral build containers, and old system logs. Running containers and database volumes are fully preserved.')) {
@@ -602,6 +630,56 @@
               <Loader2 size={16} class="animate-spin" /> Reclaiming Storage...
             {:else}
               <Sparkles size={16} style="color:var(--color-accent);" /> Reclaim Storage Now
+            {/if}
+          </button>
+        </div>
+      </div>
+
+      <!-- Container & Resource Optimizer Card -->
+      <div class="card" style="background: var(--color-surface); border: 1px solid var(--color-border); padding: 1.5rem;">
+        {#if optimizeResult}
+          <div style="background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); border-radius: var(--radius-md); padding: 0.875rem 1.25rem; margin-bottom: 1.25rem;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: optimizeResult.removed_containers?.length ? '0.5rem' : '0';">
+              <div style="display: flex; align-items: center; gap: 8px; color: #16a34a; font-weight: 600; font-size: 0.875rem;">
+                <Check size={18} />
+                {optimizeResult.message}
+              </div>
+              <button class="btn btn-secondary" style="padding: 2px 8px; font-size: 0.75rem; min-height: 24px;" onclick={() => optimizeResult = null}>Dismiss</button>
+            </div>
+            {#if optimizeResult.removed_containers && optimizeResult.removed_containers.length > 0}
+              <div style="font-size: 0.75rem; color: var(--color-ink-muted); margin-top: 4px;">
+                Purged containers: <span class="font-mono text-xs" style="color: var(--color-ink);">{optimizeResult.removed_containers.join(', ')}</span>
+              </div>
+            {/if}
+          </div>
+        {/if}
+
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+          <div style="display:flex; align-items:flex-start; gap:1rem; max-width:580px;">
+            <div style="width:44px; height:44px; border-radius:var(--radius-md); background:rgba(56,189,248,0.1); color:#38bdf8; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+              <Zap size={22} />
+            </div>
+            <div>
+              <div style="font-weight:700; font-size:1.05rem; color:var(--color-ink); display:flex; align-items:center; gap:8px;">
+                Container & Resource Optimizer
+              </div>
+              <p class="text-xs text-muted" style="margin:4px 0 0 0; line-height:1.5;">
+                Scan host Docker daemon for unmanaged or orphaned containers, ghost processes from deleted workspaces, and stale Traefik routing rules. Automatically purges unindexed containers and synchronizes reverse proxy routes.
+              </p>
+            </div>
+          </div>
+
+          <button 
+            type="button" 
+            class="btn btn-secondary" 
+            onclick={handleOptimizeContainers}
+            disabled={optimizingContainers}
+            style="padding:10px 22px; font-weight:700; font-size:0.875rem; display:flex; align-items:center; gap:6px;"
+          >
+            {#if optimizingContainers}
+              <Loader2 size={16} class="animate-spin" /> Scanning & Purging...
+            {:else}
+              <Zap size={16} style="color:#38bdf8;" /> Scan & Remove Orphan Containers
             {/if}
           </button>
         </div>

@@ -97,7 +97,46 @@ func (h *Handler) handleDeleteWorkspace(c fiber.Ctx) error {
 	if id == "" || id == "undefined" {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid workspace id"})
 	}
-	if err := h.store.Workspaces().Delete(c.Context(), id); err != nil {
+
+	ws, err := h.store.Workspaces().GetByID(c.Context(), id)
+	if err != nil || ws == nil {
+		ws, _ = h.store.Workspaces().GetBySlug(c.Context(), id)
+	}
+	actualID := id
+	if ws != nil {
+		actualID = ws.ID
+	}
+
+	// 1. Recursively find and delete all projects in this workspace
+	projects, _ := h.store.Projects().ListForWorkspace(c.Context(), actualID, 1000, 0)
+	for _, p := range projects {
+		// Clean up all services in this project
+		svcs, _ := h.store.Services().ListForProject(c.Context(), p.ID)
+		for _, s := range svcs {
+			cleanupServiceResources(s.Slug)
+			_ = h.store.Services().Delete(c.Context(), s.ID)
+		}
+		// Clean up all databases in this project
+		dbs, _ := h.store.Databases().ListForProject(c.Context(), p.ID)
+		for _, db := range dbs {
+			cleanupDatabaseResources(db.Name, db.InternalHostname)
+			_ = h.store.Databases().Delete(c.Context(), db.ID)
+		}
+		// Delete project record
+		_ = h.store.Projects().Delete(c.Context(), p.ID)
+	}
+
+	// 2. Clean up any databases linked directly to this workspace ID
+	allDbs, _ := h.store.Databases().ListAll(c.Context())
+	for _, db := range allDbs {
+		if db.ProjectID == actualID {
+			cleanupDatabaseResources(db.Name, db.InternalHostname)
+			_ = h.store.Databases().Delete(c.Context(), db.ID)
+		}
+	}
+
+	// 3. Delete the workspace record
+	if err := h.store.Workspaces().Delete(c.Context(), actualID); err != nil {
 		return err
 	}
 	return c.SendStatus(204)

@@ -3,6 +3,7 @@
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
   import { Settings, Save, Trash2, Loader2, AlertTriangle, Zap, ShieldAlert, Sliders } from 'lucide-svelte';
+  import DeleteConfirmationModal from '$lib/components/modals/DeleteConfirmationModal.svelte';
 
   const { slug } = $derived($page.params);
   let workspace = $state<any>(null);
@@ -12,6 +13,9 @@
   let saved = $state(false);
   let error = $state('');
   let deleting = $state(false);
+  let showDeleteModal = $state(false);
+  let wsProjectsCount = $state(0);
+  let wsDatabasesCount = $state(0);
 
   type WorkspaceSettingsTab = 'general' | 'danger';
   let activeTab = $state<WorkspaceSettingsTab>('general');
@@ -22,6 +26,21 @@
       if (res.ok) {
         workspace = await res.json();
         name = workspace.name || workspace.Name || '';
+        const wsId = workspace.id || workspace.ID;
+        if (wsId) {
+          const [projRes, dbRes] = await Promise.all([
+            fetch(`/api/v1/projects?workspaceId=${wsId}`, { credentials: 'include' }),
+            fetch(`/api/v1/databases?workspaceSlug=${encodeURIComponent(slug || '')}`, { credentials: 'include' })
+          ]);
+          if (projRes.ok) {
+            const pd = await projRes.json();
+            wsProjectsCount = (pd.projects ?? []).length;
+          }
+          if (dbRes.ok) {
+            const dd = await dbRes.json();
+            wsDatabasesCount = (dd.databases ?? []).length;
+          }
+        }
       } else {
         goto('/workspaces');
       }
@@ -60,10 +79,12 @@
     }
   }
 
-  async function handleDelete() {
-    const wsId = workspace?.id || workspace?.ID;
-    if (!confirm(`Are you sure you want to permanently delete workspace "${workspace?.name || slug}"? All projects, services, and databases within this workspace will be deleted.`)) return;
+  function promptDelete() {
+    showDeleteModal = true;
+  }
 
+  async function executeDeleteWorkspace() {
+    const wsId = workspace?.id || workspace?.ID || slug;
     deleting = true;
     try {
       const res = await fetch(`/api/v1/workspaces/${encodeURIComponent(wsId)}`, {
@@ -71,10 +92,14 @@
         credentials: 'include'
       });
       if (res.ok) {
+        showDeleteModal = false;
         goto('/workspaces');
       } else {
-        alert('Failed to delete workspace');
+        const d = await res.json().catch(() => ({}));
+        alert('Failed to delete workspace: ' + (d.detail || d.message || res.statusText));
       }
+    } catch (e: any) {
+      alert('Network error: ' + e.message);
     } finally {
       deleting = false;
     }
@@ -172,7 +197,7 @@
         <button
           type="button"
           class="btn btn-danger"
-          onclick={handleDelete}
+          onclick={promptDelete}
           disabled={deleting}
         >
           {#if deleting}<Loader2 size={14} class="animate-spin" /> Deleting...{:else}<Trash2 size={14} /> Delete Workspace{/if}
@@ -181,3 +206,15 @@
     {/if}
   </div>
 {/if}
+
+<DeleteConfirmationModal
+  show={showDeleteModal}
+  title={`Delete Workspace "${workspace?.name || slug}"`}
+  entityName={workspace?.slug || slug || workspace?.name || 'workspace'}
+  entityType="workspace"
+  projectsCount={wsProjectsCount}
+  databasesCount={wsDatabasesCount}
+  loading={deleting}
+  onConfirm={executeDeleteWorkspace}
+  onCancel={() => showDeleteModal = false}
+/>

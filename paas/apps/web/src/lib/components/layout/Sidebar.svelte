@@ -39,6 +39,7 @@
   } from 'lucide-svelte';
   import { isMobileNavOpen, closeMobileNav } from '$lib/stores/ui';
   import { theme } from '$lib/stores/theme';
+  import Logo from '$lib/components/Logo.svelte';
   import {
     workspaces,
     activeWorkspace,
@@ -314,15 +315,12 @@
           transition: background 0.15s ease, border-color 0.15s ease;
         "
       >
-        <div 
-          class="sidebar-logo-mark" 
-          style="width:26px; height:26px; font-size:0.75rem; border-radius:var(--radius-sm); flex-shrink:0; background:var(--color-accent); color:#ffffff; display:flex; align-items:center; justify-content:center; font-weight:700;"
-        >
-          {($activeWorkspace?.name || $activeWorkspace?.Name || 'K').charAt(0).toUpperCase()}
+        <div style="flex-shrink: 0; display: flex; align-items: center;">
+          <Logo size={20} />
         </div>
         {#if !isCollapsed}
           <div style="min-width: 0; flex: 1; overflow: hidden;">
-            <div style="font-weight: 700; font-size: 0.8125rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-ink);">
+            <div style="font-weight: 600; font-size: 0.8125rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-ink);">
               {$activeWorkspace?.name || $activeWorkspace?.Name || 'Personal Workspace'}
             </div>
             <div class="text-xs" style="color: var(--color-ink-muted); font-size: 0.68rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
@@ -353,16 +351,8 @@
             flex-direction: column;
           "
         >
-          <div style="padding: 8px 12px; font-size: 0.6875rem; text-transform: uppercase; font-weight: 700; color: var(--color-ink-muted); letter-spacing: 0.05em; border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center;">
+          <div style="padding: 8px 12px; font-size: 0.6875rem; text-transform: uppercase; font-weight: 600; color: var(--color-ink-muted); letter-spacing: 0.05em; border-bottom: 1px solid var(--color-border);">
             <span>Switch Workspace</span>
-            <button 
-              type="button" 
-              class="btn btn-secondary" 
-              style="padding: 2px 6px; font-size: 0.68rem; min-height: 20px; height: 20px;"
-              onclick={() => { isWorkspaceDropdownOpen = false; showNewWorkspaceModal = true; }}
-            >
-              <Plus size={11} /> New
-            </button>
           </div>
 
           <div style="max-height: 220px; overflow-y: auto; padding: 4px;">

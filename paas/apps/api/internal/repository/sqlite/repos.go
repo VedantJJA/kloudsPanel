@@ -84,6 +84,25 @@ func (r *projectRepo) ListForWorkspace(ctx context.Context, workspaceID string, 
 	return out, rows.Err()
 }
 
+func (r *projectRepo) ListAll(ctx context.Context) ([]*domain.Project, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id,workspace_id,name,slug,description,status,default_branch,root_directory,created_by,created_at,updated_at
+		FROM projects ORDER BY created_at ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*domain.Project
+	for rows.Next() {
+		p, err := scanProjectRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
 func (r *projectRepo) Update(ctx context.Context, p *domain.Project) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	_, err := r.db.ExecContext(ctx, `
@@ -179,6 +198,31 @@ func (r *serviceRepo) ListForProject(ctx context.Context, projectID string) ([]*
 		       internal_port,healthcheck_path,auto_deploy,resource_json,created_by,created_at,updated_at
 		FROM services WHERE (project_id=? OR project_id IN (SELECT id FROM projects WHERE slug=?)) AND runtime_status != 'deleting'
 		ORDER BY created_at ASC`, projectID, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*domain.Service
+	for rows.Next() {
+		s := &domain.Service{}
+		var createdAt, updatedAt string
+		if err := rows.Scan(&s.ID, &s.ProjectID, &s.Name, &s.Slug, &s.Kind, &s.DesiredState, &s.RuntimeStatus,
+			&s.InternalPort, &s.HealthcheckPath, &s.AutoDeploy, &s.ResourceJSON, &s.CreatedBy, &createdAt, &updatedAt); err != nil {
+			return nil, err
+		}
+		s.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
+		s.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedAt)
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+func (r *serviceRepo) ListAll(ctx context.Context) ([]*domain.Service, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id,project_id,name,slug,kind,desired_state,runtime_status,
+		       internal_port,healthcheck_path,auto_deploy,resource_json,created_by,created_at,updated_at
+		FROM services WHERE runtime_status != 'deleting'
+		ORDER BY created_at ASC`)
 	if err != nil {
 		return nil, err
 	}

@@ -4,12 +4,15 @@
   import { onMount } from 'svelte';
   import { Loader2, Rocket, Wrench, Database, X, Save, Trash2, Plus, Server, Globe, ExternalLink, ArrowRight } from 'lucide-svelte';
   import FrameworkIcon from '$lib/components/icons/FrameworkIcon.svelte';
+  import DeleteConfirmationModal from '$lib/components/modals/DeleteConfirmationModal.svelte';
 
   const slug = $derived($page.params.slug);
   let project = $state<any>(null);
   let services = $state<any[]>([]);
   let databases = $state<any[]>([]);
   let loading = $state(true);
+  let showDeleteProjectModal = $state(false);
+  let deletingProject = $state(false);
 
   function getPreset(svc: any): string {
     try {
@@ -122,9 +125,13 @@
     }
   }
 
-  async function deleteProject() {
+  function deleteProject() {
+    showDeleteProjectModal = true;
+  }
+
+  async function executeDeleteProject() {
     const id = project?.id || project?.ID || slug;
-    if (!confirm(`Are you sure you want to delete project "${project?.name || project?.Name || id}"? All services and databases in this project will be permanently deleted.`)) return;
+    deletingProject = true;
     try {
       const res = await fetch(`/api/v1/projects/${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' });
       if (!res.ok) {
@@ -132,14 +139,17 @@
         alert('Failed to delete project: ' + (d.detail || d.message || res.statusText));
         return;
       }
-      const wsId = project?.workspace_id || project?.WorkspaceID;
-      if (wsId) {
-        goto(`/workspaces/${wsId}`);
+      showDeleteProjectModal = false;
+      const wsSlug = project?.workspace_slug || project?.WorkspaceSlug || project?.workspace_id || project?.WorkspaceID;
+      if (wsSlug) {
+        goto(`/workspaces/${wsSlug}`);
       } else {
         goto('/workspaces');
       }
     } catch (e: any) {
       alert('Failed to delete project: ' + e.message);
+    } finally {
+      deletingProject = false;
     }
   }
 
@@ -209,9 +219,11 @@
       <button class="btn btn-secondary" style="color:var(--color-danger); border-color:var(--color-border);" onclick={deleteProject}>
         <Trash2 size={14} /> Delete Project
       </button>
-      <button class="btn btn-primary" onclick={() => goto(`/projects/${slug}/services/new`)}>
-        <Rocket size={15} /> Deploy Service
-      </button>
+      {#if services.length > 0}
+        <button class="btn btn-primary" onclick={() => goto(`/projects/${slug}/services/new`)}>
+          <Rocket size={15} /> Deploy Service
+        </button>
+      {/if}
     </div>
   </div>
 
@@ -375,3 +387,15 @@
     </div>
   {/if}
 {/if}
+
+<DeleteConfirmationModal
+  show={showDeleteProjectModal}
+  title={`Delete Project "${project?.name || project?.Name || slug}"`}
+  entityName={project?.slug || slug || project?.name || 'project'}
+  entityType="project"
+  servicesCount={services.length}
+  databasesCount={databases.length}
+  loading={deletingProject}
+  onConfirm={executeDeleteProject}
+  onCancel={() => showDeleteProjectModal = false}
+/>

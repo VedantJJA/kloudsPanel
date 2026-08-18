@@ -92,9 +92,11 @@
     <h1 class="page-title">Workspace Databases</h1>
     <p class="page-subtitle">Managed PostgreSQL, MySQL, Redis, MongoDB, and ClickHouse instances for this workspace</p>
   </div>
-  <button class="btn btn-primary" onclick={() => goto(`/databases/new?workspaceSlug=${slug}`)}>
-    <Plus size={16} /> New Database
-  </button>
+  {#if databases.length > 0}
+    <button class="btn btn-primary" onclick={() => goto(`/databases/new?workspaceSlug=${slug}`)}>
+      <Plus size={16} /> New Database
+    </button>
+  {/if}
 </div>
 
 {#if loading}

@@ -206,19 +206,36 @@ func (h *Handler) handleDeleteProject(c fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid project id"})
 	}
 
+	p, err := h.store.Projects().GetByID(c.Context(), id)
+	if err != nil || p == nil {
+		allProjects, _ := h.store.Projects().ListAll(c.Context())
+		for _, proj := range allProjects {
+			if proj.Slug == id || proj.ID == id {
+				p = proj
+				break
+			}
+		}
+	}
+	actualID := id
+	if p != nil {
+		actualID = p.ID
+	}
+
 	// Clean up all services in this project
-	svcs, _ := h.store.Services().ListForProject(c.Context(), id)
+	svcs, _ := h.store.Services().ListForProject(c.Context(), actualID)
 	for _, s := range svcs {
 		cleanupServiceResources(s.Slug)
+		_ = h.store.Services().Delete(c.Context(), s.ID)
 	}
 
 	// Clean up all databases in this project
-	dbs, _ := h.store.Databases().ListForProject(c.Context(), id)
+	dbs, _ := h.store.Databases().ListForProject(c.Context(), actualID)
 	for _, db := range dbs {
 		cleanupDatabaseResources(db.Name, db.InternalHostname)
+		_ = h.store.Databases().Delete(c.Context(), db.ID)
 	}
 
-	if err := h.store.Projects().Delete(c.Context(), id); err != nil {
+	if err := h.store.Projects().Delete(c.Context(), actualID); err != nil {
 		return err
 	}
 	return c.SendStatus(204)

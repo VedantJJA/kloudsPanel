@@ -3,11 +3,18 @@
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
   import { Loader2, Box, FolderKanban, Trash2, Plus, ArrowRight } from 'lucide-svelte';
+  import DeleteConfirmationModal from '$lib/components/modals/DeleteConfirmationModal.svelte';
 
   const slug = $derived($page.params.slug);
   let workspace = $state<any>(null);
   let projects = $state<any[]>([]);
   let loading = $state(true);
+
+  let showDeleteModal = $state(false);
+  let projectToDelete = $state<any>(null);
+  let deletingProject = $state(false);
+  let targetProjectServicesCount = $state(0);
+  let targetProjectDatabasesCount = $state(0);
 
   async function loadProjects() {
     try {
@@ -38,21 +45,47 @@
     loadProjects();
   });
 
-  async function deleteProject(e: Event, proj: any) {
+  async function promptDeleteProject(e: Event, proj: any) {
     e.preventDefault();
     e.stopPropagation();
-    const id = proj.id || proj.ID;
-    if (!confirm(`Are you sure you want to delete project "${proj.name || proj.Name || id}"? All services and deployments in this project will be deleted.`)) return;
+    projectToDelete = proj;
+    const projId = proj.id || proj.ID || proj.slug || proj.Slug;
+    try {
+      const [svcRes, dbRes] = await Promise.all([
+        fetch(`/api/v1/services?projectId=${encodeURIComponent(projId)}`, { credentials: 'include' }),
+        fetch(`/api/v1/databases?projectId=${encodeURIComponent(projId)}`, { credentials: 'include' })
+      ]);
+      if (svcRes.ok) {
+        const sd = await svcRes.json();
+        targetProjectServicesCount = (sd.services ?? []).length;
+      }
+      if (dbRes.ok) {
+        const dd = await dbRes.json();
+        targetProjectDatabasesCount = (dd.databases ?? []).length;
+      }
+    } catch {}
+    showDeleteModal = true;
+  }
+
+  async function executeDeleteProject() {
+    if (!projectToDelete) return;
+    const id = projectToDelete.id || projectToDelete.ID;
+    deletingProject = true;
     try {
       const res = await fetch(`/api/v1/projects/${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
         alert('Failed to delete project: ' + (d.detail || d.message || res.statusText));
+      } else {
+        showDeleteModal = false;
+        projectToDelete = null;
       }
       await loadProjects();
     } catch (e: any) {
       console.error(e);
       alert('Failed to delete project: ' + e.message);
+    } finally {
+      deletingProject = false;
     }
   }
 </script>
@@ -77,10 +110,12 @@
       <h1 class="page-title">{workspace?.name || workspace?.Name || slug}</h1>
       <p class="page-subtitle">Manage projects, applications, and microservices</p>
     </div>
-    <button class="btn btn-primary" onclick={() => goto(`/workspaces/${slug}/projects/new`)}>
-      <Plus size={16} />
-      New Project
-    </button>
+    {#if projects.length > 0}
+      <button class="btn btn-primary" onclick={() => goto(`/workspaces/${slug}/projects/new`)}>
+        <Plus size={16} />
+        New Project
+      </button>
+    {/if}
   </div>
 
   {#if projects.length === 0}
@@ -153,7 +188,7 @@
                     class="btn btn-secondary" 
                     style="padding:4px 8px; min-height:30px; color:var(--color-danger); border-color:transparent;" 
                     aria-label="Delete Project" 
-                    onclick={(e) => deleteProject(e, proj)}
+                    onclick={(e) => promptDeleteProject(e, proj)}
                   >
                     <Trash2 size={14} />
                   </button>
@@ -166,3 +201,15 @@
     </div>
   {/if}
 {/if}
+
+<DeleteConfirmationModal
+  show={showDeleteModal}
+  title={`Delete Project "${projectToDelete?.name || projectToDelete?.Name || projectToDelete?.slug || 'Project'}"`}
+  entityName={projectToDelete?.slug || projectToDelete?.Slug || projectToDelete?.name || 'project'}
+  entityType="project"
+  servicesCount={targetProjectServicesCount}
+  databasesCount={targetProjectDatabasesCount}
+  loading={deletingProject}
+  onConfirm={executeDeleteProject}
+  onCancel={() => { showDeleteModal = false; projectToDelete = null; }}
+/>
