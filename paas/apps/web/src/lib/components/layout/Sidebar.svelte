@@ -224,6 +224,7 @@
     } else {
       items.push(
         { label: 'Workspaces', href: '/workspaces', icon: FolderOpen },
+        { label: 'New Workspace', href: '/workspaces/new', icon: Plus },
       );
     }
     if (isAdmin) {
@@ -300,82 +301,75 @@
   <!-- Render-Style Active Workspace Switcher & Top Header -->
   <div class="sidebar-logo" style="display:flex; justify-content:space-between; align-items:center; width:100%; position:relative;">
     <div class="workspace-switcher-container" style="display:flex; align-items:center; gap:var(--sp-2); flex:1; min-width:0; position:relative;">
-      {#if $workspaces.length === 0}
-        <!-- Blender-Style Clean Brand Logo Header when no workspaces exist yet -->
-        <a
-          href="/workspaces"
-          class="sidebar-logo-link"
-          style="display:flex; align-items:center; gap:8px; text-decoration:none; padding:4px 6px; width:100%; min-width:0;"
-          title="kloudsPanel - No Workspaces"
-          onclick={closeMobileNav}
-        >
-          <Logo size={22} showText={!isCollapsed} />
-        </a>
-      {:else}
-        <!-- Active Workspace Dropdown Button -->
-        <button
-          type="button"
-          class="workspace-switcher-btn"
-          onclick={() => isWorkspaceDropdownOpen = !isWorkspaceDropdownOpen}
-          title={$activeWorkspace?.name || $activeWorkspace?.Name || 'Personal Workspace'}
-          aria-expanded={isWorkspaceDropdownOpen}
+      <!-- Active Workspace Dropdown Button (Always available to switch and create) -->
+      <button
+        type="button"
+        class="workspace-switcher-btn"
+        onclick={() => isWorkspaceDropdownOpen = !isWorkspaceDropdownOpen}
+        title={$activeWorkspace?.name || $activeWorkspace?.Name || ($workspaces.length === 0 ? 'No Workspace (Click to Create)' : 'Personal Workspace')}
+        aria-expanded={isWorkspaceDropdownOpen}
+        style="
+          display: flex; 
+          align-items: center; 
+          gap: 8px; 
+          background: rgba(255,255,255,0.04); 
+          border: 1px solid rgba(255,255,255,0.08); 
+          border-radius: var(--radius-md); 
+          padding: 5px 8px; 
+          cursor: pointer; 
+          color: var(--color-ink); 
+          width: 100%; 
+          min-width: 0; 
+          text-align: left;
+          transition: background 0.15s ease, border-color 0.15s ease;
+        "
+      >
+        <div style="flex-shrink: 0; display: flex; align-items: center;">
+          <Logo size={20} />
+        </div>
+        {#if !isCollapsed}
+          <div style="min-width: 0; flex: 1; overflow: hidden;">
+            <div style="font-weight: 600; font-size: 0.8125rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-ink);">
+              {$activeWorkspace?.name || $activeWorkspace?.Name || ($workspaces.length === 0 ? 'Select Workspace' : 'Personal Workspace')}
+            </div>
+            <div class="text-xs" style="color: var(--color-ink-muted); font-size: 0.68rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+              {$workspaces.length === 0 ? 'Click to create' : 'Active Workspace'}
+            </div>
+          </div>
+          <ChevronsUpDown size={14} style="color: var(--color-ink-muted); flex-shrink: 0; margin-left: 2px;" />
+        {/if}
+      </button>
+
+      <!-- Workspace Switcher Floating Dropdown Menu -->
+      {#if isWorkspaceDropdownOpen}
+        <div 
+          class="workspace-dropdown-menu" 
           style="
-            display: flex; 
-            align-items: center; 
-            gap: 8px; 
-            background: rgba(255,255,255,0.04); 
-            border: 1px solid rgba(255,255,255,0.08); 
+            position: absolute; 
+            top: 100%; 
+            left: 0; 
+            margin-top: 6px; 
+            width: 240px; 
+            background: var(--color-surface); 
+            border: 1px solid var(--color-border); 
             border-radius: var(--radius-md); 
-            padding: 5px 8px; 
-            cursor: pointer; 
-            color: var(--color-ink); 
-            width: 100%; 
-            min-width: 0; 
-            text-align: left;
-            transition: background 0.15s ease, border-color 0.15s ease;
+            box-shadow: 0 10px 25px -5px rgba(0,0,0,0.25), 0 8px 10px -6px rgba(0,0,0,0.25); 
+            z-index: 999; 
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
           "
         >
-          <div style="flex-shrink: 0; display: flex; align-items: center;">
-            <Logo size={20} />
+          <div style="padding: 8px 12px; font-size: 0.6875rem; text-transform: uppercase; font-weight: 600; color: var(--color-ink-muted); letter-spacing: 0.05em; border-bottom: 1px solid var(--color-border);">
+            <span>Switch Workspace</span>
           </div>
-          {#if !isCollapsed}
-            <div style="min-width: 0; flex: 1; overflow: hidden;">
-              <div style="font-weight: 600; font-size: 0.8125rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-ink);">
-                {$activeWorkspace?.name || $activeWorkspace?.Name || 'Personal Workspace'}
-              </div>
-              <div class="text-xs" style="color: var(--color-ink-muted); font-size: 0.68rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                Active Workspace
-              </div>
-            </div>
-            <ChevronsUpDown size={14} style="color: var(--color-ink-muted); flex-shrink: 0; margin-left: 2px;" />
-          {/if}
-        </button>
 
-        <!-- Workspace Switcher Floating Dropdown Menu -->
-        {#if isWorkspaceDropdownOpen}
-          <div 
-            class="workspace-dropdown-menu" 
-            style="
-              position: absolute; 
-              top: 100%; 
-              left: 0; 
-              margin-top: 6px; 
-              width: 240px; 
-              background: var(--color-surface); 
-              border: 1px solid var(--color-border); 
-              border-radius: var(--radius-md); 
-              box-shadow: 0 10px 25px -5px rgba(0,0,0,0.25), 0 8px 10px -6px rgba(0,0,0,0.25); 
-              z-index: 999; 
-              overflow: hidden;
-              display: flex;
-              flex-direction: column;
-            "
-          >
-            <div style="padding: 8px 12px; font-size: 0.6875rem; text-transform: uppercase; font-weight: 600; color: var(--color-ink-muted); letter-spacing: 0.05em; border-bottom: 1px solid var(--color-border);">
-              <span>Switch Workspace</span>
-            </div>
-
-            <div style="max-height: 220px; overflow-y: auto; padding: 4px;">
+          <div style="max-height: 220px; overflow-y: auto; padding: 4px;">
+            {#if $workspaces.length === 0}
+              <div style="padding: 14px 10px; text-align: center; font-size: 0.75rem; color: var(--color-ink-muted);">
+                No workspaces created yet.
+              </div>
+            {:else}
               {#each $workspaces as ws}
                 {@const isSelected = (ws.slug || ws.Slug) === $activeWorkspaceSlug}
                 <button
@@ -413,32 +407,32 @@
                   {/if}
                 </button>
               {/each}
-            </div>
-
-            <div style="border-top: 1px solid var(--color-border); padding: 4px;">
-              <button
-                type="button"
-                style="
-                  width: 100%; 
-                  display: flex; 
-                  align-items: center; 
-                  gap: 6px; 
-                  padding: 7px 10px; 
-                  border-radius: var(--radius-sm); 
-                  border: none; 
-                  background: transparent; 
-                  color: var(--color-accent); 
-                  cursor: pointer; 
-                  font-size: 0.78125rem; 
-                  font-weight: 600;
-                "
-                onclick={() => { isWorkspaceDropdownOpen = false; showNewWorkspaceModal = true; }}
-              >
-                <Plus size={14} /> Create New Workspace
-              </button>
-            </div>
+            {/if}
           </div>
-        {/if}
+
+          <div style="border-top: 1px solid var(--color-border); padding: 4px;">
+            <button
+              type="button"
+              style="
+                width: 100%; 
+                display: flex; 
+                align-items: center; 
+                gap: 6px; 
+                padding: 7px 10px; 
+                border-radius: var(--radius-sm); 
+                border: none; 
+                background: transparent; 
+                color: var(--color-accent); 
+                cursor: pointer; 
+                font-size: 0.78125rem; 
+                font-weight: 600;
+              "
+              onclick={() => { isWorkspaceDropdownOpen = false; showNewWorkspaceModal = true; }}
+            >
+              <Plus size={14} /> Create New Workspace
+            </button>
+          </div>
+        </div>
       {/if}
     </div>
 
