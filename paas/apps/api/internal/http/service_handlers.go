@@ -197,7 +197,12 @@ func (h *Handler) handleUpdateService(c fiber.Ctx) error {
 		for k, v := range incomingResMap {
 			resMap[k] = v
 		}
-		if _, ok := incomingResMap["routes"]; !ok && existingResMap["routes"] != nil {
+		// Robust route preservation: never overwrite existing configured routes with empty or nil
+		if incomingRoutes, ok := incomingResMap["routes"].([]any); ok && len(incomingRoutes) > 0 {
+			resMap["routes"] = incomingRoutes
+		} else if incomingRoutesItems, ok := incomingResMap["routes"].([]ServiceRouteItem); ok && len(incomingRoutesItems) > 0 {
+			resMap["routes"] = incomingRoutesItems
+		} else if existingResMap["routes"] != nil {
 			resMap["routes"] = existingResMap["routes"]
 		}
 
@@ -236,6 +241,7 @@ func (h *Handler) handleUpdateService(c fiber.Ctx) error {
 			s.ResourceJSON = string(mergedBytes)
 		}
 		_ = h.store.Services().Update(c.Context(), s)
+		h.syncServiceTraefikConfig(c.Context(), s, resMap)
 	}
 	rootDomain := getRootDomain()
 	domainName := fmt.Sprintf("%s.%s", s.Slug, rootDomain)
@@ -337,6 +343,7 @@ func (h *Handler) handleStartService(c fiber.Ctx) error {
 	if err := h.store.Services().Update(c.Context(), s); err != nil {
 		return err
 	}
+	h.syncServiceTraefikConfig(c.Context(), s, nil)
 	rootDomain := getRootDomain()
 	domainName := fmt.Sprintf("%s.%s", s.Slug, rootDomain)
 	return c.JSON(fiber.Map{

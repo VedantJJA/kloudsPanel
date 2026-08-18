@@ -478,6 +478,14 @@
             settingsPort = service.internal_port || service.InternalPort || r.internal_port || r.internalPort || 80;
             settingsAutoDeploy = service.auto_deploy !== false;
           }
+          if (!routesDirty && r.routes && Array.isArray(r.routes)) {
+            serviceRoutes = r.routes.map((rt: any) => ({
+              type: rt.type || 'rewrite',
+              source: rt.source || '',
+              destination: rt.destination || ''
+            }));
+            routesInitialLoaded = true;
+          }
         }
       } catch {}
 
@@ -551,7 +559,7 @@
         currentR.runtimeVersion = settingsRuntimeVersion === 'auto' ? '' : settingsRuntimeVersion;
         currentR.mem_limit = settingsMemoryLimit;
         currentR.cpu_limit = settingsCPULimit;
-        if (serviceRoutes && serviceRoutes.length > 0) {
+        if (routesDirty && serviceRoutes && serviceRoutes.length > 0) {
           currentR.routes = serviceRoutes;
         }
 
@@ -911,7 +919,7 @@
       currentR.runtimeVersion = settingsRuntimeVersion === 'auto' ? '' : settingsRuntimeVersion;
       currentR.mem_limit = settingsMemoryLimit;
       currentR.cpu_limit = settingsCPULimit;
-      if (serviceRoutes && serviceRoutes.length > 0) {
+      if (routesDirty && serviceRoutes && serviceRoutes.length > 0) {
         currentR.routes = serviceRoutes;
       }
 
