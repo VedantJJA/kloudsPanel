@@ -211,14 +211,21 @@
   };
 
   const defaultNavItems = $derived.by<NavItem[]>(() => {
-    const s = $activeWorkspaceSlug || 'personal';
-    const items: NavItem[] = [
-      { label: 'Projects', href: `/workspaces/${s}`, icon: FolderOpen },
-      { label: 'Databases', href: `/workspaces/${s}/databases`, icon: Database },
-      { label: 'Shared Env Vars', href: `/workspaces/${s}/variables`, icon: Key },
-      { label: 'Members', href: `/workspaces/${s}/members`, icon: Users },
-      { label: 'Settings', href: `/workspaces/${s}/settings`, icon: Settings },
-    ];
+    const items: NavItem[] = [];
+    if ($workspaces.length > 0) {
+      const s = $activeWorkspaceSlug || $workspaces[0]?.slug || ($workspaces[0] as any)?.Slug || 'personal';
+      items.push(
+        { label: 'Projects', href: `/workspaces/${s}`, icon: FolderOpen },
+        { label: 'Databases', href: `/workspaces/${s}/databases`, icon: Database },
+        { label: 'Shared Env Vars', href: `/workspaces/${s}/variables`, icon: Key },
+        { label: 'Members', href: `/workspaces/${s}/members`, icon: Users },
+        { label: 'Settings', href: `/workspaces/${s}/settings`, icon: Settings },
+      );
+    } else {
+      items.push(
+        { label: 'Workspaces', href: '/workspaces', icon: FolderOpen },
+      );
+    }
     if (isAdmin) {
       items.push(
         { section: 'Administration', label: '', href: '', icon: null },
@@ -293,132 +300,145 @@
   <!-- Render-Style Active Workspace Switcher & Top Header -->
   <div class="sidebar-logo" style="display:flex; justify-content:space-between; align-items:center; width:100%; position:relative;">
     <div class="workspace-switcher-container" style="display:flex; align-items:center; gap:var(--sp-2); flex:1; min-width:0; position:relative;">
-      <!-- Active Workspace Dropdown Button -->
-      <button
-        type="button"
-        class="workspace-switcher-btn"
-        onclick={() => isWorkspaceDropdownOpen = !isWorkspaceDropdownOpen}
-        title={$activeWorkspace?.name || $activeWorkspace?.Name || 'Personal Workspace'}
-        aria-expanded={isWorkspaceDropdownOpen}
-        style="
-          display: flex; 
-          align-items: center; 
-          gap: 8px; 
-          background: rgba(255,255,255,0.04); 
-          border: 1px solid rgba(255,255,255,0.08); 
-          border-radius: var(--radius-md); 
-          padding: 5px 8px; 
-          cursor: pointer; 
-          color: var(--color-ink); 
-          width: 100%; 
-          min-width: 0; 
-          text-align: left;
-          transition: background 0.15s ease, border-color 0.15s ease;
-        "
-      >
-        <div style="flex-shrink: 0; display: flex; align-items: center;">
-          <Logo size={20} />
-        </div>
-        {#if !isCollapsed}
-          <div style="min-width: 0; flex: 1; overflow: hidden;">
-            <div style="font-weight: 600; font-size: 0.8125rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-ink);">
-              {$activeWorkspace?.name || $activeWorkspace?.Name || 'Personal Workspace'}
-            </div>
-            <div class="text-xs" style="color: var(--color-ink-muted); font-size: 0.68rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-              Active Workspace
-            </div>
-          </div>
-          <ChevronsUpDown size={14} style="color: var(--color-ink-muted); flex-shrink: 0; margin-left: 2px;" />
-        {/if}
-      </button>
-
-      <!-- Workspace Switcher Floating Dropdown Menu -->
-      {#if isWorkspaceDropdownOpen}
-        <div 
-          class="workspace-dropdown-menu" 
+      {#if $workspaces.length === 0}
+        <!-- Blender-Style Clean Brand Logo Header when no workspaces exist yet -->
+        <a
+          href="/workspaces"
+          class="sidebar-logo-link"
+          style="display:flex; align-items:center; gap:8px; text-decoration:none; padding:4px 6px; width:100%; min-width:0;"
+          title="kloudsPanel - No Workspaces"
+          onclick={closeMobileNav}
+        >
+          <Logo size={22} showText={!isCollapsed} />
+        </a>
+      {:else}
+        <!-- Active Workspace Dropdown Button -->
+        <button
+          type="button"
+          class="workspace-switcher-btn"
+          onclick={() => isWorkspaceDropdownOpen = !isWorkspaceDropdownOpen}
+          title={$activeWorkspace?.name || $activeWorkspace?.Name || 'Personal Workspace'}
+          aria-expanded={isWorkspaceDropdownOpen}
           style="
-            position: absolute; 
-            top: 100%; 
-            left: 0; 
-            margin-top: 6px; 
-            width: 240px; 
-            background: var(--color-surface); 
-            border: 1px solid var(--color-border); 
+            display: flex; 
+            align-items: center; 
+            gap: 8px; 
+            background: rgba(255,255,255,0.04); 
+            border: 1px solid rgba(255,255,255,0.08); 
             border-radius: var(--radius-md); 
-            box-shadow: 0 10px 25px -5px rgba(0,0,0,0.25), 0 8px 10px -6px rgba(0,0,0,0.25); 
-            z-index: 999; 
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
+            padding: 5px 8px; 
+            cursor: pointer; 
+            color: var(--color-ink); 
+            width: 100%; 
+            min-width: 0; 
+            text-align: left;
+            transition: background 0.15s ease, border-color 0.15s ease;
           "
         >
-          <div style="padding: 8px 12px; font-size: 0.6875rem; text-transform: uppercase; font-weight: 600; color: var(--color-ink-muted); letter-spacing: 0.05em; border-bottom: 1px solid var(--color-border);">
-            <span>Switch Workspace</span>
+          <div style="flex-shrink: 0; display: flex; align-items: center;">
+            <Logo size={20} />
           </div>
+          {#if !isCollapsed}
+            <div style="min-width: 0; flex: 1; overflow: hidden;">
+              <div style="font-weight: 600; font-size: 0.8125rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-ink);">
+                {$activeWorkspace?.name || $activeWorkspace?.Name || 'Personal Workspace'}
+              </div>
+              <div class="text-xs" style="color: var(--color-ink-muted); font-size: 0.68rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                Active Workspace
+              </div>
+            </div>
+            <ChevronsUpDown size={14} style="color: var(--color-ink-muted); flex-shrink: 0; margin-left: 2px;" />
+          {/if}
+        </button>
 
-          <div style="max-height: 220px; overflow-y: auto; padding: 4px;">
-            {#each $workspaces as ws}
-              {@const isSelected = (ws.slug || ws.Slug) === $activeWorkspaceSlug}
+        <!-- Workspace Switcher Floating Dropdown Menu -->
+        {#if isWorkspaceDropdownOpen}
+          <div 
+            class="workspace-dropdown-menu" 
+            style="
+              position: absolute; 
+              top: 100%; 
+              left: 0; 
+              margin-top: 6px; 
+              width: 240px; 
+              background: var(--color-surface); 
+              border: 1px solid var(--color-border); 
+              border-radius: var(--radius-md); 
+              box-shadow: 0 10px 25px -5px rgba(0,0,0,0.25), 0 8px 10px -6px rgba(0,0,0,0.25); 
+              z-index: 999; 
+              overflow: hidden;
+              display: flex;
+              flex-direction: column;
+            "
+          >
+            <div style="padding: 8px 12px; font-size: 0.6875rem; text-transform: uppercase; font-weight: 600; color: var(--color-ink-muted); letter-spacing: 0.05em; border-bottom: 1px solid var(--color-border);">
+              <span>Switch Workspace</span>
+            </div>
+
+            <div style="max-height: 220px; overflow-y: auto; padding: 4px;">
+              {#each $workspaces as ws}
+                {@const isSelected = (ws.slug || ws.Slug) === $activeWorkspaceSlug}
+                <button
+                  type="button"
+                  style="
+                    width: 100%; 
+                    display: flex; 
+                    align-items: center; 
+                    gap: 8px; 
+                    padding: 7px 10px; 
+                    border-radius: var(--radius-sm); 
+                    border: none; 
+                    background: {isSelected ? 'rgba(0,166,166,0.12)' : 'transparent'}; 
+                    color: {isSelected ? 'var(--color-accent)' : 'var(--color-ink)'}; 
+                    cursor: pointer; 
+                    text-align: left;
+                    font-size: 0.8125rem;
+                    transition: background 0.1s ease;
+                  "
+                  onclick={() => handleSelectWorkspace(ws)}
+                >
+                  <div style="width: 22px; height: 22px; border-radius: var(--radius-xs); background: {isSelected ? 'var(--color-accent)' : 'rgba(255,255,255,0.08)'}; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 700; flex-shrink: 0;">
+                    {(ws.name || ws.Name || 'W').charAt(0).toUpperCase()}
+                  </div>
+                  <div style="min-width: 0; flex: 1; overflow: hidden;">
+                    <div style="font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                      {ws.name || ws.Name}
+                    </div>
+                    <div class="text-xs text-muted" style="font-size: 0.68rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                      /{ws.slug || ws.Slug}
+                    </div>
+                  </div>
+                  {#if isSelected}
+                    <Check size={14} style="color: var(--color-accent); flex-shrink: 0;" />
+                  {/if}
+                </button>
+              {/each}
+            </div>
+
+            <div style="border-top: 1px solid var(--color-border); padding: 4px;">
               <button
                 type="button"
                 style="
                   width: 100%; 
                   display: flex; 
                   align-items: center; 
-                  gap: 8px; 
+                  gap: 6px; 
                   padding: 7px 10px; 
                   border-radius: var(--radius-sm); 
                   border: none; 
-                  background: {isSelected ? 'rgba(0,166,166,0.12)' : 'transparent'}; 
-                  color: {isSelected ? 'var(--color-accent)' : 'var(--color-ink)'}; 
+                  background: transparent; 
+                  color: var(--color-accent); 
                   cursor: pointer; 
-                  text-align: left;
-                  font-size: 0.8125rem;
-                  transition: background 0.1s ease;
+                  font-size: 0.78125rem; 
+                  font-weight: 600;
                 "
-                onclick={() => handleSelectWorkspace(ws)}
+                onclick={() => { isWorkspaceDropdownOpen = false; showNewWorkspaceModal = true; }}
               >
-                <div style="width: 22px; height: 22px; border-radius: var(--radius-xs); background: {isSelected ? 'var(--color-accent)' : 'rgba(255,255,255,0.08)'}; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 700; flex-shrink: 0;">
-                  {(ws.name || ws.Name || 'W').charAt(0).toUpperCase()}
-                </div>
-                <div style="min-width: 0; flex: 1; overflow: hidden;">
-                  <div style="font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                    {ws.name || ws.Name}
-                  </div>
-                  <div class="text-xs text-muted" style="font-size: 0.68rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                    /{ws.slug || ws.Slug}
-                  </div>
-                </div>
-                {#if isSelected}
-                  <Check size={14} style="color: var(--color-accent); flex-shrink: 0;" />
-                {/if}
+                <Plus size={14} /> Create New Workspace
               </button>
-            {/each}
+            </div>
           </div>
-
-          <div style="border-top: 1px solid var(--color-border); padding: 4px;">
-            <button
-              type="button"
-              style="
-                width: 100%; 
-                display: flex; 
-                align-items: center; 
-                gap: 6px; 
-                padding: 7px 10px; 
-                border-radius: var(--radius-sm); 
-                border: none; 
-                background: transparent; 
-                color: var(--color-accent); 
-                cursor: pointer; 
-                font-size: 0.78125rem; 
-                font-weight: 600;
-              "
-              onclick={() => { isWorkspaceDropdownOpen = false; showNewWorkspaceModal = true; }}
-            >
-              <Plus size={14} /> Create New Workspace
-            </button>
-          </div>
-        </div>
+        {/if}
       {/if}
     </div>
 

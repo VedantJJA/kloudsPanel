@@ -58,10 +58,12 @@
     <h1 class="page-title">Workspaces</h1>
     <p class="page-subtitle">Manage deployment environments, projects, and permissions</p>
   </div>
-  <button class="btn btn-primary" onclick={() => goto('/workspaces/new')}>
-    <Plus size={16} />
-    New Workspace
-  </button>
+  {#if workspaces.length > 0}
+    <button class="btn btn-primary" onclick={() => goto('/workspaces/new')}>
+      <Plus size={16} />
+      New Workspace
+    </button>
+  {/if}
 </div>
 
 {#if loading}
