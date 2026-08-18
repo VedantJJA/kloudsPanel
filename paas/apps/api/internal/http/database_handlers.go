@@ -59,10 +59,29 @@ func isPortAvailable(port int) bool {
 
 func (h *Handler) handleListDatabases(c fiber.Ctx) error {
 	projID := c.Query("projectId")
+	wsParam := c.Query("workspaceId")
+	if wsParam == "" {
+		wsParam = c.Query("workspaceSlug")
+	}
+
 	var dbs []*domain.Database
 	var err error
+
 	if projID != "" {
 		dbs, err = h.store.Databases().ListForProject(c.Context(), projID)
+	} else if wsParam != "" {
+		wsID := wsParam
+		if ws, errWs := h.store.Workspaces().GetBySlug(c.Context(), wsParam); errWs == nil && ws != nil {
+			wsID = ws.ID
+		}
+		projs, errProj := h.store.Projects().ListForWorkspace(c.Context(), wsID, 1000, 0)
+		if errProj == nil {
+			for _, p := range projs {
+				if pDbs, errDb := h.store.Databases().ListForProject(c.Context(), p.ID); errDb == nil {
+					dbs = append(dbs, pDbs...)
+				}
+			}
+		}
 	} else {
 		dbs, err = h.store.Databases().ListAll(c.Context())
 	}
@@ -86,6 +105,7 @@ func generateSecureDatabasePassword() string {
 func (h *Handler) handleCreateDatabase(c fiber.Ctx) error {
 	var req struct {
 		ProjectID    string `json:"projectId"`
+		WorkspaceID  string `json:"workspaceId"`
 		Name         string `json:"name"`
 		Engine       string `json:"engine"`
 		Version      string `json:"version"`
@@ -97,6 +117,34 @@ func (h *Handler) handleCreateDatabase(c fiber.Ctx) error {
 	}
 	if req.Name == "" {
 		return c.Status(400).JSON(fiber.Map{"error": "database name is required"})
+	}
+
+	// Auto-resolve project from workspace if project ID is missing
+	if req.ProjectID == "" && req.WorkspaceID != "" {
+		wsID := req.WorkspaceID
+		if ws, errWs := h.store.Workspaces().GetBySlug(c.Context(), req.WorkspaceID); errWs == nil && ws != nil {
+			wsID = ws.ID
+		}
+		projs, _ := h.store.Projects().ListForWorkspace(c.Context(), wsID, 10, 0)
+		if len(projs) > 0 {
+			req.ProjectID = projs[0].ID
+		} else {
+			// Create a default project in the workspace for databases
+			slug := generateUniqueProjectSlug(c.Context(), h.store, wsID, "default")
+			newP := &domain.Project{
+				ID:          generateSecureDatabasePassword(),
+				WorkspaceID: wsID,
+				Name:        "Default",
+				Slug:        slug,
+			}
+			if errP := h.store.Projects().Create(c.Context(), newP); errP == nil {
+				req.ProjectID = newP.ID
+			}
+		}
+	}
+
+	if req.ProjectID == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "projectId or workspaceId is required"})
 	}
 
 	db, err := h.provisionDatabaseInternal(c.Context(), req.ProjectID, req.Name, req.Engine, req.Version, req.Password, req.DatabaseName)

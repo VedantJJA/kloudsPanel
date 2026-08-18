@@ -190,7 +190,7 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 		}
 	}
 
-	// Inherit Workspace Shared Environment Variables
+	// Inherit Workspace Shared Environment Variable Sets & Groups (Project-Linked)
 	if proj, err := h.store.Projects().GetByID(context.Background(), service.ProjectID); err == nil && proj != nil {
 		if ws, err := h.store.Workspaces().GetByID(context.Background(), proj.WorkspaceID); err == nil && ws != nil && ws.QuotaJSON != "" {
 			var wsData struct {
@@ -198,8 +198,42 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 					Key   string `json:"key"`
 					Value string `json:"value"`
 				} `json:"shared_env"`
+				EnvGroups []struct {
+					ID               string `json:"id"`
+					Name             string `json:"name"`
+					LinkedProjectIDs []string `json:"linkedProjectIds"`
+					Variables        []struct {
+						Key   string `json:"key"`
+						Value string `json:"value"`
+					} `json:"variables"`
+				} `json:"env_groups"`
 			}
 			if json.Unmarshal([]byte(ws.QuotaJSON), &wsData) == nil {
+				// 1. Process linked Environment Variable Sets
+				for _, group := range wsData.EnvGroups {
+					isLinked := false
+					if len(group.LinkedProjectIDs) == 0 {
+						isLinked = true
+					} else {
+						for _, pid := range group.LinkedProjectIDs {
+							if pid == proj.ID || pid == proj.Slug || pid == "*" {
+								isLinked = true
+								break
+							}
+						}
+					}
+					if isLinked {
+						for _, item := range group.Variables {
+							if item.Key != "" {
+								if _, exists := envMap[item.Key]; !exists {
+									envMap[item.Key] = item.Value
+								}
+							}
+						}
+					}
+				}
+
+				// 2. Legacy workspace flat variables
 				for _, item := range wsData.SharedEnv {
 					if item.Key != "" {
 						if _, exists := envMap[item.Key]; !exists {

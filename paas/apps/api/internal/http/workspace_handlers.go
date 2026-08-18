@@ -2,6 +2,7 @@ package http
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -158,6 +159,7 @@ func (h *Handler) handleListWorkspaceVariables(c fiber.Ctx) error {
 
 	var data struct {
 		SharedEnv []fiber.Map `json:"shared_env"`
+		EnvGroups []fiber.Map `json:"env_groups"`
 	}
 	if ws.QuotaJSON != "" {
 		_ = json.Unmarshal([]byte(ws.QuotaJSON), &data)
@@ -165,8 +167,14 @@ func (h *Handler) handleListWorkspaceVariables(c fiber.Ctx) error {
 	if data.SharedEnv == nil {
 		data.SharedEnv = []fiber.Map{}
 	}
+	if data.EnvGroups == nil {
+		data.EnvGroups = []fiber.Map{}
+	}
 
-	return c.JSON(fiber.Map{"variables": data.SharedEnv})
+	return c.JSON(fiber.Map{
+		"variables": data.SharedEnv,
+		"groups":    data.EnvGroups,
+	})
 }
 
 func (h *Handler) handleSaveWorkspaceVariables(c fiber.Ctx) error {
@@ -205,4 +213,127 @@ func (h *Handler) handleSaveWorkspaceVariables(c fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{"status": "ok", "variables": req.Variables})
+}
+
+func (h *Handler) handleSaveWorkspaceEnvGroup(c fiber.Ctx) error {
+	slugOrID := c.Params("slug")
+	ws, err := h.store.Workspaces().GetBySlug(c.Context(), slugOrID)
+	if err != nil || ws == nil {
+		ws, err = h.store.Workspaces().GetByID(c.Context(), slugOrID)
+	}
+	if err != nil || ws == nil {
+		return c.Status(404).JSON(fiber.Map{"error": "workspace not found"})
+	}
+
+	var req struct {
+		ID               string `json:"id"`
+		Name             string `json:"name"`
+		Description      string `json:"description"`
+		LinkedProjectIDs []string `json:"linkedProjectIds"`
+		Variables        []struct {
+			Key      string `json:"key"`
+			Value    string `json:"value"`
+			IsSecret bool   `json:"isSecret"`
+		} `json:"variables"`
+	}
+	if err := c.Bind().JSON(&req); err != nil {
+		return err
+	}
+	if strings.TrimSpace(req.Name) == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "group name is required"})
+	}
+
+	if req.ID == "" {
+		req.ID = fmt.Sprintf("grp_%d", time.Now().UnixNano())
+	}
+	if req.LinkedProjectIDs == nil {
+		req.LinkedProjectIDs = []string{}
+	}
+
+	var data map[string]any
+	if ws.QuotaJSON != "" {
+		_ = json.Unmarshal([]byte(ws.QuotaJSON), &data)
+	}
+	if data == nil {
+		data = make(map[string]any)
+	}
+
+	var groups []map[string]any
+	if rawGroups, ok := data["env_groups"].([]any); ok {
+		for _, rg := range rawGroups {
+			if gm, ok := rg.(map[string]any); ok {
+				groups = append(groups, gm)
+			}
+		}
+	}
+
+	newGroup := map[string]any{
+		"id":               req.ID,
+		"name":             req.Name,
+		"description":      req.Description,
+		"linkedProjectIds": req.LinkedProjectIDs,
+		"variables":        req.Variables,
+		"updatedAt":        time.Now().Format(time.RFC3339),
+	}
+
+	found := false
+	for i, g := range groups {
+		if g["id"] == req.ID {
+			groups[i] = newGroup
+			found = true
+			break
+		}
+	}
+	if !found {
+		groups = append(groups, newGroup)
+	}
+
+	data["env_groups"] = groups
+	b, _ := json.Marshal(data)
+	ws.QuotaJSON = string(b)
+	if err := h.store.Workspaces().Update(c.Context(), ws); err != nil {
+		return err
+	}
+
+	return c.JSON(fiber.Map{"status": "ok", "group": newGroup})
+}
+
+func (h *Handler) handleDeleteWorkspaceEnvGroup(c fiber.Ctx) error {
+	slugOrID := c.Params("slug")
+	groupID := c.Params("groupId")
+	ws, err := h.store.Workspaces().GetBySlug(c.Context(), slugOrID)
+	if err != nil || ws == nil {
+		ws, err = h.store.Workspaces().GetByID(c.Context(), slugOrID)
+	}
+	if err != nil || ws == nil {
+		return c.Status(404).JSON(fiber.Map{"error": "workspace not found"})
+	}
+
+	var data map[string]any
+	if ws.QuotaJSON != "" {
+		_ = json.Unmarshal([]byte(ws.QuotaJSON), &data)
+	}
+	if data == nil {
+		return c.JSON(fiber.Map{"status": "ok"})
+	}
+
+	var groups []map[string]any
+	if rawGroups, ok := data["env_groups"].([]any); ok {
+		for _, rg := range rawGroups {
+			if gm, ok := rg.(map[string]any); ok {
+				if gm["id"] != groupID {
+					groups = append(groups, gm)
+				}
+			}
+		}
+	}
+
+	data["env_groups"] = groups
+	b, _ := json.Marshal(data)
+	ws.QuotaJSON = string(b)
+	if err := h.store.Workspaces().Update(c.Context(), ws); err != nil {
+		return err
+	}
+
+	return c.JSON(fiber.Map{"status": "ok"})
 }

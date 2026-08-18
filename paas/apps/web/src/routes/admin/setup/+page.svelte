@@ -20,12 +20,43 @@
     Activity,
     Users,
     HardDrive,
-    Sparkles
+    Sparkles,
+    Copy
   } from 'lucide-svelte';
 
   type SettingsTab = 'initial-setup' | 'general' | 'domain' | 'git' | 'security';
+  type ProviderKey = 'github' | 'gitlab' | 'bitbucket';
 
   let activeTab = $state<SettingsTab>('initial-setup');
+  let activeGitTab = $state<ProviderKey>('github');
+  let copiedCallback = $state(false);
+
+  const providerMeta = {
+    github: {
+      name: 'GitHub',
+      color: '#24292f',
+      devUrl: 'https://github.com/settings/developers',
+      keyLabel: 'Client ID',
+      secretLabel: 'Client Secret',
+      scopes: 'repo, read:user, user:email'
+    },
+    gitlab: {
+      name: 'GitLab',
+      color: '#fc6d26',
+      devUrl: 'https://gitlab.com/-/user_settings/applications',
+      keyLabel: 'Application ID',
+      secretLabel: 'Secret',
+      scopes: 'read_user, read_api, read_repository'
+    },
+    bitbucket: {
+      name: 'Bitbucket',
+      color: '#0052cc',
+      devUrl: 'https://bitbucket.org/account/settings/api/',
+      keyLabel: 'Key (Client ID)',
+      secretLabel: 'Secret',
+      scopes: 'Account (Read), Repositories (Read)'
+    }
+  };
 
   // Platform state
   let rootDomain = $state('');
@@ -46,6 +77,25 @@
   let bitbucketClientSecret = $state('');
 
   let gitIntegrations = $state<any[]>([]);
+
+  let hostDomain = $derived(
+    rootDomain || (typeof window !== 'undefined' ? window.location.host : 'yourdomain.com')
+  );
+
+  let curMeta = $derived(providerMeta[activeGitTab]);
+  let activeConn = $derived(gitIntegrations.find(g => g.provider === activeGitTab && g.connected));
+
+  let currentCallbackUrl = $derived(
+    `https://${hostDomain}/api/v1/integrations/git/${activeGitTab}/callback`
+  );
+
+  function copyCallback() {
+    if (typeof navigator !== 'undefined') {
+      navigator.clipboard.writeText(currentCallbackUrl);
+      copiedCallback = true;
+      setTimeout(() => copiedCallback = false, 2500);
+    }
+  }
 
   let loading = $state(true);
   let saving = $state(false);
@@ -656,126 +706,177 @@
   <!-- --- TAB 3: GIT INTEGRATIONS ------------------------------------------- -->
   {:else if activeTab === 'git'}
     <div style="display:flex; flex-direction:column; gap:1.5rem; max-width:860px;">
-      <!-- Quick Link to Dedicated Git Providers Setup Page -->
-      <div class="card" style="padding: 1.25rem 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
-        <div style="display: flex; align-items: center; gap: 1rem;">
-          <div style="width: 40px; height: 40px; border-radius: var(--radius-sm); background: var(--color-surface-subtle); border: 1px solid var(--color-border); color: #ffffff; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-            <FolderGit2 size={20} />
-          </div>
+      <!-- Provider Selector Tabs -->
+      <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+        {#each (['github', 'gitlab', 'bitbucket'] as ProviderKey[]) as prov}
+          {@const meta = providerMeta[prov]}
+          {@const isConn = gitIntegrations.some(g => g.provider === prov && g.connected)}
+          <button
+            type="button"
+            class="btn {activeGitTab === prov ? 'btn-primary' : 'btn-secondary'}"
+            style="padding:8px 16px; font-size:0.875rem; font-weight:600; display:flex; align-items:center; gap:8px;"
+            onclick={() => activeGitTab = prov}
+          >
+            <FolderGit2 size={16} />
+            {meta.name}
+            {#if isConn}
+              <span class="badge badge-running" style="font-size:0.68rem; padding:1px 6px;">Connected</span>
+            {/if}
+          </button>
+        {/each}
+      </div>
+
+      <!-- 30-Second Setup Guide Card -->
+      <div class="card" style="background:var(--color-surface); border:1.5px solid var(--color-border); padding:1.5rem;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:1.25rem; flex-wrap:wrap; gap:1rem;">
           <div>
-            <div style="font-weight: 700; font-size: 1rem; color: var(--color-ink);">Git Provider 1-Click Authorizations</div>
-            <p class="text-xs text-muted" style="margin: 2px 0 0 0;">
-              Connect GitHub, GitLab, and Bitbucket accounts to import repositories and enable automated git webhook deployments.
+            <h3 style="margin:0; font-size:1.1rem; color:var(--color-ink); display:flex; align-items:center; gap:8px;">
+              <FolderGit2 size={20} style="color:var(--color-accent);" />
+              30-Second {curMeta.name} Setup Guide
+            </h3>
+            <p class="text-xs text-muted" style="margin:4px 0 0 0;">
+              Follow these quick steps to connect your {curMeta.name} account for 1-click repository imports and automated push-to-deploy webhooks.
             </p>
           </div>
+
+          <a
+            href={curMeta.devUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="btn btn-secondary"
+            style="font-size:0.8125rem; padding:6px 12px; display:flex; align-items:center; gap:6px;"
+          >
+            Open {curMeta.name} Developer Settings <ExternalLink size={13} />
+          </a>
         </div>
 
-        <a href="/admin/git-providers" class="btn btn-primary" style="display: flex; align-items: center; gap: 6px;">
-          Open 1-Click Setup <ArrowRight size={14} />
-        </a>
-      </div>
-
-      <!-- Connected Git Accounts Overview -->
-      <div class="card" style="padding:1.5rem;">
-        <div class="card-header" style="margin-bottom:1.25rem;">
-          <h3 style="margin:0;">Active Git Integrations</h3>
-          <p class="text-xs text-muted" style="margin-top:0.25rem;">Connected provider accounts for this platform instance.</p>
-        </div>
-
-        <!-- Connected Providers List -->
-        <div style="display:flex; flex-direction:column; gap:0.75rem;">
-          {#each ['github', 'gitlab', 'bitbucket'] as prov}
-            {@const item = gitIntegrations.find(g => g.provider === prov) || { provider: prov, connected: false }}
-            <div style="display:flex; align-items:center; justify-content:space-between; padding:0.85rem 1rem; border:1px solid var(--color-border); border-radius:var(--radius-md); background:var(--color-surface);">
-              <div style="display:flex; align-items:center; gap:0.75rem;">
-                <FolderGit2 size={18} style="color:var(--color-ink);" />
-                <div>
-                  <div style="font-weight:600; text-transform:capitalize; font-size:0.875rem;">{item.provider}</div>
-                  <div class="text-xs text-muted">
-                    {#if item.connected}
-                      Connected as <span class="font-mono" style="color:var(--color-ink); font-weight:600;">@{item.username}</span>
-                    {:else}
-                      Not connected yet
-                    {/if}
-                  </div>
-                </div>
-              </div>
-
-              {#if item.connected}
-                <span class="badge badge-running" style="font-size:0.75rem;">Active</span>
-              {:else}
-                <a href="/admin/git-providers" class="btn btn-secondary" style="padding:4px 12px; font-size:0.75rem;">
-                  Setup OAuth
-                </a>
-              {/if}
+        <!-- Step-by-Step Checklist -->
+        <div style="display:flex; flex-direction:column; gap:1rem; margin-bottom:1.5rem; background:rgba(0,0,0,0.02); border:1px solid var(--color-border); border-radius:var(--radius-md); padding:1.25rem;">
+          <div style="display:flex; gap:0.75rem; align-items:flex-start;">
+            <div style="width:24px; height:24px; border-radius:50%; background:var(--color-accent); color:#ffffff; display:flex; align-items:center; justify-content:center; font-size:0.75rem; font-weight:700; flex-shrink:0;">
+              1
             </div>
-          {/each}
-        </div>
-      </div>
+            <div style="font-size:0.875rem;">
+              <div style="font-weight:600; color:var(--color-ink);">Open Developer Console</div>
+              <div class="text-xs text-muted" style="margin-top:2px;">
+                Go to <a href={curMeta.devUrl} target="_blank" rel="noopener noreferrer" style="color:var(--color-accent); text-decoration:underline;">{curMeta.devUrl}</a> and click <strong>"New OAuth App"</strong> or <strong>"New Application"</strong>.
+              </div>
+            </div>
+          </div>
 
-      <!-- Direct OAuth Credentials Form -->
-      <div class="card" style="padding:1.5rem;">
-        <div class="card-header" style="margin-bottom:1.25rem;">
-          <h3 style="margin:0;">Direct OAuth Application Credentials</h3>
-          <p class="text-xs text-muted" style="margin-top:0.25rem;">Specify Client IDs and Secrets for GitHub, GitLab, and Bitbucket apps.</p>
+          <div style="display:flex; gap:0.75rem; align-items:flex-start;">
+            <div style="width:24px; height:24px; border-radius:50%; background:var(--color-accent); color:#ffffff; display:flex; align-items:center; justify-content:center; font-size:0.75rem; font-weight:700; flex-shrink:0;">
+              2
+            </div>
+            <div style="font-size:0.875rem; flex:1;">
+              <div style="font-weight:600; color:var(--color-ink);">Enter Platform URLs</div>
+              <div style="display:grid; grid-template-columns:140px 1fr auto; gap:0.5rem; align-items:center; margin-top:6px; background:var(--color-surface); padding:6px 10px; border-radius:var(--radius-sm); border:1px solid var(--color-border);">
+                <span class="text-xs text-muted" style="font-weight:600;">Homepage URL:</span>
+                <span class="font-mono text-xs" style="color:var(--color-ink);">https://{hostDomain}</span>
+                <span></span>
+              </div>
+              <div style="display:grid; grid-template-columns:140px 1fr auto; gap:0.5rem; align-items:center; margin-top:4px; background:var(--color-surface); padding:6px 10px; border-radius:var(--radius-sm); border:1px solid var(--color-border);">
+                <span class="text-xs text-muted" style="font-weight:600;">Callback URL:</span>
+                <span class="font-mono text-xs" style="color:var(--color-ink); overflow:hidden; text-overflow:ellipsis;">{currentCallbackUrl}</span>
+                <button
+                  type="button"
+                  class="btn btn-secondary"
+                  style="padding:2px 8px; font-size:0.72rem; min-height:24px; display:flex; align-items:center; gap:4px;"
+                  onclick={copyCallback}
+                >
+                  {#if copiedCallback}<Check size={12} style="color:#10b981;" /> Copied{:else}<Copy size={12} /> Copy{/if}
+                </button>
+              </div>
+              <div class="text-xs text-muted" style="margin-top:4px;">
+                Scopes/Permissions required: <span class="font-mono" style="color:var(--color-accent); font-weight:600;">{curMeta.scopes}</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex; gap:0.75rem; align-items:flex-start;">
+            <div style="width:24px; height:24px; border-radius:50%; background:var(--color-accent); color:#ffffff; display:flex; align-items:center; justify-content:center; font-size:0.75rem; font-weight:700; flex-shrink:0;">
+              3
+            </div>
+            <div style="font-size:0.875rem;">
+              <div style="font-weight:600; color:var(--color-ink);">Save Credentials Below</div>
+              <div class="text-xs text-muted" style="margin-top:2px;">
+                Copy your generated {curMeta.keyLabel} and {curMeta.secretLabel} from {curMeta.name} into the form below and click <strong>"Save OAuth Credentials"</strong>.
+              </div>
+            </div>
+          </div>
         </div>
 
         {#if saved}
-          <div style="background:#d1fae5;border:1px solid #6ee7b7;color:#065f46;border-radius:var(--radius-md);padding:0.75rem 1rem;font-size:0.875rem;margin-bottom:1.25rem">
-            OAuth credentials saved.
+          <div style="background:#d1fae5;border:1px solid #6ee7b7;color:#065f46;border-radius:var(--radius-md);padding:0.75rem 1rem;font-size:0.875rem;margin-bottom:1.25rem;display:flex;align-items:center;gap:6px;">
+            <Check size={16} /> OAuth credentials saved successfully.
           </div>
         {/if}
         {#if error}
-          <div style="background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;border-radius:var(--radius-md);padding:0.75rem 1rem;font-size:0.875rem;margin-bottom:1.25rem">
+          <div style="background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;border-radius:var(--radius-md);padding:0.75rem 1rem;font-size:0.875rem;margin-bottom:1.25rem;">
             {error}
           </div>
         {/if}
 
+        <!-- Credentials Form for Active Provider -->
         <form onsubmit={handleSaveGitOAuth}>
-          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:1.25rem; margin-bottom:1.5rem;">
-            <!-- GitHub -->
-            <div style="padding:1rem; border:1px solid var(--color-border); border-radius:var(--radius-md);">
-              <div style="font-weight:700; margin-bottom:0.75rem; font-size:0.9375rem;">GitHub OAuth App</div>
-              <div class="form-group" style="margin-bottom:0.75rem;">
-                <label class="form-label text-xs" for="ghId">Client ID</label>
-                <input id="ghId" type="text" class="form-input font-mono text-xs" bind:value={githubClientId} placeholder="Iv1..." />
+          {#if activeGitTab === 'github'}
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1.25rem;">
+              <div class="form-group" style="margin:0;">
+                <label class="form-label text-xs" for="ghId">GitHub Client ID</label>
+                <input id="ghId" type="text" class="form-input font-mono text-xs" bind:value={githubClientId} placeholder="e.g. Ov23li..." required />
               </div>
               <div class="form-group" style="margin:0;">
-                <label class="form-label text-xs" for="ghSec">Client Secret</label>
-                <input id="ghSec" type="password" class="form-input font-mono text-xs" bind:value={githubClientSecret} placeholder="Enter secret" />
+                <label class="form-label text-xs" for="ghSec">GitHub Client Secret</label>
+                <input id="ghSec" type="password" class="form-input font-mono text-xs" bind:value={githubClientSecret} placeholder="Enter secret" required />
               </div>
             </div>
+          {:else if activeGitTab === 'gitlab'}
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1.25rem;">
+              <div class="form-group" style="margin:0;">
+                <label class="form-label text-xs" for="glId">GitLab Application ID</label>
+                <input id="glId" type="text" class="form-input font-mono text-xs" bind:value={gitlabClientId} placeholder="e.g. gloas-..." required />
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label class="form-label text-xs" for="glSec">GitLab Secret</label>
+                <input id="glSec" type="password" class="form-input font-mono text-xs" bind:value={gitlabClientSecret} placeholder="Enter secret" required />
+              </div>
+            </div>
+          {:else if activeGitTab === 'bitbucket'}
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1.25rem;">
+              <div class="form-group" style="margin:0;">
+                <label class="form-label text-xs" for="bbId">Bitbucket Key (Client ID)</label>
+                <input id="bbId" type="text" class="form-input font-mono text-xs" bind:value={bitbucketClientId} placeholder="e.g. 69..." required />
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label class="form-label text-xs" for="bbSec">Bitbucket Secret</label>
+                <input id="bbSec" type="password" class="form-input font-mono text-xs" bind:value={bitbucketClientSecret} placeholder="Enter secret" required />
+              </div>
+            </div>
+          {/if}
 
-            <!-- GitLab -->
-            <div style="padding:1rem; border:1px solid var(--color-border); border-radius:var(--radius-md);">
-              <div style="font-weight:700; margin-bottom:0.75rem; font-size:0.9375rem;">GitLab OAuth App</div>
-              <div class="form-group" style="margin-bottom:0.75rem;">
-                <label class="form-label text-xs" for="glId">Application ID</label>
-                <input id="glId" type="text" class="form-input font-mono text-xs" bind:value={gitlabClientId} placeholder="App ID" />
-              </div>
-              <div class="form-group" style="margin:0;">
-                <label class="form-label text-xs" for="glSec">Secret</label>
-                <input id="glSec" type="password" class="form-input font-mono text-xs" bind:value={gitlabClientSecret} placeholder="Enter secret" />
-              </div>
-            </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; border-top:1px solid var(--color-border); padding-top:1rem;">
+            <button type="submit" class="btn btn-primary" disabled={saving}>
+              {#if saving}<Loader2 size={14} class="animate-spin" /> Saving...{:else}<Save size={14} /> Save {curMeta.name} Credentials{/if}
+            </button>
 
-            <!-- Bitbucket -->
-            <div style="padding:1rem; border:1px solid var(--color-border); border-radius:var(--radius-md);">
-              <div style="font-weight:700; margin-bottom:0.75rem; font-size:0.9375rem;">Bitbucket Consumer</div>
-              <div class="form-group" style="margin-bottom:0.75rem;">
-                <label class="form-label text-xs" for="bbId">Key</label>
-                <input id="bbId" type="text" class="form-input font-mono text-xs" bind:value={bitbucketClientId} placeholder="Consumer Key" />
+            <!-- 1-Click Connect Button -->
+            {#if activeConn}
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span class="badge badge-running" style="font-size:0.75rem;">Connected as @{activeConn.username}</span>
+                <a href="/api/v1/integrations/git/{activeGitTab}/auth" class="btn btn-secondary" style="font-size:0.75rem; padding:4px 10px;">
+                  Re-authenticate
+                </a>
               </div>
-              <div class="form-group" style="margin:0;">
-                <label class="form-label text-xs" for="bbSec">Secret</label>
-                <input id="bbSec" type="password" class="form-input font-mono text-xs" bind:value={bitbucketClientSecret} placeholder="Enter secret" />
-              </div>
-            </div>
+            {:else}
+              <a 
+                href="/api/v1/integrations/git/{activeGitTab}/auth" 
+                class="btn btn-secondary"
+                style="font-size:0.8125rem; padding:7px 16px; display:flex; align-items:center; gap:6px;"
+              >
+                <FolderGit2 size={14} /> 1-Click Connect {curMeta.name} Account
+              </a>
+            {/if}
           </div>
-
-          <button type="submit" class="btn btn-primary" disabled={saving}>
-            {#if saving}<Loader2 size={14} class="animate-spin" /> Saving...{:else}<Save size={14} /> Save OAuth Credentials{/if}
-          </button>
         </form>
       </div>
     </div>

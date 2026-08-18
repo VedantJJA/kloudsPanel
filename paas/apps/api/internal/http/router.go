@@ -76,6 +76,9 @@ func NewServer(log *slog.Logger, store repository.Store, addr string) *fiber.App
 	ws.Post("/:slug/members", h.handleInviteMember)
 	ws.Get("/:slug/variables", h.handleListWorkspaceVariables)
 	ws.Post("/:slug/variables", h.handleSaveWorkspaceVariables)
+	ws.Get("/:slug/env-groups", h.handleListWorkspaceVariables)
+	ws.Post("/:slug/env-groups", h.handleSaveWorkspaceEnvGroup)
+	ws.Delete("/:slug/env-groups/:groupId", h.handleDeleteWorkspaceEnvGroup)
 
 	// Project routes
 	proj := v1.Group("/projects", h.requireSession)
