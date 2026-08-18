@@ -143,6 +143,12 @@ func NewServer(log *slog.Logger, store repository.Store, addr string) *fiber.App
 	git.Delete("/:provider", h.handleDeleteGitIntegration)
 	git.Get("/:provider/repos", h.handleListGitRepos)
 
+	// Webhook endpoints for auto-deploy on commit (GitHub, GitLab, Bitbucket, Gitea)
+	v1.Post("/webhooks/deploy/:serviceId", h.handleServiceDeployWebhook)
+	v1.Post("/webhooks/git", h.handleGenericGitWebhook)
+	v1.Post("/webhooks/git/:provider", h.handleGenericGitWebhook)
+	v1.Post("/integrations/git/webhook", h.handleGenericGitWebhook)
+
 	// Admin routes (main_admin only)
 	admin := v1.Group("/admin", h.requireSession, h.requireMainAdmin)
 	admin.Get("/telemetry", h.handleGetTelemetry)

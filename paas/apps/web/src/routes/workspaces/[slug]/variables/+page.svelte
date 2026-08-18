@@ -215,12 +215,7 @@
   </div>
 {/if}
 
-<div style="display: flex; align-items: center; gap: 0.75rem; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 0.85rem 1.15rem; margin-bottom: 1.5rem; font-size: 0.8125rem; color: var(--color-ink);">
-  <Info size={18} style="color: var(--color-accent); flex-shrink: 0;" />
-  <div>
-    Environment variable sets allow you to organize API keys, database credentials, or staging flags into reusable groups. When linked to a project, all services in that project automatically inherit the variables during build and runtime.
-  </div>
-</div>
+
 
 {#if loading}
   <div class="empty-state">

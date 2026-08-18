@@ -55,6 +55,7 @@ func (h *Handler) handleCreateService(c fiber.Ctx) error {
 		Slug         string             `json:"slug"`
 		Kind         domain.ServiceKind `json:"kind"`
 		InternalPort *int               `json:"internalPort"`
+		AutoDeploy   *bool              `json:"autoDeploy"`
 		ResourceJSON string             `json:"resourceJson"`
 	}
 	if err := c.Bind().JSON(&req); err != nil {
@@ -70,6 +71,10 @@ func (h *Handler) handleCreateService(c fiber.Ctx) error {
 		}
 		req.InternalPort = &p
 	}
+	autoDeploy := true
+	if req.AutoDeploy != nil {
+		autoDeploy = *req.AutoDeploy
+	}
 	sSlug := generateUniqueServiceSlug(c.Context(), h.store, req.Name, req.Slug)
 	s := &domain.Service{
 		ProjectID:     req.ProjectID,
@@ -78,6 +83,7 @@ func (h *Handler) handleCreateService(c fiber.Ctx) error {
 		Kind:          req.Kind,
 		CreatedBy:     u.ID,
 		InternalPort:  req.InternalPort,
+		AutoDeploy:    autoDeploy,
 		ResourceJSON:  req.ResourceJSON,
 		DesiredState:  domain.ServiceDesiredRunning,
 		RuntimeStatus: domain.ServiceStatusDraft,

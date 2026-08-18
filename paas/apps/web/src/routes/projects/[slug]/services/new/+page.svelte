@@ -1077,6 +1077,9 @@
 
   function choosePreset(p: ServicePreset) {
     selectedPreset = p;
+    if (p.category) {
+      activeCategory = p.category as any;
+    }
     kind = p.kind;
     internalPort = p.port || 80;
     buildCommand = p.defaultBuild || '';
@@ -1399,7 +1402,7 @@
   <!-- ========================================================================= -->
   {#if activeTab === 'source'}
     <div class="card" style="padding: 1.5rem; margin-bottom: 1.5rem; border-radius: var(--radius-lg);">
-      <h3 style="margin: 0 0 1rem 0; font-size: 1.05rem; display: flex; align-items: center; gap: 0.5rem;">
+      <h3 style="margin: 0 0 1rem 0; font-size: 1.05rem; font-weight: 600; color: var(--color-ink); display: flex; align-items: center; gap: 0.5rem;">
         <FolderGit2 size={18} style="color: var(--color-accent);" /> Select Codebase Source
       </h3>
 
@@ -1418,12 +1421,12 @@
           onclick={() => sourceType = 'git_public'}
         >
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
-            <div style="display: flex; align-items: center; gap: 0.5rem; font-weight: 700;">
+            <div style="display: flex; align-items: center; gap: 0.5rem; font-weight: 700; color: var(--color-ink); font-size: 0.9375rem;">
               <Unlock size={18} style="color: var(--color-accent);" /> Public Git Repo
             </div>
             <span class="badge badge-running" style="font-size: 0.65rem;">Instant</span>
           </div>
-          <p class="text-xs text-muted" style="margin: 0;">Clone any public GitHub, Bitbucket, or GitLab URL with automated build detection.</p>
+          <p class="text-xs text-muted" style="margin: 0; line-height: 1.4; color: var(--color-ink-muted);">Clone any public GitHub, Bitbucket, or GitLab URL with automated build detection.</p>
         </button>
 
         <button 
@@ -1440,12 +1443,12 @@
           onclick={() => { sourceType = 'git_provider'; loadProviderRepos(selectedProvider); }}
         >
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
-            <div style="display: flex; align-items: center; gap: 0.5rem; font-weight: 700;">
+            <div style="display: flex; align-items: center; gap: 0.5rem; font-weight: 700; color: var(--color-ink); font-size: 0.9375rem;">
               <FolderGit2 size={18} style="color: var(--color-info);" /> Linked Accounts
             </div>
-            <span class="badge" style="background:var(--color-info-subtle); color:var(--color-info); font-size: 0.65rem;">GitHub / GitLab</span>
+            <span class="badge" style="background: rgba(56,189,248,0.15); color: #38bdf8; font-size: 0.65rem;">GitHub / GitLab</span>
           </div>
-          <p class="text-xs text-muted" style="margin: 0;">Browse and select repositories directly from your connected Git accounts.</p>
+          <p class="text-xs text-muted" style="margin: 0; line-height: 1.4; color: var(--color-ink-muted);">Browse and select repositories directly from your connected Git accounts.</p>
         </button>
 
         <button 
@@ -1462,12 +1465,12 @@
           onclick={() => sourceType = 'image'}
         >
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
-            <div style="display: flex; align-items: center; gap: 0.5rem; font-weight: 700;">
+            <div style="display: flex; align-items: center; gap: 0.5rem; font-weight: 700; color: var(--color-ink); font-size: 0.9375rem;">
               <Server size={18} style="color: var(--color-ink-secondary);" /> Container Image
             </div>
             <span class="badge" style="background:var(--color-surface-subtle); color:var(--color-ink-secondary); font-size: 0.65rem;">Registry</span>
           </div>
-          <p class="text-xs text-muted" style="margin: 0;">Deploy pre-built container image directly from Docker Hub or GitHub Container Registry.</p>
+          <p class="text-xs text-muted" style="margin: 0; line-height: 1.4; color: var(--color-ink-muted);">Deploy pre-built container image directly from Docker Hub or GitHub Container Registry.</p>
         </button>
       </div>
 
@@ -1932,32 +1935,32 @@
           <div style="display: flex; gap: 0.35rem;">
             <button 
               type="button" 
-              class="btn btn-secondary" 
-              style="padding: 2px 10px; font-size: 0.75rem; background: {activeCategory === 'all' ? 'var(--color-surface-subtle)' : 'transparent'};" 
+              class="btn" 
+              style="padding: 3px 12px; font-size: 0.75rem; border-radius: var(--radius-sm); border: 1px solid {activeCategory === 'all' ? 'var(--color-accent)' : 'var(--color-border)'}; background: {activeCategory === 'all' ? 'var(--color-accent)' : 'var(--color-surface)'}; color: {activeCategory === 'all' ? 'var(--color-accent-contrast)' : 'var(--color-ink)'}; font-weight: {activeCategory === 'all' ? '700' : '500'}; cursor: pointer;" 
               onclick={() => activeCategory = 'all'}
             >
               All
             </button>
             <button 
               type="button" 
-              class="btn btn-secondary" 
-              style="padding: 2px 10px; font-size: 0.75rem; background: {activeCategory === 'web' ? 'var(--color-surface-subtle)' : 'transparent'};" 
+              class="btn" 
+              style="padding: 3px 12px; font-size: 0.75rem; border-radius: var(--radius-sm); border: 1px solid {activeCategory === 'web' ? 'var(--color-accent)' : 'var(--color-border)'}; background: {activeCategory === 'web' ? 'var(--color-accent)' : 'var(--color-surface)'}; color: {activeCategory === 'web' ? 'var(--color-accent-contrast)' : 'var(--color-ink)'}; font-weight: {activeCategory === 'web' ? '700' : '500'}; cursor: pointer;" 
               onclick={() => activeCategory = 'web'}
             >
               Web / APIs
             </button>
             <button 
               type="button" 
-              class="btn btn-secondary" 
-              style="padding: 2px 10px; font-size: 0.75rem; background: {activeCategory === 'static' ? 'var(--color-surface-subtle)' : 'transparent'};" 
+              class="btn" 
+              style="padding: 3px 12px; font-size: 0.75rem; border-radius: var(--radius-sm); border: 1px solid {activeCategory === 'static' ? 'var(--color-accent)' : 'var(--color-border)'}; background: {activeCategory === 'static' ? 'var(--color-accent)' : 'var(--color-surface)'}; color: {activeCategory === 'static' ? 'var(--color-accent-contrast)' : 'var(--color-ink)'}; font-weight: {activeCategory === 'static' ? '700' : '500'}; cursor: pointer;" 
               onclick={() => activeCategory = 'static'}
             >
               Static SPA
             </button>
             <button 
               type="button" 
-              class="btn btn-secondary" 
-              style="padding: 2px 10px; font-size: 0.75rem; background: {activeCategory === 'worker' ? 'var(--color-surface-subtle)' : 'transparent'};" 
+              class="btn" 
+              style="padding: 3px 12px; font-size: 0.75rem; border-radius: var(--radius-sm); border: 1px solid {activeCategory === 'worker' ? 'var(--color-accent)' : 'var(--color-border)'}; background: {activeCategory === 'worker' ? 'var(--color-accent)' : 'var(--color-surface)'}; color: {activeCategory === 'worker' ? 'var(--color-accent-contrast)' : 'var(--color-ink)'}; font-weight: {activeCategory === 'worker' ? '700' : '500'}; cursor: pointer;" 
               onclick={() => activeCategory = 'worker'}
             >
               Workers

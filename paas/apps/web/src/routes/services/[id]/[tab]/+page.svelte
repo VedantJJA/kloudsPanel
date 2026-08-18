@@ -86,6 +86,16 @@
   let routesSaving = $state(false);
   let routesNotice = $state<{ type: 'success' | 'error'; message: string } | null>(null);
 
+  // Deployment Log Selection state
+  const requestedDeployId = $derived($page.url.searchParams.get('deployId'));
+  let selectedLogDeployId = $state<string | null>(null);
+
+  $effect(() => {
+    if (requestedDeployId) {
+      selectedLogDeployId = requestedDeployId;
+    }
+  });
+
   $effect(() => {
     if (tab === 'routes') {
       loadRoutes(true);
@@ -1165,15 +1175,81 @@
     </div>
 
   {:else if tab === 'logs'}
-    <div style="margin-bottom:1rem; display:flex; justify-content:space-between; align-items:center;">
-      <h3 style="margin:0; font-size:1rem;">Real-Time Build & Runtime Logs</h3>
+    {@const activeDep = selectedLogDeployId ? deployments.find(d => d.id === selectedLogDeployId) : (deployments[0] || null)}
+    <div class="card" style="padding: 1rem 1.25rem; margin-bottom: 1.25rem; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg);">
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
+        <div>
+          <h3 style="margin: 0; font-size: 1rem; font-weight: 600; color: var(--color-ink); display: flex; align-items: center; gap: 8px;">
+            <FileText size={18} style="color: var(--color-accent);" />
+            {#if selectedLogDeployId && activeDep}
+              Logs for Deployment #{activeDep.sequence} ({activeDep.status})
+            {:else}
+              Live Build & Container Runtime Logs
+            {/if}
+          </h3>
+          <p class="text-xs text-muted" style="margin: 2px 0 0 0;">
+            {#if selectedLogDeployId && activeDep}
+              Viewing stored build and execution logs for Deployment #{activeDep.sequence} (Trigger: {activeDep.trigger}).
+            {:else}
+              Streaming live logs from active container sandbox and recent deployments.
+            {/if}
+          </p>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span class="text-xs text-muted" style="font-weight: 600;">Deployment:</span>
+            <select
+              class="form-select font-mono text-xs"
+              style="padding: 4px 8px; height: 32px; font-size: 0.75rem; min-width: 220px;"
+              value={selectedLogDeployId || 'live'}
+              onchange={(e: any) => {
+                const val = e.target.value;
+                if (val === 'live') {
+                  selectedLogDeployId = null;
+                  goto(`/services/${id}/logs`, { replaceState: true });
+                } else {
+                  selectedLogDeployId = val;
+                  goto(`/services/${id}/logs?deployId=${val}`, { replaceState: true });
+                }
+              }}
+            >
+              <option value="live">Live Stream (Active Deployment)</option>
+              {#each deployments as d}
+                {@const dSnap = (() => { try { return JSON.parse(d.config_snapshot || '{}'); } catch { return {}; } })()}
+                <option value={d.id}>
+                  #{d.sequence} - {d.status.toUpperCase()} ({d.trigger}{dSnap.commit_sha ? ` @ ${dSnap.commit_sha}` : ''})
+                </option>
+              {/each}
+            </select>
+          </div>
+
+          {#if selectedLogDeployId}
+            <button
+              type="button"
+              class="btn btn-secondary"
+              style="font-size: 0.75rem; padding: 4px 10px; min-height: 32px; display: inline-flex; align-items: center; gap: 4px;"
+              onclick={() => {
+                selectedLogDeployId = null;
+                goto(`/services/${id}/logs`, { replaceState: true });
+              }}
+            >
+              <RefreshCw size={12} /> Switch to Live Stream
+            </button>
+          {/if}
+        </div>
+      </div>
     </div>
-    <LogViewer serviceId={service?.id || (id as string)} deploymentId={deployments[0]?.id || deployments[0]?.ID} />
+
+    <LogViewer serviceId={service?.id || (id as string)} deploymentId={selectedLogDeployId || deployments[0]?.id || deployments[0]?.ID} />
 
   {:else if tab === 'deployments'}
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem;">
-      <h3 style="margin:0; font-size:1rem;">Deployment History ({deployments.length})</h3>
-      <button class="btn btn-primary" style="padding:0.35rem 0.85rem; font-size:0.8125rem;" onclick={triggerDeploy} disabled={actionLoading}>
+      <div>
+        <h3 style="margin:0; font-size:1.05rem; font-weight:600; color:var(--color-ink);">Deployment History ({deployments.length})</h3>
+        <p class="text-xs text-muted" style="margin:2px 0 0 0;">Complete audit trail of all manual and auto-deploy git push runs.</p>
+      </div>
+      <button class="btn btn-primary" style="padding:0.4rem 1rem; font-size:0.8125rem;" onclick={triggerDeploy} disabled={actionLoading}>
         <Rocket size={14} /> Trigger Deployment
       </button>
     </div>
@@ -1189,23 +1265,48 @@
             <tr>
               <th># Seq</th>
               <th>Status</th>
-              <th>Trigger</th>
-              <th>Driver</th>
+              <th>Trigger & Commit</th>
+              <th>Driver / Stack</th>
               <th>Started At</th>
-              <th>Actions</th>
+              <th style="text-align:right;">Actions</th>
             </tr>
           </thead>
           <tbody>
             {#each deployments as dep}
+              {@const dSnap = (() => { try { return JSON.parse(dep.config_snapshot || '{}'); } catch { return {}; } })()}
               <tr>
-                <td class="font-mono text-sm" style="font-weight:600;">#{dep.sequence}</td>
-                <td><span class="badge badge-{dep.status}">{dep.status}</span></td>
-                <td class="text-sm">{dep.trigger} ({dep.triggered_by || 'user'})</td>
-                <td class="font-mono text-xs">{dep.build_driver}</td>
-                <td class="text-xs text-muted">{(dep.started_at || dep.StartedAt || '-').slice(0, 19).replace('T', ' ')}</td>
+                <td class="font-mono text-sm" style="font-weight:700;">#{dep.sequence}</td>
+                <td>
+                  <span class="badge badge-{dep.status}" style="text-transform:uppercase; font-size:0.7rem; font-weight:700;">
+                    {dep.status}
+                  </span>
+                </td>
+                <td>
+                  <div style="display:flex; flex-direction:column; gap:2px;">
+                    <div style="font-weight:600; font-size:0.8125rem; color:var(--color-ink); display:flex; align-items:center; gap:6px;">
+                      {#if dep.trigger === 'auto'}
+                        <span class="badge" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-size:0.68rem; padding:2px 6px;">Git Push</span>
+                      {:else}
+                        <span class="badge" style="background:var(--color-surface-subtle); color:var(--color-ink-muted); font-size:0.68rem; padding:2px 6px;">Manual</span>
+                      {/if}
+                      {#if dSnap.commit_sha}
+                        <span class="font-mono text-xs" style="color:var(--color-accent); font-weight:700;">
+                          {dSnap.commit_sha}
+                        </span>
+                      {/if}
+                    </div>
+                    {#if dSnap.commit_msg}
+                      <span class="text-xs text-muted" style="max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title={dSnap.commit_msg}>
+                        {dSnap.commit_msg}
+                      </span>
+                    {/if}
+                  </div>
+                </td>
+                <td class="font-mono text-xs text-muted">{dep.build_driver || 'docker'}</td>
+                <td class="text-xs text-muted">{(dep.started_at || dep.StartedAt || dep.created_at || dep.CreatedAt || '-').slice(0, 19).replace('T', ' ')}</td>
                 <td style="text-align:right;">
-                  <a href="/services/{id}/logs" class="btn btn-secondary" style="padding:4px 10px; font-size:0.75rem;">
-                    Logs
+                  <a href="/services/{id}/logs?deployId={dep.id}" class="btn btn-secondary" style="padding:4px 12px; font-size:0.75rem; display:inline-flex; align-items:center; gap:4px;">
+                    <FileText size={12} /> View Logs
                   </a>
                 </td>
               </tr>
@@ -2001,19 +2102,51 @@
           </div>
         {/if}
 
-        <div style="display: flex; align-items: center; justify-content: space-between; padding: 1rem; background: rgba(0,0,0,0.02); border: 1px solid var(--color-border); border-radius: var(--radius-md);">
-          <div>
-            <div style="font-weight: 600; font-size: 0.875rem;">Auto-Deploy on Git Push</div>
-            <div class="text-xs text-muted">Automatically build and deploy whenever new commits are pushed to the tracked branch.</div>
+        <div style="padding: 1.25rem; background: var(--color-canvas); border: 1px solid var(--color-border); border-radius: var(--radius-md); margin-bottom: 1.25rem;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
+            <div>
+              <div style="font-weight: 700; font-size: 0.875rem; color: var(--color-ink);">Auto-Deploy on Git Push</div>
+              <div class="text-xs text-muted">Automatically build and deploy whenever new commits are pushed to the tracked branch.</div>
+            </div>
+            <label style="display: inline-flex; align-items: center; cursor: pointer;">
+              <input 
+                type="checkbox" 
+                bind:checked={settingsAutoDeploy} 
+                onchange={() => settingsDirty = true}
+                style="width: 18px; height: 18px; accent-color: var(--color-accent);"
+              />
+            </label>
           </div>
-          <label style="display: inline-flex; align-items: center; cursor: pointer;">
-            <input 
-              type="checkbox" 
-              bind:checked={settingsAutoDeploy} 
-              onchange={() => settingsDirty = true}
-              style="width: 18px; height: 18px; accent-color: var(--color-accent);"
-            />
-          </label>
+
+          <div style="border-top: 1px dashed var(--color-border); padding-top: 0.75rem; margin-top: 0.75rem;">
+            <label for="webhook-url-input" class="form-label" style="font-size: 0.75rem; font-weight: 600;">Deploy Webhook URL (GitHub / GitLab / Bitbucket / Gitea)</label>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+              <input
+                id="webhook-url-input"
+                type="text"
+                readonly
+                class="form-input font-mono text-xs"
+                style="background: var(--color-surface); flex: 1;"
+                value={typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.host}/api/v1/webhooks/deploy/${service?.id || id}` : `/api/v1/webhooks/deploy/${service?.id || id}`}
+              />
+              <button
+                type="button"
+                class="btn btn-secondary"
+                style="font-size: 0.75rem; padding: 4px 10px; white-space: nowrap;"
+                onclick={() => {
+                  if (typeof navigator !== 'undefined') {
+                    navigator.clipboard.writeText(`${window.location.protocol}//${window.location.host}/api/v1/webhooks/deploy/${service?.id || id}`);
+                    bannerNotice = { type: 'success', message: 'Webhook URL copied to clipboard!' };
+                  }
+                }}
+              >
+                <Copy size={13} /> Copy Webhook
+              </button>
+            </div>
+            <p class="text-xs text-muted" style="margin-top: 4px; margin-bottom: 0;">
+              Paste this URL in your repository Webhook settings (Payload format: JSON, Event: Push) to trigger auto-deploy on every commit.
+            </p>
+          </div>
         </div>
       </form>
 

@@ -126,8 +126,8 @@ func sanitizeGitUrl(raw string) string {
 func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deployment, rootDomain string) {
 	serviceID := service.ID
 	depID := dep.ID
-	clearLogs(serviceID, depID)
-	appendLog(serviceID, depID, "system", fmt.Sprintf("[platform] Deployment #%d triggered for service '%s' (%s)", dep.Sequence, service.Name, service.Slug))
+	pruneOldDeploymentLogs(context.Background(), serviceID, h.store, 25)
+	appendLog(serviceID, depID, "system", fmt.Sprintf("[platform] Deployment #%d initiated for service '%s' (%s)", dep.Sequence, service.Name, service.Slug))
 
 	// Security: Validate slug before using in container names/paths
 	if err := ValidateSlug(service.Slug); err != nil {
