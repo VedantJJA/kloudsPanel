@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -364,5 +365,325 @@ func (h *Handler) handleOptimizeContainers(c fiber.Ctx) error {
 		"removed_containers": removedContainers,
 		"count":              len(removedContainers),
 		"message":            fmt.Sprintf("Optimizer scan complete. Removed %d orphan container(s) and synced routing state.", len(removedContainers)),
+	})
+}
+
+type AdminContainerItem struct {
+	ID               string `json:"id"`
+	Names            string `json:"names"`
+	Image            string `json:"image"`
+	Status           string `json:"status"`
+	State            string `json:"state"`
+	CreatedAt        string `json:"created_at"`
+	Ports            string `json:"ports"`
+	Size             string `json:"size"`
+	Type             string `json:"type"` // service, database, build, system, other
+	Slug             string `json:"slug,omitempty"`
+	IsOrphan         bool   `json:"is_orphan"`
+	HasTraefikConfig bool   `json:"has_traefik_config"`
+	WorkspaceName    string `json:"workspace_name,omitempty"`
+	ProjectName      string `json:"project_name,omitempty"`
+	ServiceName      string `json:"service_name,omitempty"`
+	ServiceID        string `json:"service_id,omitempty"`
+	DatabaseID       string `json:"database_id,omitempty"`
+}
+
+func (h *Handler) handleListAllContainers(c fiber.Ctx) error {
+	// 1. Fetch all services, databases, projects, and workspaces for indexing
+	services, _ := h.store.Services().ListAll(c.Context())
+	databases, _ := h.store.Databases().ListAll(c.Context())
+	projects, _ := h.store.Projects().ListAll(c.Context())
+	users, _ := h.store.Users().ListAll(c.Context(), 1000, 0)
+
+	var workspaces []*domain.Workspace
+	for _, u := range users {
+		wsList, err := h.store.Workspaces().ListForUser(c.Context(), u.ID)
+		if err == nil {
+			workspaces = append(workspaces, wsList...)
+		}
+	}
+
+	projectMap := make(map[string]*domain.Project)
+	for _, p := range projects {
+		projectMap[p.ID] = p
+	}
+
+	workspaceMap := make(map[string]*domain.Workspace)
+	for _, w := range workspaces {
+		workspaceMap[w.ID] = w
+	}
+
+	serviceContainerMap := make(map[string]*domain.Service)
+	for _, s := range services {
+		serviceContainerMap[fmt.Sprintf("paas-svc-%s", s.Slug)] = s
+		serviceContainerMap[s.Slug] = s
+	}
+
+	databaseContainerMap := make(map[string]*domain.Database)
+	for _, db := range databases {
+		if db.InternalHostname != "" {
+			databaseContainerMap[db.InternalHostname] = db
+		}
+		dbSlug := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(db.Name), "_", "-"))
+		databaseContainerMap[fmt.Sprintf("paas-db-%s", dbSlug)] = db
+		databaseContainerMap[fmt.Sprintf("paas-db-%s", strings.ToLower(db.Name))] = db
+		databaseContainerMap[db.Name] = db
+	}
+
+	// 2. Query Docker CLI for all containers
+	out, err := exec.Command("docker", "ps", "-a", "--format", "{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.State}}\t{{.CreatedAt}}\t{{.Ports}}\t{{.Size}}").Output()
+	var containers []AdminContainerItem
+	if err == nil {
+		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+		for _, line := range lines {
+			if strings.TrimSpace(line) == "" {
+				continue
+			}
+			parts := strings.Split(line, "\t")
+			if len(parts) < 5 {
+				continue
+			}
+
+			id := parts[0]
+			names := parts[1]
+			image := parts[2]
+			status := parts[3]
+			state := parts[4]
+			createdAt := ""
+			if len(parts) > 5 {
+				createdAt = parts[5]
+			}
+			ports := ""
+			if len(parts) > 6 {
+				ports = parts[6]
+			}
+			size := ""
+			if len(parts) > 7 {
+				size = parts[7]
+			}
+
+			// Clean primary name (Docker names can have leading /)
+			cleanName := strings.TrimPrefix(names, "/")
+
+			item := AdminContainerItem{
+				ID:        id,
+				Names:     cleanName,
+				Image:     image,
+				Status:    status,
+				State:     state,
+				CreatedAt: createdAt,
+				Ports:     ports,
+				Size:      size,
+				Type:      "other",
+			}
+
+			// Determine container type
+			if strings.HasPrefix(cleanName, "paas-svc-") {
+				item.Type = "service"
+				item.Slug = strings.TrimPrefix(cleanName, "paas-svc-")
+			} else if strings.HasPrefix(cleanName, "paas-db-") {
+				item.Type = "database"
+				item.Slug = strings.TrimPrefix(cleanName, "paas-db-")
+			} else if strings.HasPrefix(cleanName, "paas-build-") || strings.HasPrefix(cleanName, "paas-builder-") {
+				item.Type = "build"
+				item.Slug = strings.TrimPrefix(strings.TrimPrefix(cleanName, "paas-build-"), "paas-builder-")
+			} else if cleanName == "paas-traefik" || cleanName == "traefik" || strings.Contains(image, "traefik") {
+				item.Type = "system"
+			}
+
+			// Check Traefik configuration existence
+			if item.Slug != "" {
+				dynamicDir := "/traefik/dynamic"
+				if _, err := os.Stat(dynamicDir); os.IsNotExist(err) {
+					dynamicDir = "./paas/deploy/traefik/dynamic"
+				}
+				traefikFile := filepath.Join(dynamicDir, fmt.Sprintf("svc-%s.yaml", item.Slug))
+				if _, err := os.Stat(traefikFile); err == nil {
+					item.HasTraefikConfig = true
+				}
+			}
+
+			// Check if mapped to active database record or if it is an orphan
+			if item.Type == "service" {
+				if s, exists := serviceContainerMap[cleanName]; exists {
+					item.ServiceName = s.Name
+					item.ServiceID = s.ID
+					if p, pExists := projectMap[s.ProjectID]; pExists {
+						item.ProjectName = p.Name
+						if w, wExists := workspaceMap[p.WorkspaceID]; wExists {
+							item.WorkspaceName = w.Name
+						}
+					}
+					item.IsOrphan = false
+				} else {
+					item.IsOrphan = true
+				}
+			} else if item.Type == "database" {
+				if db, exists := databaseContainerMap[cleanName]; exists {
+					item.ServiceName = db.Name
+					item.DatabaseID = db.ID
+					if p, pExists := projectMap[db.ProjectID]; pExists {
+						item.ProjectName = p.Name
+						if w, wExists := workspaceMap[p.WorkspaceID]; wExists {
+							item.WorkspaceName = w.Name
+						}
+					}
+					item.IsOrphan = false
+				} else {
+					item.IsOrphan = true
+				}
+			} else if item.Type == "build" {
+				item.IsOrphan = true
+			}
+
+			containers = append(containers, item)
+		}
+	}
+
+	return c.JSON(fiber.Map{
+		"containers": containers,
+		"total":      len(containers),
+	})
+}
+
+func (h *Handler) handleDeleteContainerInstance(c fiber.Ctx) error {
+	nameOrId := c.Params("nameOrId")
+	if nameOrId == "" || nameOrId == "undefined" {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid container identifier"})
+	}
+
+	cleanName := strings.TrimPrefix(nameOrId, "/")
+	var slug string
+	if strings.HasPrefix(cleanName, "paas-svc-") {
+		slug = strings.TrimPrefix(cleanName, "paas-svc-")
+	} else if strings.HasPrefix(cleanName, "paas-db-") {
+		slug = strings.TrimPrefix(cleanName, "paas-db-")
+	}
+
+	// 1. Forcefully remove Docker container
+	_ = exec.Command("docker", "rm", "-f", cleanName).Run()
+	_ = exec.Command("docker", "rm", "-f", nameOrId).Run()
+
+	// 2. Wipe associated images
+	if slug != "" {
+		_ = exec.Command("docker", "rmi", "-f", fmt.Sprintf("paas-svc-%s:latest", slug)).Run()
+		_ = exec.Command("docker", "rmi", "-f", fmt.Sprintf("paas-app-%s:latest", slug)).Run()
+		_ = exec.Command("docker", "rmi", "-f", fmt.Sprintf("paas-svc-%s", slug)).Run()
+	}
+
+	// 3. Wipe persistent volumes
+	if slug != "" {
+		_ = exec.Command("docker", "volume", "rm", "-f", fmt.Sprintf("paas-svc-data-%s", slug)).Run()
+		_ = exec.Command("docker", "volume", "rm", "-f", fmt.Sprintf("paas-db-data-%s", slug)).Run()
+		_ = exec.Command("docker", "volume", "rm", "-f", cleanName).Run()
+	}
+
+	// 4. Remove Traefik dynamic routing configuration
+	if slug != "" {
+		removeTraefikDynamicConfig(slug)
+	}
+
+	// 5. Clean temp builds and caches
+	if slug != "" {
+		_ = exec.Command("rm", "-rf", fmt.Sprintf("/tmp/builds/%s", slug)).Run()
+		_ = exec.Command("rm", "-rf", fmt.Sprintf("/tmp/paas-%s*", slug)).Run()
+	}
+
+	// 6. Clean residual DB rows if matched
+	if slug != "" {
+		if s, err := h.store.Services().GetByID(c.Context(), slug); err == nil && s != nil {
+			_ = h.store.Services().Delete(c.Context(), s.ID)
+		} else {
+			allSvcs, _ := h.store.Services().ListAll(c.Context())
+			for _, s := range allSvcs {
+				if s.Slug == slug || s.ID == slug {
+					_ = h.store.Services().Delete(c.Context(), s.ID)
+				}
+			}
+		}
+
+		allDbs, _ := h.store.Databases().ListAll(c.Context())
+		for _, db := range allDbs {
+			dbSlug := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(db.Name), "_", "-"))
+			if db.InternalHostname == cleanName || dbSlug == slug || strings.ToLower(db.Name) == slug {
+				_ = h.store.Databases().Delete(c.Context(), db.ID)
+			}
+		}
+	}
+
+	// 7. Prune dangling build cache
+	go func() {
+		_ = exec.Command("docker", "container", "prune", "-f").Run()
+		_ = exec.Command("docker", "image", "prune", "-f").Run()
+	}()
+
+	return c.JSON(fiber.Map{
+		"success":   true,
+		"container": cleanName,
+		"message":   fmt.Sprintf("Container '%s' terminated, Traefik routing removed, and volumes purged.", cleanName),
+	})
+}
+
+func (h *Handler) handlePruneAllFloatingContainers(c fiber.Ctx) error {
+	// 1. Gather all active services and databases registered in the database
+	services, _ := h.store.Services().ListAll(c.Context())
+	databases, _ := h.store.Databases().ListAll(c.Context())
+
+	knownContainers := make(map[string]bool)
+	for _, s := range services {
+		knownContainers[fmt.Sprintf("paas-svc-%s", s.Slug)] = true
+	}
+	for _, db := range databases {
+		if db.InternalHostname != "" {
+			knownContainers[db.InternalHostname] = true
+		}
+		dbSlug := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(db.Name), "_", "-"))
+		knownContainers[fmt.Sprintf("paas-db-%s", dbSlug)] = true
+		knownContainers[fmt.Sprintf("paas-db-%s", strings.ToLower(db.Name))] = true
+	}
+
+	// 2. Query Docker for all existing container names on the host
+	out, err := exec.Command("docker", "ps", "-a", "--format", "{{.Names}}").Output()
+	var removedContainers []string
+	if err == nil {
+		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+		for _, line := range lines {
+			name := strings.TrimSpace(line)
+			if name == "" {
+				continue
+			}
+			cleanName := strings.TrimPrefix(name, "/")
+			if strings.HasPrefix(cleanName, "paas-svc-") || strings.HasPrefix(cleanName, "paas-db-") || strings.HasPrefix(cleanName, "paas-build-") || strings.HasPrefix(cleanName, "paas-builder-") {
+				if !knownContainers[cleanName] {
+					// Orphan detected: terminate container
+					_ = exec.Command("docker", "rm", "-f", cleanName).Run()
+					removedContainers = append(removedContainers, cleanName)
+
+					// If service container, wipe Traefik config, volume, and temp files
+					if strings.HasPrefix(cleanName, "paas-svc-") {
+						slug := strings.TrimPrefix(cleanName, "paas-svc-")
+						removeTraefikDynamicConfig(slug)
+						_ = exec.Command("docker", "volume", "rm", "-f", fmt.Sprintf("paas-svc-data-%s", slug)).Run()
+						_ = exec.Command("rm", "-rf", fmt.Sprintf("/tmp/builds/%s", slug)).Run()
+						_ = exec.Command("rm", "-rf", fmt.Sprintf("/tmp/paas-%s*", slug)).Run()
+					} else if strings.HasPrefix(cleanName, "paas-db-") {
+						slug := strings.TrimPrefix(cleanName, "paas-db-")
+						_ = exec.Command("docker", "volume", "rm", "-f", fmt.Sprintf("paas-db-data-%s", slug)).Run()
+					}
+				}
+			}
+		}
+	}
+
+	// 3. Prune dangling layers and builder caches
+	_ = exec.Command("docker", "container", "prune", "-f").Run()
+	_ = exec.Command("docker", "image", "prune", "-f").Run()
+	_ = exec.Command("docker", "builder", "prune", "-f").Run()
+
+	return c.JSON(fiber.Map{
+		"success":            true,
+		"removed_containers": removedContainers,
+		"count":              len(removedContainers),
+		"message":            fmt.Sprintf("Pruned %d floating container(s) and cleared their networking and volumes.", len(removedContainers)),
 	})
 }

@@ -222,6 +222,7 @@
     if (isAdmin) {
       items.push(
         { section: 'Administration', label: '', href: '', icon: null },
+        { label: 'Containers & Host', href: '/admin/containers', icon: Box },
         { label: 'Settings & Setup', href: '/admin/setup', icon: Settings },
         { label: 'Users', href: '/admin/users', icon: Users },
         { label: 'Telemetry', href: '/admin/telemetry', icon: Activity },
