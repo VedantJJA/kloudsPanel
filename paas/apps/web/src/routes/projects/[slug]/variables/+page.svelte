@@ -171,35 +171,19 @@
 {:else}
   <!-- Section 1: Workspace Environment Groups Attachment -->
   <div class="card" style="padding: 1.25rem; margin-bottom: 1.5rem;">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid var(--color-border); padding-bottom: 0.75rem;">
-      <div>
-        <h3 style="margin: 0; font-size: 1rem; font-weight: 600; color: var(--color-ink); display: flex; align-items: center; gap: 6px;">
-          <Link2 size={16} style="color: var(--color-accent);" /> Workspace Groups Linked to this Project
-        </h3>
-        <p class="text-xs text-muted" style="margin: 2px 0 0 0;">
-          Toggle groups on or off to attach them to services deployed in this project.
-        </p>
-      </div>
-      {#if workspace?.slug}
-        <a 
-          href="/workspaces/{workspace.slug}/variables" 
-          class="btn btn-secondary" 
-          style="font-size: 0.75rem; padding: 4px 10px; min-height: 28px;"
-        >
-          Manage All Workspace Groups
-        </a>
-      {/if}
+    <div style="margin-bottom: 1rem; border-bottom: 1px solid var(--color-border); padding-bottom: 0.75rem;">
+      <h3 style="margin: 0; font-size: 1rem; font-weight: 600; color: var(--color-ink); display: flex; align-items: center; gap: 6px;">
+        <Link2 size={16} style="color: var(--color-accent);" /> Workspace Groups Available to Link
+      </h3>
+      <p class="text-xs text-muted" style="margin: 2px 0 0 0;">
+        Toggle groups on or off to attach them to services deployed in this project.
+      </p>
     </div>
 
     {#if envGroups.length === 0}
       <div style="text-align: center; padding: 2rem 1rem; color: var(--color-ink-muted);">
         <Key size={28} style="margin: 0 auto 0.5rem auto; opacity: 0.5;" />
-        <p class="text-xs" style="margin: 0 0 0.75rem 0;">No Environment Groups created in this workspace yet.</p>
-        {#if workspace?.slug}
-          <a href="/workspaces/{workspace.slug}/variables" class="btn btn-secondary" style="font-size: 0.75rem;">
-            Create First Env Group
-          </a>
-        {/if}
+        <p class="text-xs" style="margin: 0;">No Shared Environment Groups exist in this workspace yet. Create them at the workspace level in Shared Env Vars.</p>
       </div>
     {:else}
       <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem;">

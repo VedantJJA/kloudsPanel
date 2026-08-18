@@ -53,7 +53,6 @@
   let gitRepoUrl = $state('');
   let gitBranch = $state('main');
   let rootDirectory = $state('.');
-  let gitAccessToken = $state('');
 
   // render.yaml / blueprint auto-detect state
   let parsingYaml = $state(false);
@@ -206,10 +205,6 @@
   let providerRepos = $state<any[]>([]);
   let selectedProvider = $state<'github' | 'bitbucket' | 'gitlab'>('github');
   let repoSearchQuery = $state('');
-  let showConnectModal = $state(false);
-  let providerToken = $state('');
-  let providerUsername = $state('');
-  let connecting = $state(false);
 
   // Active category filter
   let activeCategory = $state<'all' | 'web' | 'static' | 'worker'>('all');
@@ -773,46 +768,8 @@
   }
 
   function authorizeGitOAuth(provider: string) {
-    if (!oauthEnabledMap[provider]) {
-      selectedProvider = provider as any;
-      showConnectModal = true;
-      return;
-    }
     const returnTo = window.location.pathname;
     window.location.href = `/api/v1/integrations/git/${provider}/authorize?return_to=${encodeURIComponent(returnTo)}`;
-  }
-
-  async function connectPersonalToken(e: Event) {
-    e.preventDefault();
-    if (!providerToken.trim() || connecting) return;
-    connecting = true;
-    error = null;
-    try {
-      const res = await fetch('/api/v1/integrations/git/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          provider: selectedProvider,
-          token: providerToken.trim(),
-          username: providerUsername.trim()
-        })
-      });
-      if (res.ok) {
-        providerToken = '';
-        providerUsername = '';
-        showConnectModal = false;
-        await loadIntegrations();
-        await loadProviderRepos(selectedProvider);
-      } else {
-        const d = await res.json().catch(() => ({}));
-        alert(d.error || 'Failed to verify and connect Personal Access Token.');
-      }
-    } catch (e: any) {
-      alert('Connection error: ' + e.message);
-    } finally {
-      connecting = false;
-    }
   }
 
   function getPresetVersions(presetId: string) {
@@ -1517,7 +1474,7 @@
       {#if sourceType === 'git_public'}
         <div style="background: var(--color-surface); padding: 1.25rem; border-radius: var(--radius-md); border: 1px solid var(--color-border);">
           <div class="form-group">
-            <label for="git-repo-input" class="form-label">Git Repository URL</label>
+            <label for="git-repo-input" class="form-label">Public Git Repository URL</label>
             <div style="position: relative;">
               <input 
                 id="git-repo-input" 
@@ -1535,11 +1492,11 @@
               {/if}
             </div>
             <p class="text-xs text-muted" style="margin-top:0.35rem;">
-              Supports any public or private Git repository (GitHub, Bitbucket, GitLab, Gitea).
+              Supports any public Git repository (GitHub, Bitbucket, GitLab, Gitea).
             </p>
           </div>
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
             <div class="form-group" style="margin:0;">
               <label for="git-branch-input" class="form-label">Branch</label>
               <input 
@@ -1561,22 +1518,6 @@
                 bind:value={rootDirectory} 
               />
             </div>
-          </div>
-
-          <div class="form-group" style="margin:0;">
-            <label for="git-token-input" class="form-label" style="display:flex; justify-content:space-between; align-items:center;">
-              <span>Personal Access Token / PAT <span class="text-muted" style="font-weight:400; font-size:0.75rem;">(Optional - for private repositories)</span></span>
-            </label>
-            <input 
-              id="git-token-input" 
-              type="password" 
-              class="form-input font-mono" 
-              placeholder="ghp_... (or gitlab/bitbucket token for private repos)" 
-              bind:value={gitAccessToken} 
-            />
-            <p class="text-xs text-muted" style="margin-top:0.35rem;">
-              If your repository is private, provide a Personal Access Token with repo read permissions. Works on any device without server OAuth setup.
-            </p>
           </div>
         </div>
 
@@ -1628,27 +1569,15 @@
                   <X size={13} />
                 </button>
               </div>
-            {:else}
-              <div style="display: flex; align-items: center; gap: 0.5rem;">
-                <button 
-                  type="button" 
-                  class="btn btn-primary" 
-                  style="font-size: 0.8125rem; padding: 4px 12px; display: flex; align-items: center; gap: 6px;"
-                  onclick={() => showConnectModal = true}
-                >
-                  <KeyRound size={14} /> Connect Token (PAT)
-                </button>
-                {#if oauthEnabledMap[selectedProvider]}
-                  <button 
-                    type="button" 
-                    class="btn btn-secondary" 
-                    style="font-size: 0.8125rem; padding: 4px 12px; display: flex; align-items: center; gap: 6px;"
-                    onclick={() => authorizeGitOAuth(selectedProvider)}
-                  >
-                    <FolderGit2 size={14} /> OAuth App
-                  </button>
-                {/if}
-              </div>
+            {:else if oauthEnabledMap[selectedProvider]}
+              <button 
+                type="button" 
+                class="btn btn-primary" 
+                style="font-size: 0.8125rem; padding: 4px 14px; display: flex; align-items: center; gap: 6px;"
+                onclick={() => authorizeGitOAuth(selectedProvider)}
+              >
+                <FolderGit2 size={14} /> Connect with {selectedProvider.charAt(0).toUpperCase() + selectedProvider.slice(1)}
+              </button>
             {/if}
           </div>
 
@@ -1656,31 +1585,34 @@
             <div style="text-align: center; padding: 2rem 1rem; background: var(--color-surface-subtle); border-radius: var(--radius-md); border: 1px dashed var(--color-border);">
               <FolderGit2 size={30} style="color: var(--color-accent); margin-bottom: 0.5rem;" />
               <div style="font-weight: 600; font-size: 0.9375rem; color: var(--color-ink); margin-bottom: 4px;">
-                Connect {selectedProvider.charAt(0).toUpperCase() + selectedProvider.slice(1)} Account
+                {selectedProvider.charAt(0).toUpperCase() + selectedProvider.slice(1)} Integration
               </div>
-              <p class="text-xs text-muted" style="margin: 0 auto 1rem auto; max-width: 440px;">
-                Connect with a Personal Access Token (works out-of-the-box on any device without server OAuth setup) or via OAuth App.
-              </p>
-              <div style="display: flex; justify-content: center; gap: 0.75rem; flex-wrap: wrap;">
+              {#if currentProviderInfo?.connected}
+                <p class="text-xs text-muted" style="margin: 0 auto;">No repositories found in your {selectedProvider} account.</p>
+              {:else if oauthEnabledMap[selectedProvider]}
+                <p class="text-xs text-muted" style="margin: 0 auto 1rem auto; max-width: 440px;">
+                  Connect your {selectedProvider.charAt(0).toUpperCase() + selectedProvider.slice(1)} account to browse and import your private and public repositories.
+                </p>
                 <button 
                   type="button" 
                   class="btn btn-primary" 
                   style="font-size: 0.8125rem; display: inline-flex; align-items: center; gap: 6px;" 
-                  onclick={() => showConnectModal = true}
+                  onclick={() => authorizeGitOAuth(selectedProvider)}
                 >
-                  <KeyRound size={14} /> Connect with Personal Access Token (Recommended)
+                  <FolderGit2 size={14} /> Connect with {selectedProvider.charAt(0).toUpperCase() + selectedProvider.slice(1)}
                 </button>
-                {#if oauthEnabledMap[selectedProvider]}
-                  <button 
-                    type="button" 
-                    class="btn btn-secondary" 
-                    style="font-size: 0.8125rem; display: inline-flex; align-items: center; gap: 6px;" 
-                    onclick={() => authorizeGitOAuth(selectedProvider)}
-                  >
-                    <FolderGit2 size={14} /> Connect with OAuth App
-                  </button>
-                {/if}
-              </div>
+              {:else}
+                <p class="text-xs text-muted" style="margin: 0 auto 1rem auto; max-width: 440px;">
+                  OAuth is not configured on this server for {selectedProvider.charAt(0).toUpperCase() + selectedProvider.slice(1)}. Configure Client ID and Secret in Administration settings.
+                </p>
+                <a 
+                  href="/admin/git-providers" 
+                  class="btn btn-secondary" 
+                  style="font-size: 0.8125rem; display: inline-flex; align-items: center; gap: 6px;"
+                >
+                  Configure {selectedProvider.charAt(0).toUpperCase() + selectedProvider.slice(1)} OAuth
+                </a>
+              {/if}
             </div>
           {:else}
             <div class="form-group" style="margin-bottom: 0.75rem;">
@@ -2476,93 +2408,6 @@
           <Rocket size={16} /> Confirm & Deploy Now
         </button>
       </div>
-    </div>
-  </div>
-{/if}
-
-{#if showConnectModal}
-  <div 
-    class="modal-backdrop"
-    style="position: fixed; inset: 0; background: rgba(0,0,0,0.75); backdrop-filter: blur(4px); z-index: 1200; display: flex; align-items: center; justify-content: center; padding: 1rem;"
-    onclick={(e) => { if (e.target === e.currentTarget && !connecting) showConnectModal = false; }}
-    role="presentation"
-  >
-    <div 
-      class="modal-card"
-      style="width: 100%; max-width: 480px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 1.5rem; box-shadow: 0 25px 35px -5px rgba(0,0,0,0.4);"
-    >
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid var(--color-border); padding-bottom: 0.75rem;">
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <div style="width: 32px; height: 32px; border-radius: var(--radius-sm); background: var(--color-surface-subtle); color: var(--color-accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-            <KeyRound size={18} />
-          </div>
-          <h3 style="margin: 0; font-size: 1.1rem; color: var(--color-ink); font-weight: 600;">Connect {selectedProvider.charAt(0).toUpperCase() + selectedProvider.slice(1)} Token</h3>
-        </div>
-        <button 
-          type="button" 
-          class="btn btn-secondary" 
-          style="padding: 4px; min-height: 28px; width: 28px; height: 28px; border: none;"
-          onclick={() => showConnectModal = false}
-          disabled={connecting}
-        >
-          <X size={16} />
-        </button>
-      </div>
-
-      <form onsubmit={connectPersonalToken}>
-        <p class="text-xs text-muted" style="margin: 0 0 1rem 0; line-height: 1.45;">
-          Paste your Personal Access Token from {selectedProvider.charAt(0).toUpperCase() + selectedProvider.slice(1)} (with <code class="font-mono">repo</code> permissions). Works across all devices without needing OAuth app setup.
-        </p>
-
-        <div class="form-group">
-          <label for="pat-token-input" class="form-label">Personal Access Token (PAT)</label>
-          <input 
-            id="pat-token-input" 
-            type="password" 
-            class="form-input font-mono" 
-            placeholder="ghp_... or glpat-... or token" 
-            bind:value={providerToken}
-            required 
-          />
-        </div>
-
-        {#if selectedProvider === 'bitbucket'}
-          <div class="form-group">
-            <label for="pat-username-input" class="form-label">Bitbucket Username</label>
-            <input 
-              id="pat-username-input" 
-              type="text" 
-              class="form-input" 
-              placeholder="your-bitbucket-username" 
-              bind:value={providerUsername}
-              required 
-            />
-          </div>
-        {/if}
-
-        <div style="display: flex; justify-content: flex-end; gap: 0.5rem; border-top: 1px solid var(--color-border); padding-top: 1rem; margin-top: 1.25rem;">
-          <button 
-            type="button" 
-            class="btn btn-secondary" 
-            onclick={() => showConnectModal = false}
-            disabled={connecting}
-          >
-            Cancel
-          </button>
-          <button 
-            type="submit" 
-            class="btn btn-primary"
-            disabled={connecting || !providerToken.trim()}
-            style="display: flex; align-items: center; gap: 6px;"
-          >
-            {#if connecting}
-              <Loader2 size={14} class="animate-spin" /> Verifying & Connecting...
-            {:else}
-              <Check size={14} /> Connect & Load Repositories
-            {/if}
-          </button>
-        </div>
-      </form>
     </div>
   </div>
 {/if}

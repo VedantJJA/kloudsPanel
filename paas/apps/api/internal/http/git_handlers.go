@@ -265,6 +265,34 @@ func (h *Handler) handleListGitIntegrations(c fiber.Ctx) error {
 	})
 }
 
+func getCallbackRedirectURI(c fiber.Ctx, provider string) string {
+	proto := c.Protocol()
+	if fProto := c.Get("X-Forwarded-Proto"); fProto != "" {
+		proto = fProto
+	}
+
+	host := c.Get("X-Forwarded-Host")
+	if host == "" {
+		host = c.Get("Host")
+	}
+	if host == "" {
+		host = c.Host()
+	}
+	if host == "" {
+		host = c.Hostname()
+	}
+
+	rootDomain := getRootDomain()
+	if rootDomain != "" && !strings.Contains(rootDomain, "example.com") && !strings.Contains(rootDomain, "localhost") {
+		if strings.HasPrefix(rootDomain, "http://") || strings.HasPrefix(rootDomain, "https://") {
+			return fmt.Sprintf("%s/api/v1/integrations/git/%s/callback", strings.TrimRight(rootDomain, "/"), provider)
+		}
+		return fmt.Sprintf("%s://%s/api/v1/integrations/git/%s/callback", proto, rootDomain, provider)
+	}
+
+	return fmt.Sprintf("%s://%s/api/v1/integrations/git/%s/callback", proto, host, provider)
+}
+
 // Direct Multi-Provider OAuth Initiation (GitHub, GitLab, Bitbucket)
 func (h *Handler) handleGitOAuthAuthorize(c fiber.Ctx) error {
 	u := c.Locals("user").(*domain.User)
@@ -285,21 +313,7 @@ func (h *Handler) handleGitOAuthAuthorize(c fiber.Ctx) error {
 		})
 	}
 
-	host := c.Hostname()
-	if fHost := c.Get("X-Forwarded-Host"); fHost != "" {
-		host = fHost
-	}
-	proto := c.Protocol()
-	if fProto := c.Get("X-Forwarded-Proto"); fProto != "" {
-		proto = fProto
-	}
-	if host == "" || host == "127.0.0.1" || host == "localhost" {
-		rootDomain := getRootDomain()
-		if rootDomain != "" {
-			host = rootDomain
-		}
-	}
-	redirectURI := fmt.Sprintf("%s://%s/api/v1/integrations/git/%s/callback", proto, host, provider)
+	redirectURI := getCallbackRedirectURI(c, provider)
 	returnTo := c.Query("return_to", "/workspaces")
 
 	state := fmt.Sprintf("%s:%s", u.ID, url.QueryEscape(returnTo))
@@ -348,21 +362,7 @@ func (h *Handler) handleGitOAuthCallback(c fiber.Ctx) error {
 		return c.Redirect().To(returnTo + "?error=oauth_not_configured")
 	}
 
-	host := c.Hostname()
-	if fHost := c.Get("X-Forwarded-Host"); fHost != "" {
-		host = fHost
-	}
-	proto := c.Protocol()
-	if fProto := c.Get("X-Forwarded-Proto"); fProto != "" {
-		proto = fProto
-	}
-	if host == "" || host == "127.0.0.1" || host == "localhost" {
-		rootDomain := getRootDomain()
-		if rootDomain != "" {
-			host = rootDomain
-		}
-	}
-	redirectURI := fmt.Sprintf("%s://%s/api/v1/integrations/git/%s/callback", proto, host, provider)
+	redirectURI := getCallbackRedirectURI(c, provider)
 
 	var accessToken, username string
 	var avatarURL *string

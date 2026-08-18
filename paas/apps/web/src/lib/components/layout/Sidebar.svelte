@@ -260,7 +260,7 @@
   const projectTabs = $derived([
     { label: 'Services & Overview', href: `/projects/${currentProjectSlug}`, icon: LayoutDashboard },
     { label: 'Databases', href: `/projects/${currentProjectSlug}/databases`, icon: Database },
-    { label: 'Environment Groups', href: `/projects/${currentProjectSlug}/variables`, icon: Key },
+    { label: 'Shared Env Groups', href: `/projects/${currentProjectSlug}/variables`, icon: Key },
     { label: 'Settings', href: `/projects/${currentProjectSlug}/settings`, icon: Settings },
   ]);
 

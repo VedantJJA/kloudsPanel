@@ -230,11 +230,6 @@
   <!-- Services Section -->
   <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.75rem;">
     <h2 style="font-size:1rem; font-weight:600; color:var(--color-ink); margin:0;">Services ({services.length})</h2>
-    {#if services.length > 0}
-      <button class="btn btn-secondary" style="padding:4px 10px; font-size:0.75rem; min-height:30px;" onclick={() => goto(`/projects/${slug}/services/new`)}>
-        <Plus size={13} /> New Service
-      </button>
-    {/if}
   </div>
 
   {#if services.length === 0}
@@ -322,9 +317,11 @@
   <!-- Databases Section -->
   <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.75rem;">
     <h2 style="font-size:1rem; font-weight:600; color:var(--color-ink); margin:0;">Databases ({databases.length})</h2>
-    <a href="/databases/new?projectId={project?.id || project?.ID || slug}&workspaceSlug={project?.workspace_slug || ''}" class="btn btn-secondary" style="padding:4px 10px; font-size:0.75rem; min-height:30px;">
-      <Plus size={13} /> New Database
-    </a>
+    {#if databases.length > 0}
+      <a href="/databases/new?projectId={project?.id || project?.ID || slug}&workspaceSlug={project?.workspace_slug || ''}" class="btn btn-secondary" style="padding:4px 10px; font-size:0.75rem; min-height:30px;">
+        <Plus size={13} /> New Database
+      </a>
+    {/if}
   </div>
 
   {#if databases.length === 0}
