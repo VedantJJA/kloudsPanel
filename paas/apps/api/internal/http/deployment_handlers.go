@@ -681,12 +681,15 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 			}
 		}
 
-		// Auto-resolve database connection URIs
-		if projectDbs, err := h.store.Databases().ListForProject(context.Background(), service.ProjectID); err == nil {
+		// Auto-resolve database connection URIs and auto-wire backend services
+		if projectDbs, err := h.store.Databases().ListForProject(context.Background(), service.ProjectID); err == nil && len(projectDbs) > 0 {
 			for _, db := range projectDbs {
 				var meta struct {
 					ConnectionURI         string `json:"connectionUri"`
 					InternalConnectionURI string `json:"internalConnectionUri"`
+					Username              string `json:"username"`
+					Password              string `json:"password"`
+					DatabaseName          string `json:"databaseName"`
 				}
 				if db.ResourceJSON != "" {
 					_ = json.Unmarshal([]byte(db.ResourceJSON), &meta)
@@ -695,15 +698,99 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 				if uri == "" {
 					uri = meta.ConnectionURI
 				}
+				dbHost := db.InternalHostname
+				if dbHost == "" {
+					dbHost = fmt.Sprintf("paas-db-%s", strings.ToLower(db.Name))
+				}
+				dbPort := db.InternalPort
+				if dbPort == 0 {
+					if db.Engine == "mysql" {
+						dbPort = 3306
+					} else if db.Engine == "redis" {
+						dbPort = 6379
+					} else {
+						dbPort = 5432
+					}
+				}
+				dbUser := meta.Username
+				if dbUser == "" {
+					if db.Engine == "mysql" {
+						dbUser = "root"
+					} else {
+						dbUser = "postgres"
+					}
+				}
+				dbDatabase := meta.DatabaseName
+				if dbDatabase == "" {
+					dbDatabase = db.Name
+				}
+
 				for k, v := range envMap {
 					val := strings.ReplaceAll(v, fmt.Sprintf("paas-db-%s", db.Name), uri)
 					val = strings.ReplaceAll(val, fmt.Sprintf("paas-db-%s", strings.ToLower(db.Name)), uri)
 					val = strings.ReplaceAll(val, fmt.Sprintf("${databases.%s.connectionString}", db.Name), uri)
 					val = strings.ReplaceAll(val, fmt.Sprintf("${databases.%s.url}", db.Name), uri)
+					val = strings.ReplaceAll(val, fmt.Sprintf("${%s.connectionString}", db.Name), uri)
+					val = strings.ReplaceAll(val, fmt.Sprintf("${databases.%s.host}", db.Name), dbHost)
+					val = strings.ReplaceAll(val, fmt.Sprintf("${%s.host}", db.Name), dbHost)
+					val = strings.ReplaceAll(val, fmt.Sprintf("${databases.%s.port}", db.Name), fmt.Sprintf("%d", dbPort))
+					val = strings.ReplaceAll(val, fmt.Sprintf("${%s.port}", db.Name), fmt.Sprintf("%d", dbPort))
+					val = strings.ReplaceAll(val, fmt.Sprintf("${databases.%s.username}", db.Name), dbUser)
+					val = strings.ReplaceAll(val, fmt.Sprintf("${databases.%s.user}", db.Name), dbUser)
+					val = strings.ReplaceAll(val, fmt.Sprintf("${%s.username}", db.Name), dbUser)
+					val = strings.ReplaceAll(val, fmt.Sprintf("${databases.%s.password}", db.Name), meta.Password)
+					val = strings.ReplaceAll(val, fmt.Sprintf("${databases.%s.pass}", db.Name), meta.Password)
+					val = strings.ReplaceAll(val, fmt.Sprintf("${%s.password}", db.Name), meta.Password)
+					val = strings.ReplaceAll(val, fmt.Sprintf("${databases.%s.database}", db.Name), dbDatabase)
+					val = strings.ReplaceAll(val, fmt.Sprintf("${databases.%s.databaseName}", db.Name), dbDatabase)
+					val = strings.ReplaceAll(val, fmt.Sprintf("${databases.%s.name}", db.Name), dbDatabase)
+					val = strings.ReplaceAll(val, fmt.Sprintf("${%s.database}", db.Name), dbDatabase)
 					if strings.EqualFold(k, "DATABASE_URL") && (val == "" || val == db.Name || strings.HasPrefix(val, "paas-db-")) {
 						val = uri
 					}
 					envMap[k] = val
+				}
+
+				// For non-static services (web/api/backend/worker), automatically inject database environment if unset
+				if service.Kind != domain.ServiceKindStatic && presetId != "static" && presetId != "static-spa" {
+					if _, ok := envMap["DATABASE_URL"]; !ok || envMap["DATABASE_URL"] == "" {
+						envMap["DATABASE_URL"] = uri
+					}
+					if db.Engine == "postgres" || db.Engine == "postgresql" || db.Engine == "" {
+						if _, ok := envMap["PGHOST"]; !ok {
+							envMap["PGHOST"] = dbHost
+						}
+						if _, ok := envMap["PGPORT"]; !ok {
+							envMap["PGPORT"] = fmt.Sprintf("%d", dbPort)
+						}
+						if _, ok := envMap["PGUSER"]; !ok {
+							envMap["PGUSER"] = dbUser
+						}
+						if _, ok := envMap["PGPASSWORD"]; !ok {
+							envMap["PGPASSWORD"] = meta.Password
+						}
+						if _, ok := envMap["PGDATABASE"]; !ok {
+							envMap["PGDATABASE"] = dbDatabase
+						}
+						if _, ok := envMap["PGSSLMODE"]; !ok {
+							envMap["PGSSLMODE"] = "disable"
+						}
+						if _, ok := envMap["DB_HOST"]; !ok {
+							envMap["DB_HOST"] = dbHost
+						}
+						if _, ok := envMap["DB_PORT"]; !ok {
+							envMap["DB_PORT"] = fmt.Sprintf("%d", dbPort)
+						}
+						if _, ok := envMap["DB_USER"]; !ok {
+							envMap["DB_USER"] = dbUser
+						}
+						if _, ok := envMap["DB_PASSWORD"]; !ok {
+							envMap["DB_PASSWORD"] = meta.Password
+						}
+						if _, ok := envMap["DB_NAME"]; !ok {
+							envMap["DB_NAME"] = dbDatabase
+						}
+					}
 				}
 			}
 		}
