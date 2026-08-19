@@ -1186,6 +1186,26 @@
         env_vars: envMap
       };
 
+      // If blueprint databases were detected, auto-provision them for the project first so the service can connect immediately
+      if (detectedDatabases && detectedDatabases.length > 0) {
+        for (const db of detectedDatabases) {
+          try {
+            await fetch('/api/v1/databases', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({
+                projectId: project.id || project.ID,
+                name: db.name,
+                engine: db.engine || 'postgres',
+                version: db.version === 'auto' ? '' : db.version,
+                databaseName: db.databaseName || db.database_name || db.database || ''
+              })
+            });
+          } catch {}
+        }
+      }
+
       const res = await fetch('/api/v1/services', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2255,7 +2275,7 @@
         </button>
 
         <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
-          {#if detectedServices.length > 1}
+          {#if (detectedServices.length + detectedDatabases.length) > 1}
             <button 
               type="button" 
               class="btn btn-secondary" 
@@ -2274,7 +2294,7 @@
               {#if deployingBlueprint}
                 <Loader2 size={16} class="animate-spin" /> Deploying Full Stack...
               {:else}
-                <Rocket size={16} /> Deploy All {detectedServices.length + detectedDatabases.length} Stack Services
+                <Rocket size={16} /> Deploy All {detectedServices.length + detectedDatabases.length} Stack Services & Databases
               {/if}
             </button>
           {:else}
