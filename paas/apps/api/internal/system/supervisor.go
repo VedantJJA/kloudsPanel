@@ -144,9 +144,11 @@ func (s *Supervisor) EnsureDatabaseContainerRunning(ctx context.Context, db *dom
 		dbName = strings.ToLower(strings.ReplaceAll(db.Name, "_", "-"))
 	}
 
+	engine := domain.CanonicalizeEngine(string(db.Engine))
+
 	internalPort := db.InternalPort
 	if internalPort <= 0 {
-		switch db.Engine {
+		switch engine {
 		case "mysql":
 			internalPort = 3306
 		case "redis":
@@ -162,7 +164,7 @@ func (s *Supervisor) EnsureDatabaseContainerRunning(ctx context.Context, db *dom
 
 	externalPort := int(meta.ExternalPort)
 	if externalPort <= 0 {
-		switch db.Engine {
+		switch engine {
 		case "mysql":
 			externalPort = 13306
 		case "redis":
@@ -181,10 +183,29 @@ func (s *Supervisor) EnsureDatabaseContainerRunning(ctx context.Context, db *dom
 
 	dbSlug := strings.ToLower(strings.ReplaceAll(db.Name, "_", "-"))
 
-	var runArgs []string
-	switch db.Engine {
-	case "postgres":
-		runArgs = []string{
+	volumeName := fmt.Sprintf("paas-db-data-%s", dbSlug)
+	if volCheck := exec.Command("docker", "volume", "inspect", volumeName).Run(); volCheck != nil {
+		s.logger.Warn("[supervisor] Database volume does not exist yet; Docker will create a new volume on startup", "volume", volumeName, "db", db.Name)
+	}
+
+	runArgs := BuildDatabaseRunArgs(engine, containerName, dbSlug, defaultUser, password, dbName, externalPort, internalPort)
+
+	startCmd := exec.Command("docker", runArgs...)
+	if runOut, err := startCmd.CombinedOutput(); err != nil {
+		s.logger.Error("[supervisor] Failed to launch database container", "name", db.Name, "err", err, "out", string(runOut))
+		return fmt.Errorf("launch container: %s", string(runOut))
+	}
+
+	s.logger.Info("[supervisor] Successfully started database container", "name", db.Name, "container", containerName)
+	return nil
+}
+
+// BuildDatabaseRunArgs constructs the docker run arguments for a database container.
+func BuildDatabaseRunArgs(engine, containerName, dbSlug, defaultUser, password, dbName string, externalPort, internalPort int) []string {
+	engine = domain.CanonicalizeEngine(engine)
+	switch engine {
+	case "postgres", "postgresql":
+		return []string{
 			"run", "-d",
 			"--name", containerName,
 			"--network", "platform-control",
@@ -197,7 +218,7 @@ func (s *Supervisor) EnsureDatabaseContainerRunning(ctx context.Context, db *dom
 			"postgres:16-alpine",
 		}
 	case "mysql":
-		runArgs = []string{
+		return []string{
 			"run", "-d",
 			"--name", containerName,
 			"--network", "platform-control",
@@ -210,7 +231,7 @@ func (s *Supervisor) EnsureDatabaseContainerRunning(ctx context.Context, db *dom
 			"mysql:8.0",
 		}
 	case "redis":
-		runArgs = []string{
+		return []string{
 			"run", "-d",
 			"--name", containerName,
 			"--network", "platform-control",
@@ -220,8 +241,8 @@ func (s *Supervisor) EnsureDatabaseContainerRunning(ctx context.Context, db *dom
 			"redis:7.2-alpine",
 			"redis-server", "--requirepass", password,
 		}
-	case "mongodb":
-		runArgs = []string{
+	case "mongodb", "mongo":
+		return []string{
 			"run", "-d",
 			"--name", containerName,
 			"--network", "platform-control",
@@ -233,7 +254,7 @@ func (s *Supervisor) EnsureDatabaseContainerRunning(ctx context.Context, db *dom
 			"mongo:7.0",
 		}
 	case "clickhouse":
-		runArgs = []string{
+		return []string{
 			"run", "-d",
 			"--name", containerName,
 			"--network", "platform-control",
@@ -243,22 +264,17 @@ func (s *Supervisor) EnsureDatabaseContainerRunning(ctx context.Context, db *dom
 			"clickhouse/clickhouse-server:24.3-alpine",
 		}
 	default:
-		runArgs = []string{
+		return []string{
 			"run", "-d",
 			"--name", containerName,
 			"--network", "platform-control",
 			"--restart", "unless-stopped",
 			"-p", fmt.Sprintf("%d:%d", externalPort, internalPort),
+			"-e", fmt.Sprintf("POSTGRES_USER=%s", defaultUser),
+			"-e", fmt.Sprintf("POSTGRES_PASSWORD=%s", password),
+			"-e", fmt.Sprintf("POSTGRES_DB=%s", dbName),
+			"-v", fmt.Sprintf("paas-db-data-%s:/var/lib/postgresql/data", dbSlug),
 			"postgres:16-alpine",
 		}
 	}
-
-	startCmd := exec.Command("docker", runArgs...)
-	if runOut, err := startCmd.CombinedOutput(); err != nil {
-		s.logger.Error("[supervisor] Failed to launch database container", "name", db.Name, "err", err, "out", string(runOut))
-		return fmt.Errorf("launch container: %s", string(runOut))
-	}
-
-	s.logger.Info("[supervisor] Successfully started database container", "name", db.Name, "container", containerName)
-	return nil
 }

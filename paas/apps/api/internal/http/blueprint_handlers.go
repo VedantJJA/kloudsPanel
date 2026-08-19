@@ -169,17 +169,19 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 				if key == "name" || key == "databaseName" {
 					dbName = val
 				} else if key == "engine" || key == "type" {
-					engine = strings.ToLower(val)
+					engine = domain.CanonicalizeEngine(val)
 				}
 				lower := strings.ToLower(dbName)
-				if strings.Contains(lower, "redis") {
-					engine = "redis"
-				} else if strings.Contains(lower, "mysql") {
-					engine = "mysql"
-				} else if strings.Contains(lower, "mongo") {
-					engine = "mongodb"
-				} else if strings.Contains(lower, "clickhouse") {
-					engine = "clickhouse"
+				if engine == "postgres" && (key != "engine" && key != "type") {
+					if strings.Contains(lower, "redis") {
+						engine = "redis"
+					} else if strings.Contains(lower, "mysql") {
+						engine = "mysql"
+					} else if strings.Contains(lower, "mongo") {
+						engine = "mongodb"
+					} else if strings.Contains(lower, "clickhouse") {
+						engine = "clickhouse"
+					}
 				}
 				newDb := fiber.Map{
 					"name":   dbName,
@@ -212,18 +214,7 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 						res.Databases[idx]["user"] = val
 						res.Databases[idx]["username"] = val
 					case "engine", "image", "type":
-						lower := strings.ToLower(val)
-						if strings.Contains(lower, "redis") {
-							res.Databases[idx]["engine"] = "redis"
-						} else if strings.Contains(lower, "mysql") {
-							res.Databases[idx]["engine"] = "mysql"
-						} else if strings.Contains(lower, "mongo") {
-							res.Databases[idx]["engine"] = "mongodb"
-						} else if strings.Contains(lower, "clickhouse") {
-							res.Databases[idx]["engine"] = "clickhouse"
-						} else if strings.Contains(lower, "postgres") {
-							res.Databases[idx]["engine"] = "postgres"
-						}
+						res.Databases[idx]["engine"] = domain.CanonicalizeEngine(val)
 					case "version", "runtime_version":
 						res.Databases[idx]["version"] = sanitizeVersionString(val)
 					}
@@ -1599,9 +1590,12 @@ func (h *Handler) handleDeployBlueprint(c fiber.Ctx) error {
 		if dbName == "" || dbName == "<nil>" {
 			continue
 		}
-		engine := fmt.Sprintf("%v", dbInfo["engine"])
-		if engine == "" || engine == "<nil>" || engine == "null" {
-			engine = "postgres"
+		rawEngine := fmt.Sprintf("%v", dbInfo["engine"])
+		if rawEngine == "<nil>" || rawEngine == "null" {
+			rawEngine = ""
+		}
+		engine := domain.CanonicalizeEngine(rawEngine)
+		if rawEngine == "" {
 			lowerName := strings.ToLower(dbName)
 			if strings.Contains(lowerName, "redis") {
 				engine = "redis"

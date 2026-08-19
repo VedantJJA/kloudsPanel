@@ -147,6 +147,7 @@ func (h *Handler) handleCreateDatabase(c fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "projectId or workspaceId is required"})
 	}
 
+	req.Engine = domain.CanonicalizeEngine(req.Engine)
 	db, err := h.provisionDatabaseInternal(c.Context(), req.ProjectID, req.Name, req.Engine, req.Version, req.Password, req.DatabaseName)
 	if err != nil {
 		return err
@@ -155,13 +156,14 @@ func (h *Handler) handleCreateDatabase(c fiber.Ctx) error {
 }
 
 func (h *Handler) allocateExternalPort(ctx context.Context, engine string) int {
+	engine = domain.CanonicalizeEngine(engine)
 	basePort := 15432
 	switch engine {
 	case "mysql":
 		basePort = 13306
 	case "redis":
 		basePort = 16379
-	case "mongodb", "mongo":
+	case "mongodb":
 		basePort = 17017
 	case "clickhouse":
 		basePort = 18123
@@ -188,11 +190,9 @@ func (h *Handler) allocateExternalPort(ctx context.Context, engine string) int {
 }
 
 func (h *Handler) provisionDatabaseInternal(ctx context.Context, projectID, name, engine, requestedVersion, customPassword, customDbName string) (*domain.Database, error) {
+	engine = domain.CanonicalizeEngine(engine)
 	if name == "" {
 		return nil, fmt.Errorf("database name is required")
-	}
-	if engine == "" {
-		engine = "postgres"
 	}
 
 	// Disambiguate database name and slug to avoid UNIQUE constraint collisions on (project_id, name) and internal_hostname
@@ -407,6 +407,7 @@ func (h *Handler) ensureDatabaseContainerRunning(ctx context.Context, db *domain
 }
 
 func (h *Handler) startDatabaseContainer(dbID, dbSlug, containerName, defaultUser, password, dbName, engine, version string, internalPort, externalPort int) {
+	engine = domain.CanonicalizeEngine(engine)
 	_ = exec.Command("docker", "network", "create", "platform-control").Run()
 	_ = exec.Command("docker", "rm", "-f", containerName).Run()
 
@@ -435,7 +436,7 @@ func (h *Handler) startDatabaseContainer(dbID, dbSlug, containerName, defaultUse
 
 		var engineArgs []string
 		switch engine {
-		case "postgres", "postgresql":
+		case "postgres":
 			engineArgs = []string{
 				"-e", fmt.Sprintf("POSTGRES_USER=%s", defaultUser),
 				"-e", fmt.Sprintf("POSTGRES_PASSWORD=%s", password),
@@ -649,6 +650,7 @@ func (h *Handler) handleExecuteDatabaseQuery(c fiber.Ctx) error {
 	_ = h.ensureDatabaseContainerRunning(c.Context(), db)
 
 	startTime := time.Now()
+	engine := domain.CanonicalizeEngine(string(db.Engine))
 
 	var out []byte
 	var execErr error
@@ -657,8 +659,8 @@ func (h *Handler) handleExecuteDatabaseQuery(c fiber.Ctx) error {
 	maxRetries := 5
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		var cmd *exec.Cmd
-		switch db.Engine {
-		case "postgres", "postgresql":
+		switch engine {
+		case "postgres":
 			user := meta.Username
 			if user == "" {
 				user = "postgres"
@@ -683,7 +685,9 @@ func (h *Handler) handleExecuteDatabaseQuery(c fiber.Ctx) error {
 		case "clickhouse":
 			cmd = exec.Command("docker", "exec", containerName, "clickhouse-client", "--query", query, "--format", "CSVWithNames")
 		default:
-			cmd = exec.Command("docker", "exec", containerName, "psql", "-U", meta.Username, "-d", meta.DatabaseName, "-c", query, "--csv")
+			return c.Status(400).JSON(fiber.Map{
+				"error": fmt.Sprintf("query execution not supported for engine %q", db.Engine),
+			})
 		}
 
 		out, execErr = cmd.CombinedOutput()
@@ -698,7 +702,7 @@ func (h *Handler) handleExecuteDatabaseQuery(c fiber.Ctx) error {
 			continue
 		}
 		// If MongoDB mongosh failed, attempt mongo fallback
-		if db.Engine == "mongodb" && (strings.Contains(outStr, "mongosh: not found") || strings.Contains(outStr, "executable file not found")) {
+		if engine == "mongodb" && (strings.Contains(outStr, "mongosh: not found") || strings.Contains(outStr, "executable file not found")) {
 			fallbackCmd := exec.Command("docker", "exec", containerName, "mongo", "-u", meta.Username, "-p", meta.Password, "--authenticationDatabase", "admin", meta.DatabaseName, "--eval", query)
 			out, execErr = fallbackCmd.CombinedOutput()
 			if execErr == nil {
@@ -906,11 +910,13 @@ func (h *Handler) handleGetDatabaseSchema(c fiber.Ctx) error {
 
 	_ = h.ensureDatabaseContainerRunning(c.Context(), db)
 
+	engine := domain.CanonicalizeEngine(string(db.Engine))
+
 	tablesMap := make(map[string]*SchemaTable)
 	var tablesOrder []string
 	var relationships []SchemaRelationship
 
-	if db.Engine == "postgres" || db.Engine == "" || db.Engine == "postgresql" {
+	if engine == "postgres" {
 		user := meta.Username
 		if user == "" {
 			user = "postgres"
@@ -1079,7 +1085,7 @@ func (h *Handler) handleGetDatabaseSchema(c fiber.Ctx) error {
 				}
 			}
 		}
-	} else if db.Engine == "mongodb" {
+	} else if engine == "mongodb" {
 		// MongoDB collections
 		cmd := exec.Command("docker", "exec", containerName, "mongosh", "-u", meta.Username, "-p", meta.Password, "--authenticationDatabase", "admin", meta.DatabaseName, "--quiet", "--eval", "db.getCollectionNames().join(',')")
 		out, err := cmd.CombinedOutput()
@@ -1099,6 +1105,10 @@ func (h *Handler) handleGetDatabaseSchema(c fiber.Ctx) error {
 				}
 			}
 		}
+	} else {
+		return c.Status(400).JSON(fiber.Map{
+			"error": fmt.Sprintf("schema introspection not supported for engine %q", db.Engine),
+		})
 	}
 
 	var tables []SchemaTable

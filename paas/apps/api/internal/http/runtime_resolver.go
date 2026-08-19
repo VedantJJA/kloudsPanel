@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/yourorg/klouds/api/internal/domain"
 )
 
 // --- Runtime Version Resolver ------------------------------------------------
@@ -744,11 +746,11 @@ func getDotnetBaseImage(version string, stage string) string {
 // resolveDatabaseVersion returns the full Docker image and resolved version
 // for supported database engines, honoring user version selection or dynamically fetching from registry.
 func resolveDatabaseVersion(engine, requestedVersion string) (imageTag string, resolvedVersion string) {
-	engine = strings.ToLower(strings.TrimSpace(engine))
+	engine = domain.CanonicalizeEngine(engine)
 	cleanVer := sanitizeVersionString(requestedVersion)
 
 	switch engine {
-	case "postgres", "postgresql":
+	case "postgres":
 		if cleanVer != "" && cleanVer != "auto" {
 			return fmt.Sprintf("postgres:%s-alpine", cleanVer), cleanVer
 		}

@@ -67,9 +67,19 @@ func TestDatabaseVersionResolver(t *testing.T) {
 		expectedVer string
 	}{
 		{"postgres", "15", "postgres:15-alpine", "15"},
+		{"Postgres", "15", "postgres:15-alpine", "15"},
+		{"POSTGRESQL", "15", "postgres:15-alpine", "15"},
+		{"postgresql", "15", "postgres:15-alpine", "15"},
+		{"pg", "15", "postgres:15-alpine", "15"},
 		{"mysql", "8.0", "mysql:8.0", "8.0"},
+		{" MySQL ", "8.0", "mysql:8.0", "8.0"},
 		{"redis", "7.2", "redis:7.2-alpine", "7.2"},
+		{"REDIS", "7.2", "redis:7.2-alpine", "7.2"},
 		{"mongodb", "6.0", "mongo:6.0", "6.0"},
+		{"Mongo", "6.0", "mongo:6.0", "6.0"},
+		{"mongo", "6.0", "mongo:6.0", "6.0"},
+		{"ClickHouse", "24.3", "clickhouse/clickhouse-server:24.3-alpine", "24.3"},
+		{"cockroachdb", "23.1", "cockroachdb:23.1", "23.1"},
 	}
 
 	for _, tt := range tests {
@@ -81,9 +91,9 @@ func TestDatabaseVersionResolver(t *testing.T) {
 	}
 
 	// Test dynamic database resolution without explicit version
-	pgTag, pgVer := resolveDatabaseVersion("postgres", "")
+	pgTag, pgVer := resolveDatabaseVersion("PostgreSQL", "")
 	if pgTag == "" || pgVer == "" || !strings.HasPrefix(pgTag, "postgres:") {
-		t.Errorf("expected valid dynamic postgres version, got (%s, %s)", pgTag, pgVer)
+		t.Errorf("expected valid dynamic postgres version for PostgreSQL, got (%s, %s)", pgTag, pgVer)
 	}
 }
 
@@ -399,5 +409,42 @@ func TestDetectFrameworkAndDatabasesFromTree(t *testing.T) {
 		t.Errorf("expected REDIS_URL to be auto-wired, got %s", result.Services[0].EnvVars["REDIS_URL"])
 	}
 }
+
+func TestYAMLBlueprintEngineNormalization(t *testing.T) {
+	yamlContent := `
+services:
+  - type: web
+    name: my-app
+    runtime: node
+    buildCommand: npm install
+    startCommand: npm start
+databases:
+  - name: my-postgres
+    engine: POSTGRESQL
+    databaseName: myappdb
+  - name: my-mongo
+    engine: Mongo
+  - name: my-mysql
+    type: MySQL
+`
+	res := parseRenderYAMLString(yamlContent)
+	if len(res.Databases) != 3 {
+		t.Fatalf("expected 3 databases parsed, got %d", len(res.Databases))
+	}
+
+	if res.Databases[0]["engine"] != "postgres" {
+		t.Errorf("expected POSTGRESQL engine normalized to postgres, got %v", res.Databases[0]["engine"])
+	}
+	if res.Databases[0]["databaseName"] != "myappdb" {
+		t.Errorf("expected databaseName myappdb, got %v", res.Databases[0]["databaseName"])
+	}
+	if res.Databases[1]["engine"] != "mongodb" {
+		t.Errorf("expected Mongo engine normalized to mongodb, got %v", res.Databases[1]["engine"])
+	}
+	if res.Databases[2]["engine"] != "mysql" {
+		t.Errorf("expected MySQL type normalized to mysql, got %v", res.Databases[2]["engine"])
+	}
+}
+
 
 

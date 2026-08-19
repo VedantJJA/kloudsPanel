@@ -2,6 +2,7 @@
 package domain
 
 import (
+	"strings"
 	"time"
 )
 
@@ -220,6 +221,22 @@ const (
 	DBEngineMongoDB    DatabaseEngine = "mongodb"
 	DBEngineClickHouse DatabaseEngine = "clickhouse"
 )
+
+// CanonicalizeEngine normalizes user/blueprint-supplied engine identifiers
+// to the canonical lowercase form used throughout the system.
+func CanonicalizeEngine(raw string) string {
+	e := strings.ToLower(strings.TrimSpace(raw))
+	switch e {
+	case "postgresql", "pg":
+		return "postgres"
+	case "mongo":
+		return "mongodb"
+	case "":
+		return "postgres" // default behavior
+	default:
+		return e
+	}
+}
 
 type DatabaseStatus string
 
