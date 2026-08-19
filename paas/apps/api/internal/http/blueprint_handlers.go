@@ -1719,6 +1719,7 @@ func (h *Handler) handleDeployBlueprint(c fiber.Ctx) error {
 			Kind:          domain.ServiceKind(svcInfo.Kind),
 			CreatedBy:     u.ID,
 			InternalPort:  &port,
+			AutoDeploy:    true,
 			DesiredState:  domain.ServiceDesiredRunning,
 			RuntimeStatus: domain.ServiceStatusDeploying,
 		}

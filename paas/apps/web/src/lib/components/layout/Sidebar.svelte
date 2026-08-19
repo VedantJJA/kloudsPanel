@@ -176,7 +176,18 @@
     if (currentDatabaseId) {
       fetch(`/api/v1/databases/${currentDatabaseId}`, { credentials: 'include' })
         .then(r => r.ok ? r.json() : null)
-        .then(data => { if (data) currentDatabase = data; })
+        .then(data => {
+          if (data) {
+            currentDatabase = data;
+            const projId = data.project_id || data.projectId;
+            if (projId && (!currentProject || currentProject.id !== projId)) {
+              fetch(`/api/v1/projects/${projId}`, { credentials: 'include' })
+                .then(pr => pr.ok ? pr.json() : null)
+                .then(pdata => { if (pdata) currentProject = pdata; })
+                .catch(() => {});
+            }
+          }
+        })
         .catch(() => {});
     } else {
       currentDatabase = null;
@@ -504,14 +515,14 @@
     <!-- Database Context Header -->
     <div style="padding: 0 var(--sp-2); margin-bottom: 0.75rem;">
       <a 
-        href={`/workspaces/${targetWsSlug}/databases`} 
+        href={currentProject ? `/projects/${currentProject.slug || currentProject.id}/databases` : `/workspaces/${targetWsSlug}/databases`} 
         class="nav-item" 
         style="padding: 6px var(--sp-2); min-height: 32px; font-size: 0.8125rem; color: var(--color-ink-secondary);"
-        title="Back to Workspace Databases"
+        title={currentProject ? `Back to ${currentProject.name || 'Project'} Databases` : "Back to Databases"}
         onclick={closeMobileNav}
       >
         <ArrowLeft size={14} style="margin-right: 4px; flex-shrink:0;" /> 
-        <span class="nav-item-text">Workspace Databases</span>
+        <span class="nav-item-text">{currentProject ? `${currentProject.name || 'Project'} Databases` : 'Project Databases'}</span>
       </a>
     </div>
 

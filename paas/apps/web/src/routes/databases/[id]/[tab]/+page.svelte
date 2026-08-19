@@ -80,12 +80,22 @@
   let activeDragTable = $state<string | null>(null);
   let dragOffset = $state({ x: 0, y: 0 });
   let selectedTable = $state<string | null>(null);
+  let project = $state<any>(null);
 
   async function loadDatabase() {
     try {
       const res = await fetch(`/api/v1/databases/${id}`, { credentials: 'include' });
       if (!res.ok) { goto('/databases'); return; }
       database = await res.json();
+
+      if (database?.project_id) {
+        try {
+          const pRes = await fetch(`/api/v1/projects/${database.project_id}`, { credentials: 'include' });
+          if (pRes.ok) {
+            project = await pRes.json();
+          }
+        } catch {}
+      }
 
       // Default sample query per engine
       if (database?.engine === 'mysql') {
@@ -532,6 +542,17 @@
             {activeWs?.name || (activeWs as any)?.Name || $activeWorkspaceSlug}
           </a>
           <span>/</span>
+        {/if}
+        {#if project}
+          <a href="/projects/{project.slug || project.Slug || project.id}">
+            {project.name || project.Name}
+          </a>
+          <span>/</span>
+          <a href="/projects/{project.slug || project.Slug || project.id}/databases">
+            Databases
+          </a>
+          <span>/</span>
+        {:else if $activeWorkspaceSlug}
           <a href="/workspaces/{$activeWorkspaceSlug}/databases">Databases</a>
           <span>/</span>
         {/if}
@@ -551,7 +572,11 @@
         </span>
       </div>
       <div class="text-xs text-muted" style="margin-top:0.25rem;">
-        Public: <span class="font-mono">{parsedMeta.externalHost}:{parsedMeta.externalPort}</span> | Internal: <span class="font-mono">{database?.internal_hostname}:{database?.internal_port}</span>
+        {#if parsedMeta.directHost === 'localhost' || parsedMeta.directHost === '127.0.0.1'}
+          Local Direct: <span class="font-mono">{parsedMeta.directHost}:{parsedMeta.externalPort}</span> | Internal: <span class="font-mono">{database?.internal_hostname}:{database?.internal_port}</span>
+        {:else}
+          Public: <span class="font-mono">{parsedMeta.externalHost}:{parsedMeta.externalPort}</span> | Internal: <span class="font-mono">{database?.internal_hostname}:{database?.internal_port}</span>
+        {/if}
       </div>
     </div>
 
@@ -560,8 +585,8 @@
         {#if actionLoading}<Loader2 size={14} class="animate-spin" />{:else}<RefreshCw size={14} />{/if}
         Restart
       </button>
-      <button class="btn btn-primary" onclick={() => copyText(parsedMeta.externalConnectionUri)}>
-        {#if copied}<Check size={14} /> Copied!{:else}<Copy size={14} /> Copy External URI{/if}
+      <button class="btn btn-primary" onclick={() => copyText(parsedMeta.directConnectionUri)}>
+        {#if copied}<Check size={14} /> Copied!{:else}<Copy size={14} /> Copy Connection URI{/if}
       </button>
     </div>
   </div>

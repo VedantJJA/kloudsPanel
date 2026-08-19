@@ -1195,6 +1195,7 @@
           name: name,
           slug: svcSlug,
           kind: kind,
+          autoDeploy: true,
           internalPort: kind === 'cron' ? 0 : internalPort,
           resourceJson: JSON.stringify(resourcePayload)
         })
