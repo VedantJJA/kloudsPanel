@@ -51,8 +51,9 @@ type ParsedRenderService struct {
 }
 
 type ParsedRenderResult struct {
-	Services  []ParsedRenderService `json:"services"`
-	Databases []fiber.Map           `json:"databases"`
+	ProjectName string                `json:"project_name,omitempty"`
+	Services    []ParsedRenderService `json:"services"`
+	Databases   []fiber.Map           `json:"databases"`
 }
 
 func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
@@ -68,7 +69,14 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 	var inRoutes bool
 	var inDatabases bool
 	var inServices bool
+	var inVolumes bool
+	var inBuild bool
+	var inDeploy bool
+	var inSource bool
+	var inResources bool
 	var currentEnvKey string
+	var currentRefType string // "service" or "database"
+	var currentRefName string
 
 	flushCurrent := func() {
 		if currentDb != nil {
@@ -76,7 +84,6 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 			currentDb = nil
 		}
 		if currentSvc != nil {
-			// Check if this service is actually a database
 			lowerKind := strings.ToLower(currentSvc.Kind)
 			lowerImg := strings.ToLower(currentSvc.Image)
 			if lowerKind == "database" || lowerKind == "redis" || lowerKind == "postgres" || lowerKind == "postgresql" || lowerKind == "mysql" || lowerKind == "mongodb" || lowerKind == "clickhouse" ||
@@ -97,12 +104,26 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 					"version": currentSvc.RuntimeVersion,
 				})
 			} else if lowerKind != "rewrite" && lowerKind != "redirect" && lowerKind != "header" && lowerKind != "proxy" {
+				if currentSvc.Kind == "" {
+					currentSvc.Kind = "web"
+				}
+				if currentSvc.Slug == "" {
+					currentSvc.Slug = strings.ToLower(currentSvc.Name)
+				}
 				res.Services = append(res.Services, *currentSvc)
 			}
 			currentSvc = nil
 		}
 		inEnvVars = false
 		inRoutes = false
+		inVolumes = false
+		inBuild = false
+		inDeploy = false
+		inSource = false
+		inResources = false
+		currentEnvKey = ""
+		currentRefType = ""
+		currentRefName = ""
 	}
 
 	for _, rawLine := range lines {
@@ -111,24 +132,29 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 			continue
 		}
 
+		// Top-level project name
+		if strings.HasPrefix(trimmed, "project:") {
+			parts := strings.SplitN(trimmed, ":", 2)
+			if len(parts) > 1 {
+				res.ProjectName = strings.Trim(strings.TrimSpace(parts[1]), `"'`)
+			}
+			continue
+		}
+
 		// Top-level sections
 		if trimmed == "databases:" {
 			flushCurrent()
 			inDatabases = true
 			inServices = false
-			inEnvVars = false
-			inRoutes = false
 			continue
 		} else if trimmed == "services:" {
 			flushCurrent()
 			inServices = true
 			inDatabases = false
-			inEnvVars = false
-			inRoutes = false
 			continue
 		}
 
-		// Database list items (e.g. "- name: devpanel-postgres" or "- name: devpanel-redis")
+		// In top-level databases section
 		if inDatabases {
 			isNewDbItem := strings.HasPrefix(trimmed, "- name:") || strings.HasPrefix(trimmed, "- databaseName:") || strings.HasPrefix(trimmed, "- engine:") || strings.HasPrefix(trimmed, "- type:") || strings.HasPrefix(trimmed, "- ") || trimmed == "-"
 			if isNewDbItem {
@@ -200,13 +226,78 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 			continue
 		}
 
-		// In services section: Detect new service start
-		isRouteRule := inRoutes && (strings.HasPrefix(trimmed, "- type: rewrite") || strings.HasPrefix(trimmed, "- type: redirect") || strings.HasPrefix(trimmed, "- type: header") || strings.HasPrefix(trimmed, "type: rewrite") || strings.HasPrefix(trimmed, "type: redirect") || strings.HasPrefix(trimmed, "type: header") || strings.HasPrefix(trimmed, "- source:") || strings.HasPrefix(trimmed, "source:") || strings.HasPrefix(trimmed, "destination:"))
+		// Service sub-section header triggers (4-space indent)
+		if inServices && currentSvc != nil {
+			if trimmed == "source:" {
+				inSource = true
+				inBuild = false
+				inDeploy = false
+				inResources = false
+				inVolumes = false
+				inEnvVars = false
+				inRoutes = false
+				continue
+			} else if trimmed == "build:" {
+				inBuild = true
+				inSource = false
+				inDeploy = false
+				inResources = false
+				inVolumes = false
+				inEnvVars = false
+				inRoutes = false
+				continue
+			} else if trimmed == "deploy:" {
+				inDeploy = true
+				inBuild = false
+				inSource = false
+				inResources = false
+				inVolumes = false
+				inEnvVars = false
+				inRoutes = false
+				continue
+			} else if trimmed == "resources:" {
+				inResources = true
+				inBuild = false
+				inDeploy = false
+				inSource = false
+				inVolumes = false
+				inEnvVars = false
+				inRoutes = false
+				continue
+			} else if trimmed == "volumes:" {
+				inVolumes = true
+				inResources = false
+				inBuild = false
+				inDeploy = false
+				inSource = false
+				inEnvVars = false
+				inRoutes = false
+				continue
+			} else if trimmed == "env:" || trimmed == "envVars:" {
+				inEnvVars = true
+				inVolumes = false
+				inResources = false
+				inBuild = false
+				inDeploy = false
+				inSource = false
+				inRoutes = false
+				currentEnvKey = ""
+				continue
+			} else if trimmed == "routes:" {
+				inRoutes = true
+				inEnvVars = false
+				inVolumes = false
+				inResources = false
+				inBuild = false
+				inDeploy = false
+				inSource = false
+				continue
+			}
+		}
 
-		isListServiceHeader := inServices && !isRouteRule && (strings.HasPrefix(trimmed, "- type:") || strings.HasPrefix(trimmed, "- name:") || strings.HasPrefix(trimmed, "- service:") || strings.HasPrefix(trimmed, "- kind:") || strings.HasPrefix(trimmed, "- runtime:")) && (!inRoutes || strings.HasPrefix(rawLine, "  - ") || strings.HasPrefix(rawLine, "- ") || strings.HasPrefix(rawLine, "\t- "))
-
-		isMapServiceHeader := inServices && !inRoutes && !inEnvVars && !strings.HasPrefix(trimmed, "-") && strings.HasSuffix(trimmed, ":") && !strings.Contains(trimmed, " ") &&
-			(strings.HasPrefix(rawLine, "  ") || strings.HasPrefix(rawLine, "\t")) && !strings.HasPrefix(rawLine, "    ") && !strings.HasPrefix(rawLine, "\t\t") &&
+		// In services section: Detect new service start (2-space indent or top list item)
+		isListServiceHeader := inServices && (strings.HasPrefix(rawLine, "  - ") || strings.HasPrefix(rawLine, "- ")) && (strings.HasPrefix(trimmed, "- type:") || strings.HasPrefix(trimmed, "- name:") || strings.HasPrefix(trimmed, "- service:") || strings.HasPrefix(trimmed, "- kind:"))
+		isMapServiceHeader := inServices && (strings.HasPrefix(rawLine, "  ") || strings.HasPrefix(rawLine, "\t")) && !strings.HasPrefix(rawLine, "    ") && !strings.HasPrefix(rawLine, "\t\t") && !strings.HasPrefix(trimmed, "-") && strings.HasSuffix(trimmed, ":") && !strings.Contains(trimmed, " ") &&
 			trimmed != "env:" && trimmed != "envVars:" && trimmed != "source:" && trimmed != "build:" && trimmed != "deploy:" && trimmed != "resources:" && trimmed != "volumes:" && trimmed != "routes:" && trimmed != "healthCheckPath:" && trimmed != "headers:"
 
 		if isMapServiceHeader || isListServiceHeader {
@@ -224,7 +315,7 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 					svcType = "database"
 				} else if strings.Contains(lowerKey, "mysql") || strings.Contains(lowerKey, "mongo") || strings.Contains(lowerKey, "clickhouse") {
 					svcType = "database"
-				} else if strings.Contains(lowerKey, "front") || strings.Contains(lowerKey, "web") || strings.Contains(lowerKey, "client") || strings.Contains(lowerKey, "ui") {
+				} else if strings.Contains(lowerKey, "front") || strings.Contains(lowerKey, "client") || strings.Contains(lowerKey, "ui") {
 					svcType = "static"
 				}
 			} else {
@@ -247,9 +338,6 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 				AutoDeploy:   true,
 				EnvVars:      make(map[string]string),
 			}
-			inEnvVars = false
-			inRoutes = false
-			currentEnvKey = ""
 			continue
 		}
 
@@ -257,213 +345,74 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 			continue
 		}
 
-		// Property Parsing inside current service
-		if !inEnvVars && strings.HasPrefix(trimmed, "name:") {
-			parts := strings.SplitN(trimmed, ":", 2)
-			if len(parts) > 1 {
-				val := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
-				currentSvc.Name = val
-				currentSvc.Slug = strings.ToLower(val)
-			}
-		} else if !inEnvVars && strings.HasPrefix(trimmed, "type:") {
-			parts := strings.SplitN(trimmed, ":", 2)
-			if len(parts) > 1 {
-				currentSvc.Kind = strings.ToLower(strings.TrimSpace(parts[1]))
-			}
-		} else if !inEnvVars && (strings.HasPrefix(trimmed, "rootDir:") || strings.HasPrefix(trimmed, "directory:")) {
-			parts := strings.SplitN(trimmed, ":", 2)
-			if len(parts) > 1 {
-				currentSvc.RootDir = strings.Trim(strings.TrimSpace(parts[1]), "\"'")
-			}
-		} else if !inEnvVars && (strings.HasPrefix(trimmed, "staticPublishPath:") || strings.HasPrefix(trimmed, "output_dir:")) {
-			parts := strings.SplitN(trimmed, ":", 2)
-			if len(parts) > 1 {
-				currentSvc.StaticPublishPath = strings.Trim(strings.TrimSpace(parts[1]), "\"'")
-				currentSvc.Kind = "static"
-			}
-		} else if !inEnvVars && strings.HasPrefix(trimmed, "image:") {
-			parts := strings.SplitN(trimmed, ":", 2)
-			if len(parts) > 1 {
-				img := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
-				currentSvc.Image = img
-				lowerImg := strings.ToLower(img)
-				if strings.Contains(lowerImg, "redis") || strings.Contains(lowerImg, "postgres") || strings.Contains(lowerImg, "mysql") || strings.Contains(lowerImg, "mongo") || strings.Contains(lowerImg, "clickhouse") {
-					currentSvc.Kind = "database"
+		// Property Parsing inside current service based on sub-section
+		if inBuild {
+			if strings.HasPrefix(trimmed, "command:") {
+				parts := strings.SplitN(trimmed, ":", 2)
+				if len(parts) > 1 {
+					currentSvc.BuildCommand = strings.Trim(strings.TrimSpace(parts[1]), `"'`)
 				}
-			}
-		} else if !inEnvVars && (strings.HasPrefix(trimmed, "version:") || strings.HasPrefix(trimmed, "runtime_version:")) {
-			// Parse version: "20" or version: "3.12" for runtime version selection
-			parts := strings.SplitN(trimmed, ":", 2)
-			if len(parts) > 1 {
-				val := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
-				if val != "" {
-					currentSvc.RuntimeVersion = sanitizeVersionString(val)
-				}
-			}
-		} else if !inEnvVars && (strings.HasPrefix(trimmed, "mem_limit:") || strings.HasPrefix(trimmed, "memory:") || strings.HasPrefix(trimmed, "memory_limit:")) {
-			parts := strings.SplitN(trimmed, ":", 2)
-			if len(parts) > 1 {
-				val := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
-				if val != "" {
-					currentSvc.MemoryLimit = sanitizeResourceLimit(val)
-				}
-			}
-		} else if !inEnvVars && (strings.HasPrefix(trimmed, "cpu_limit:") || strings.HasPrefix(trimmed, "cpus:") || strings.HasPrefix(trimmed, "cpu:")) {
-			parts := strings.SplitN(trimmed, ":", 2)
-			if len(parts) > 1 {
-				val := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
-				if val != "" {
-					currentSvc.CPULimit = sanitizeResourceLimit(val)
-				}
-			}
-		} else if !inEnvVars && (strings.HasPrefix(trimmed, "env:") || strings.HasPrefix(trimmed, "runtime:") || strings.HasPrefix(trimmed, "engine:")) {
-			parts := strings.SplitN(trimmed, ":", 2)
-			if len(parts) > 1 && strings.TrimSpace(parts[1]) != "" {
-				val := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
-				currentSvc.Env = val
-				switch strings.ToLower(val) {
-				case "python":
-					currentSvc.Preset = "python"
-					currentSvc.Image = "python:3.12-slim"
-					currentSvc.InternalPort = 5000
-				case "node", "nodejs":
-					currentSvc.Preset = "node"
-					currentSvc.Image = "node:20-alpine"
-					currentSvc.InternalPort = 3000
-				case "go", "golang":
-					currentSvc.Preset = "go"
-					currentSvc.Image = "golang:1.23-alpine"
-					currentSvc.InternalPort = 8080
-				case "rust":
-					currentSvc.Preset = "rust"
-					currentSvc.Image = "rust:1.82-alpine"
-					currentSvc.InternalPort = 8080
-				case "java":
-					currentSvc.Preset = "java"
-					currentSvc.Image = "eclipse-temurin:21-jdk-alpine"
-					currentSvc.InternalPort = 8080
-				case "php":
-					currentSvc.Preset = "php"
-					currentSvc.Image = "php:8.3-apache"
-					currentSvc.InternalPort = 80
-				case "ruby":
-					currentSvc.Preset = "ruby"
-					currentSvc.Image = "ruby:3.3-alpine"
-					currentSvc.InternalPort = 3000
-				case "elixir", "phoenix":
-					currentSvc.Preset = "elixir"
-					currentSvc.Image = "elixir:1.17-alpine"
-					currentSvc.InternalPort = 4000
-				case "deno":
-					currentSvc.Preset = "deno"
-					currentSvc.Image = "denoland/deno:alpine"
-					currentSvc.InternalPort = 8000
-				case "bun":
-					currentSvc.Preset = "bun"
-					currentSvc.Image = "oven/bun:alpine"
-					currentSvc.InternalPort = 3000
-				case "dotnet", "csharp", "aspnet", ".net":
-					currentSvc.Preset = "dotnet"
-					currentSvc.Image = "mcr.microsoft.com/dotnet/sdk:8.0-alpine"
-					currentSvc.InternalPort = 5000
-				case "scala", "sbt":
-					currentSvc.Preset = "scala"
-					currentSvc.Image = "eclipse-temurin:21-jdk-alpine"
-					currentSvc.InternalPort = 9000
-				case "kotlin", "ktor":
-					currentSvc.Preset = "kotlin"
-					currentSvc.Image = "eclipse-temurin:21-jdk-alpine"
-					currentSvc.InternalPort = 8080
-				case "swift", "vapor":
-					currentSvc.Preset = "swift"
-					currentSvc.Image = "swift:5.10-jammy"
-					currentSvc.InternalPort = 8080
-				case "haskell":
-					currentSvc.Preset = "haskell"
-					currentSvc.Image = "haskell:9.8-slim"
-					currentSvc.InternalPort = 3000
-				case "clojure":
-					currentSvc.Preset = "clojure"
-					currentSvc.Image = "clojure:temurin-21-lein-alpine"
-					currentSvc.InternalPort = 3000
-				case "crystal":
-					currentSvc.Preset = "crystal"
-					currentSvc.Image = "crystallang/crystal:latest"
-					currentSvc.InternalPort = 3000
-				case "zig":
-					currentSvc.Preset = "zig"
-					currentSvc.Image = "alpine:latest"
-					currentSvc.InternalPort = 8080
-				case "dart":
-					currentSvc.Preset = "dart"
-					currentSvc.Image = "dart:stable"
-					currentSvc.InternalPort = 8080
-				case "docker", "dockerfile":
-					currentSvc.Preset = "dockerfile"
-					currentSvc.Image = "custom"
-					currentSvc.InternalPort = 80
-				case "static":
-					currentSvc.Preset = "static-spa"
-					currentSvc.Image = "nginx:alpine"
-					currentSvc.InternalPort = 80
-					currentSvc.Kind = "static"
-				default:
+			} else if strings.HasPrefix(trimmed, "engine:") || strings.HasPrefix(trimmed, "runtime:") {
+				parts := strings.SplitN(trimmed, ":", 2)
+				if len(parts) > 1 {
+					val := strings.Trim(strings.TrimSpace(parts[1]), `"'`)
+					currentSvc.Env = val
 					currentSvc.Preset = val
-					currentSvc.Image = "alpine:latest"
+				}
+			} else if strings.HasPrefix(trimmed, "output_dir:") || strings.HasPrefix(trimmed, "publish_dir:") {
+				parts := strings.SplitN(trimmed, ":", 2)
+				if len(parts) > 1 {
+					currentSvc.StaticPublishPath = strings.Trim(strings.TrimSpace(parts[1]), `"'`)
+					currentSvc.Kind = "static"
 				}
 			}
-		} else if !inEnvVars && (strings.HasPrefix(trimmed, "buildCommand:") || strings.HasPrefix(trimmed, "command:")) {
-			parts := strings.SplitN(trimmed, ":", 2)
-			if len(parts) > 1 {
-				cmd := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
-				if currentSvc.BuildCommand == "" {
-					currentSvc.BuildCommand = cmd
+		} else if inDeploy {
+			if strings.HasPrefix(trimmed, "command:") {
+				parts := strings.SplitN(trimmed, ":", 2)
+				if len(parts) > 1 {
+					currentSvc.StartCommand = strings.Trim(strings.TrimSpace(parts[1]), `"'`)
+				}
+			} else if strings.HasPrefix(trimmed, "port:") {
+				var p int
+				if _, err := fmt.Sscanf(trimmed, "port: %d", &p); err == nil && p > 0 {
+					currentSvc.InternalPort = p
 				}
 			}
-		} else if !inEnvVars && strings.HasPrefix(trimmed, "startCommand:") {
-			parts := strings.SplitN(trimmed, ":", 2)
-			if len(parts) > 1 {
-				sCmd := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
-				currentSvc.StartCommand = sCmd
-				if strings.Contains(sCmd, "--bind") || strings.Contains(sCmd, "--port") || strings.Contains(sCmd, ":") {
-					for _, token := range strings.Fields(sCmd) {
-						if strings.Contains(token, ":") && !strings.HasPrefix(token, "http") {
-							subparts := strings.Split(token, ":")
-							if len(subparts) == 2 {
-								var p int
-								if _, err := fmt.Sscanf(subparts[1], "%d", &p); err == nil && p > 0 {
-									currentSvc.InternalPort = p
-								}
-							}
-						}
-					}
+		} else if inSource {
+			if strings.HasPrefix(trimmed, "directory:") || strings.HasPrefix(trimmed, "rootDir:") || strings.HasPrefix(trimmed, "path:") {
+				parts := strings.SplitN(trimmed, ":", 2)
+				if len(parts) > 1 {
+					currentSvc.RootDir = strings.Trim(strings.TrimSpace(parts[1]), `"'`)
 				}
 			}
-		} else if !inEnvVars && strings.HasPrefix(trimmed, "port:") {
-			var p int
-			if _, err := fmt.Sscanf(trimmed, "port: %d", &p); err == nil && p > 0 {
-				currentSvc.InternalPort = p
+		} else if inResources {
+			if strings.HasPrefix(trimmed, "cpu_limit:") || strings.HasPrefix(trimmed, "cpu:") {
+				parts := strings.SplitN(trimmed, ":", 2)
+				if len(parts) > 1 {
+					currentSvc.CPULimit = sanitizeResourceLimit(strings.Trim(strings.TrimSpace(parts[1]), `"'`))
+				}
+			} else if strings.HasPrefix(trimmed, "mem_limit:") || strings.HasPrefix(trimmed, "memory:") {
+				parts := strings.SplitN(trimmed, ":", 2)
+				if len(parts) > 1 {
+					currentSvc.MemoryLimit = sanitizeResourceLimit(strings.Trim(strings.TrimSpace(parts[1]), `"'`))
+				}
 			}
-		} else if !inEnvVars && strings.HasPrefix(trimmed, "schedule:") {
-			parts := strings.SplitN(trimmed, ":", 2)
-			if len(parts) > 1 {
-				currentSvc.CronSchedule = strings.Trim(strings.TrimSpace(parts[1]), "\"'")
-				currentSvc.Kind = "cron"
-			}
-		} else if strings.HasPrefix(trimmed, "envVars:") || strings.HasPrefix(trimmed, "env:") {
-			inEnvVars = true
-			currentEnvKey = ""
-		} else if inEnvVars && (strings.HasPrefix(trimmed, "- key:") || strings.HasPrefix(trimmed, "key:")) {
-			parts := strings.SplitN(trimmed, ":", 2)
-			if len(parts) > 1 {
-				currentEnvKey = strings.Trim(strings.TrimSpace(parts[1]), "\"'")
-				currentSvc.EnvVars[currentEnvKey] = ""
-			}
-		} else if inEnvVars && (strings.HasPrefix(trimmed, "value:") || strings.HasPrefix(trimmed, "- value:")) {
-			parts := strings.SplitN(trimmed, ":", 2)
-			if len(parts) > 1 {
-				val := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
-				if currentEnvKey != "" {
+		} else if inVolumes {
+			// Volumes metadata is preserved without spawning new services
+			continue
+		} else if inEnvVars {
+			if strings.HasPrefix(trimmed, "- key:") || strings.HasPrefix(trimmed, "key:") {
+				parts := strings.SplitN(trimmed, ":", 2)
+				if len(parts) > 1 {
+					currentEnvKey = strings.Trim(strings.TrimSpace(parts[1]), `"'`)
+					currentSvc.EnvVars[currentEnvKey] = ""
+					currentRefType = ""
+					currentRefName = ""
+				}
+			} else if strings.HasPrefix(trimmed, "value:") || strings.HasPrefix(trimmed, "- value:") {
+				parts := strings.SplitN(trimmed, ":", 2)
+				if len(parts) > 1 && currentEnvKey != "" {
+					val := strings.Trim(strings.TrimSpace(parts[1]), `"'`)
 					currentSvc.EnvVars[currentEnvKey] = val
 					if currentEnvKey == "PORT" {
 						var p int
@@ -472,112 +421,135 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 						}
 					}
 				}
-			}
-		} else if inEnvVars && (strings.HasPrefix(trimmed, "generateValue:") || strings.HasPrefix(trimmed, "generate_value:")) {
-			parts := strings.SplitN(trimmed, ":", 2)
-			if len(parts) > 1 && currentEnvKey != "" {
-				val := strings.ToLower(strings.TrimSpace(parts[1]))
-				if val == "true" || val == "yes" {
-					if currentSvc.EnvVars[currentEnvKey] == "" {
-						currentSvc.EnvVars[currentEnvKey] = generateSecureRandomSecret(16)
+			} else if strings.HasPrefix(trimmed, "fromService:") {
+				currentRefType = "service"
+			} else if strings.HasPrefix(trimmed, "fromDatabase:") {
+				currentRefType = "database"
+			} else if strings.HasPrefix(trimmed, "name:") {
+				parts := strings.SplitN(trimmed, ":", 2)
+				if len(parts) > 1 && currentEnvKey != "" {
+					currentRefName = strings.Trim(strings.TrimSpace(parts[1]), `"'`)
+					if currentRefType == "service" {
+						currentSvc.EnvVars[currentEnvKey] = fmt.Sprintf("${services.%s.url}", currentRefName)
+					} else if currentRefType == "database" {
+						currentSvc.EnvVars[currentEnvKey] = fmt.Sprintf("${databases.%s.connectionString}", currentRefName)
 					}
 				}
-			}
-		} else if inEnvVars && (strings.HasPrefix(trimmed, "sync:") || strings.HasPrefix(trimmed, "required:")) {
-			parts := strings.SplitN(trimmed, ":", 2)
-			if len(parts) > 1 && currentEnvKey != "" {
-				val := strings.ToLower(strings.TrimSpace(parts[1]))
-				if val == "false" || val == "true" || val == "yes" {
-					currentSvc.RequiredEnvVars = append(currentSvc.RequiredEnvVars, currentEnvKey)
-				}
-			}
-		} else if inEnvVars && strings.HasPrefix(trimmed, "fromDatabase:") {
-			parts := strings.SplitN(trimmed, ":", 2)
-			if len(parts) > 1 && strings.TrimSpace(parts[1]) != "" && currentEnvKey != "" {
-				dbRef := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
-				currentSvc.EnvVars[currentEnvKey] = fmt.Sprintf("paas-db-%s", dbRef)
-			}
-		} else if inEnvVars && strings.HasPrefix(trimmed, "fromService:") {
-			parts := strings.SplitN(trimmed, ":", 2)
-			if len(parts) > 1 && strings.TrimSpace(parts[1]) != "" && currentEnvKey != "" {
-				svcRef := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
-				currentSvc.EnvVars[currentEnvKey] = fmt.Sprintf("${services.%s.url}", svcRef)
-			}
-		} else if inEnvVars && strings.HasPrefix(trimmed, "name:") {
-			parts := strings.SplitN(trimmed, ":", 2)
-			if len(parts) > 1 && currentEnvKey != "" {
-				ref := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
-				if currentSvc.EnvVars[currentEnvKey] == "" {
-					currentSvc.EnvVars[currentEnvKey] = fmt.Sprintf("${services.%s.url}", ref)
-				}
-			}
-		} else if inEnvVars && strings.HasPrefix(trimmed, "envVarKey:") {
-			parts := strings.SplitN(trimmed, ":", 2)
-			if len(parts) > 1 && currentEnvKey != "" {
-				// RENDER_EXTERNAL_URL or similar fromService key
-				_ = strings.Trim(strings.TrimSpace(parts[1]), "\"'")
-			}
-		} else if inEnvVars && strings.HasPrefix(trimmed, "property:") {
-			parts := strings.SplitN(trimmed, ":", 2)
-			if len(parts) > 1 && currentEnvKey != "" {
-				prop := strings.ToLower(strings.Trim(strings.TrimSpace(parts[1]), "\"'"))
-				if prop == "port" {
-					currentSvc.EnvVars[currentEnvKey] = "5432"
-				} else if prop == "user" {
-					currentSvc.EnvVars[currentEnvKey] = "postgres"
-				}
-			}
-		} else if strings.HasPrefix(trimmed, "routes:") {
-			inRoutes = true
-			inEnvVars = false
-		} else if inRoutes && (strings.HasPrefix(trimmed, "- type:") || strings.HasPrefix(trimmed, "type:")) {
-			parts := strings.SplitN(trimmed, ":", 2)
-			if len(parts) > 1 {
-				rType := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
-				if strings.HasPrefix(trimmed, "- type:") || len(currentSvc.Routes) == 0 {
-					currentSvc.Routes = append(currentSvc.Routes, ParsedRoute{Type: rType})
-				} else {
-					currentSvc.Routes[len(currentSvc.Routes)-1].Type = rType
-				}
-			}
-		} else if inRoutes && (strings.HasPrefix(trimmed, "- source:") || strings.HasPrefix(trimmed, "source:")) {
-			parts := strings.SplitN(trimmed, ":", 2)
-			if len(parts) > 1 {
-				src := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
-				if strings.HasPrefix(trimmed, "- source:") || len(currentSvc.Routes) == 0 {
-					currentSvc.Routes = append(currentSvc.Routes, ParsedRoute{Type: "rewrite", Source: src})
-				} else {
-					currentSvc.Routes[len(currentSvc.Routes)-1].Source = src
-				}
-			}
-		} else if inRoutes && strings.HasPrefix(trimmed, "destination:") {
-			parts := strings.SplitN(trimmed, ":", 2)
-			if len(parts) > 1 && len(currentSvc.Routes) > 0 {
-				dest := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
-				currentSvc.Routes[len(currentSvc.Routes)-1].Destination = dest
-
-				// If destination points to a backend URL (like https://backend.example.com/api/* or ${services.backend.url}/*)
-				// automatically extract the target service name and wire VITE_API_URL
-				lowerDest := strings.ToLower(dest)
-				if strings.Contains(lowerDest, "render.com") || strings.Contains(lowerDest, "${services.") {
-					var targetName string
-					if strings.Contains(dest, "${services.") {
-						start := strings.Index(dest, "${services.") + len("${services.")
-						end := strings.Index(dest[start:], ".")
-						if end > 0 {
-							targetName = dest[start : start+end]
+			} else if strings.HasPrefix(trimmed, "property:") {
+				parts := strings.SplitN(trimmed, ":", 2)
+				if len(parts) > 1 && currentEnvKey != "" && currentRefName != "" {
+					prop := strings.ToLower(strings.Trim(strings.TrimSpace(parts[1]), `"'`))
+					if currentRefType == "database" {
+						switch prop {
+						case "connectionstring", "url":
+							currentSvc.EnvVars[currentEnvKey] = fmt.Sprintf("${databases.%s.connectionString}", currentRefName)
+						case "host", "hostname":
+							currentSvc.EnvVars[currentEnvKey] = fmt.Sprintf("${databases.%s.host}", currentRefName)
+						case "port":
+							currentSvc.EnvVars[currentEnvKey] = fmt.Sprintf("${databases.%s.port}", currentRefName)
+						case "username", "user":
+							currentSvc.EnvVars[currentEnvKey] = fmt.Sprintf("${databases.%s.username}", currentRefName)
+						case "password", "pass":
+							currentSvc.EnvVars[currentEnvKey] = fmt.Sprintf("${databases.%s.password}", currentRefName)
+						case "database", "dbname", "name":
+							currentSvc.EnvVars[currentEnvKey] = fmt.Sprintf("${databases.%s.database}", currentRefName)
 						}
-					} else if strings.Contains(lowerDest, ".onrender.com") {
-						sub := strings.TrimPrefix(lowerDest, "https://")
-						sub = strings.TrimPrefix(sub, "http://")
-						targetName = strings.Split(sub, ".onrender.com")[0]
-					}
-					if targetName != "" {
-						if currentSvc.EnvVars == nil {
-							currentSvc.EnvVars = make(map[string]string)
+					} else if currentRefType == "service" {
+						if prop == "url" || prop == "endpoint" {
+							currentSvc.EnvVars[currentEnvKey] = fmt.Sprintf("${services.%s.url}", currentRefName)
 						}
-						currentSvc.EnvVars["VITE_API_URL"] = fmt.Sprintf("${services.%s.url}", targetName)
 					}
+				}
+			} else if strings.HasPrefix(trimmed, "generateValue:") || strings.HasPrefix(trimmed, "generate_value:") {
+				parts := strings.SplitN(trimmed, ":", 2)
+				if len(parts) > 1 && currentEnvKey != "" {
+					val := strings.ToLower(strings.TrimSpace(parts[1]))
+					if val == "true" || val == "yes" {
+						if currentSvc.EnvVars[currentEnvKey] == "" {
+							currentSvc.EnvVars[currentEnvKey] = generateSecureRandomSecret(16)
+						}
+					}
+				}
+			} else if strings.HasPrefix(trimmed, "sync:") || strings.HasPrefix(trimmed, "required:") {
+				parts := strings.SplitN(trimmed, ":", 2)
+				if len(parts) > 1 && currentEnvKey != "" {
+					val := strings.ToLower(strings.TrimSpace(parts[1]))
+					if val == "false" || val == "true" || val == "yes" {
+						currentSvc.RequiredEnvVars = append(currentSvc.RequiredEnvVars, currentEnvKey)
+					}
+				}
+			}
+		} else if inRoutes {
+			if strings.HasPrefix(trimmed, "- type:") || strings.HasPrefix(trimmed, "type:") {
+				parts := strings.SplitN(trimmed, ":", 2)
+				if len(parts) > 1 {
+					rType := strings.Trim(strings.TrimSpace(parts[1]), `"'`)
+					if strings.HasPrefix(trimmed, "- type:") || len(currentSvc.Routes) == 0 {
+						currentSvc.Routes = append(currentSvc.Routes, ParsedRoute{Type: rType})
+					} else {
+						currentSvc.Routes[len(currentSvc.Routes)-1].Type = rType
+					}
+				}
+			} else if strings.HasPrefix(trimmed, "- source:") || strings.HasPrefix(trimmed, "source:") {
+				parts := strings.SplitN(trimmed, ":", 2)
+				if len(parts) > 1 {
+					src := strings.Trim(strings.TrimSpace(parts[1]), `"'`)
+					if strings.HasPrefix(trimmed, "- source:") || len(currentSvc.Routes) == 0 {
+						currentSvc.Routes = append(currentSvc.Routes, ParsedRoute{Type: "rewrite", Source: src})
+					} else {
+						currentSvc.Routes[len(currentSvc.Routes)-1].Source = src
+					}
+				}
+			} else if strings.HasPrefix(trimmed, "destination:") {
+				parts := strings.SplitN(trimmed, ":", 2)
+				if len(parts) > 1 && len(currentSvc.Routes) > 0 {
+					dest := strings.Trim(strings.TrimSpace(parts[1]), `"'`)
+					currentSvc.Routes[len(currentSvc.Routes)-1].Destination = dest
+				}
+			}
+		} else {
+			// Direct root-level properties of service
+			if strings.HasPrefix(trimmed, "name:") {
+				parts := strings.SplitN(trimmed, ":", 2)
+				if len(parts) > 1 {
+					val := strings.Trim(strings.TrimSpace(parts[1]), `"'`)
+					currentSvc.Name = val
+					currentSvc.Slug = strings.ToLower(val)
+				}
+			} else if strings.HasPrefix(trimmed, "type:") || strings.HasPrefix(trimmed, "kind:") {
+				parts := strings.SplitN(trimmed, ":", 2)
+				if len(parts) > 1 {
+					currentSvc.Kind = strings.ToLower(strings.Trim(strings.TrimSpace(parts[1]), `"'`))
+				}
+			} else if strings.HasPrefix(trimmed, "image:") {
+				parts := strings.SplitN(trimmed, ":", 2)
+				if len(parts) > 1 {
+					img := strings.Trim(strings.TrimSpace(parts[1]), `"'`)
+					currentSvc.Image = img
+					lowerImg := strings.ToLower(img)
+					if strings.Contains(lowerImg, "redis") || strings.Contains(lowerImg, "postgres") || strings.Contains(lowerImg, "mysql") || strings.Contains(lowerImg, "mongo") || strings.Contains(lowerImg, "clickhouse") {
+						currentSvc.Kind = "database"
+					}
+				}
+			} else if strings.HasPrefix(trimmed, "port:") {
+				var p int
+				if _, err := fmt.Sscanf(trimmed, "port: %d", &p); err == nil && p > 0 {
+					currentSvc.InternalPort = p
+				}
+			} else if strings.HasPrefix(trimmed, "buildCommand:") {
+				parts := strings.SplitN(trimmed, ":", 2)
+				if len(parts) > 1 {
+					currentSvc.BuildCommand = strings.Trim(strings.TrimSpace(parts[1]), `"'`)
+				}
+			} else if strings.HasPrefix(trimmed, "startCommand:") {
+				parts := strings.SplitN(trimmed, ":", 2)
+				if len(parts) > 1 {
+					currentSvc.StartCommand = strings.Trim(strings.TrimSpace(parts[1]), `"'`)
+				}
+			} else if strings.HasPrefix(trimmed, "rootDir:") || strings.HasPrefix(trimmed, "directory:") {
+				parts := strings.SplitN(trimmed, ":", 2)
+				if len(parts) > 1 {
+					currentSvc.RootDir = strings.Trim(strings.TrimSpace(parts[1]), `"'`)
 				}
 			}
 		}
@@ -585,7 +557,7 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 
 	flushCurrent()
 
-	// Deduplicate service names and slugs so frontend and backend never share the exact same name
+	// Ensure distinct unique slugs
 	usedSlugs := make(map[string]int)
 	for i := range res.Services {
 		s := &res.Services[i]
@@ -595,63 +567,12 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 		if s.Slug == "" {
 			s.Slug = strings.ToLower(strings.ReplaceAll(s.Name, "_", "-"))
 		}
-	}
-
-	// Strip -backend, -api, -server, -frontend, -client, -ui, -web suffixes from static sites so they have clean primary root domains
-	for i := range res.Services {
-		s := &res.Services[i]
-		if s.Kind == "static" || s.Preset == "static-spa" || strings.Contains(strings.ToLower(s.RootDir), "front") || strings.Contains(strings.ToLower(s.RootDir), "web") || strings.Contains(strings.ToLower(s.RootDir), "ui") || strings.Contains(strings.ToLower(s.RootDir), "client") {
-			cleanName := s.Name
-			for _, suffix := range []string{"-backend", "-api", "-server", "-frontend", "-client", "-ui", "-web", "_backend", "_api", "_server", "_frontend", "_client", "_ui", "_web"} {
-				cleanName = strings.TrimSuffix(cleanName, suffix)
-			}
-			if cleanName != "" {
-				s.Name = cleanName
-			}
-			cleanSlug := s.Slug
-			for _, suffix := range []string{"-backend", "-api", "-server", "-frontend", "-client", "-ui", "-web", "_backend", "_api", "_server", "_frontend", "_client", "_ui", "_web"} {
-				cleanSlug = strings.TrimSuffix(cleanSlug, suffix)
-			}
-			if cleanSlug != "" {
-				s.Slug = cleanSlug
-			}
-		}
-	}
-
-	// Guarantee distinct unique slugs
-	for i := range res.Services {
-		s := &res.Services[i]
 		baseSlug := s.Slug
 		count := usedSlugs[baseSlug]
 		if count > 0 {
 			s.Slug = fmt.Sprintf("%s-%d", baseSlug, count+1)
-			s.Name = fmt.Sprintf("%s (%d)", s.Name, count+1)
 		}
 		usedSlugs[baseSlug] = count + 1
-	}
-
-	// Find primary backend service
-	var primaryBackendSlug string
-	for _, s := range res.Services {
-		if s.Kind == "web" || s.Kind == "api" {
-			primaryBackendSlug = s.Slug
-			break
-		}
-	}
-
-	// Auto-wire VITE_API_URL into frontend static services (single clean variable like Render)
-	if primaryBackendSlug != "" {
-		for i := range res.Services {
-			s := &res.Services[i]
-			if s.Kind == "static" || s.Preset == "static-spa" || s.StaticPublishPath != "" || strings.Contains(strings.ToLower(s.RootDir), "front") || strings.Contains(strings.ToLower(s.RootDir), "web") || strings.Contains(strings.ToLower(s.RootDir), "ui") || strings.Contains(strings.ToLower(s.RootDir), "client") {
-				if s.EnvVars == nil {
-					s.EnvVars = make(map[string]string)
-				}
-				if _, ok := s.EnvVars["VITE_API_URL"]; !ok {
-					s.EnvVars["VITE_API_URL"] = fmt.Sprintf("${services.%s.url}", primaryBackendSlug)
-				}
-			}
-		}
 	}
 
 	return res
@@ -916,6 +837,109 @@ func detectFrameworkFromTree(repoPath string, treeFiles map[string]bool, fetchRa
 			envMap, reqKeys = extractEnv(".env.example")
 		}
 
+		// Helper to register detected databases and auto-inject connection env vars
+		registerDetectedDB := func(engine string) {
+			dbName := fmt.Sprintf("%s-%s", repoBase, engine)
+			exists := false
+			for _, db := range result.Databases {
+				if fmt.Sprintf("%v", db["engine"]) == engine {
+					exists = true
+					dbName = fmt.Sprintf("%v", db["name"])
+					break
+				}
+			}
+			if !exists {
+				result.Databases = append(result.Databases, fiber.Map{
+					"name":   dbName,
+					"engine": engine,
+				})
+			}
+			if envMap == nil {
+				envMap = make(map[string]string)
+			}
+			switch engine {
+			case "postgres":
+				if envMap["DATABASE_URL"] == "" {
+					envMap["DATABASE_URL"] = fmt.Sprintf("${databases.%s.connectionString}", dbName)
+				}
+				if envMap["DB_HOST"] == "" {
+					envMap["DB_HOST"] = fmt.Sprintf("${databases.%s.host}", dbName)
+				}
+				if envMap["DB_PORT"] == "" {
+					envMap["DB_PORT"] = "5432"
+				}
+				if envMap["DB_USER"] == "" {
+					envMap["DB_USER"] = "postgres"
+				}
+			case "redis":
+				if envMap["REDIS_URL"] == "" {
+					envMap["REDIS_URL"] = fmt.Sprintf("${databases.%s.connectionString}", dbName)
+				}
+				if envMap["REDIS_HOST"] == "" {
+					envMap["REDIS_HOST"] = fmt.Sprintf("${databases.%s.host}", dbName)
+				}
+				if envMap["REDIS_PORT"] == "" {
+					envMap["REDIS_PORT"] = "6379"
+				}
+			case "mysql":
+				if envMap["DATABASE_URL"] == "" {
+					envMap["DATABASE_URL"] = fmt.Sprintf("${databases.%s.connectionString}", dbName)
+				}
+				if envMap["MYSQL_HOST"] == "" {
+					envMap["MYSQL_HOST"] = fmt.Sprintf("${databases.%s.host}", dbName)
+				}
+				if envMap["MYSQL_PORT"] == "" {
+					envMap["MYSQL_PORT"] = "3306"
+				}
+			case "mongodb":
+				if envMap["MONGODB_URI"] == "" && envMap["MONGO_URL"] == "" {
+					envMap["MONGODB_URI"] = fmt.Sprintf("${databases.%s.connectionString}", dbName)
+				}
+				if envMap["MONGO_HOST"] == "" {
+					envMap["MONGO_HOST"] = fmt.Sprintf("${databases.%s.host}", dbName)
+				}
+			case "clickhouse":
+				if envMap["CLICKHOUSE_URL"] == "" {
+					envMap["CLICKHOUSE_URL"] = fmt.Sprintf("${databases.%s.connectionString}", dbName)
+				}
+			}
+		}
+
+		detectDatabaseDeps := func(deps map[string]bool, rawText string) {
+			combined := strings.ToLower(rawText)
+			// PostgreSQL
+			if deps["pg"] || deps["pg-promise"] || deps["postgres"] || deps["@prisma/client"] || deps["typeorm"] || deps["knex"] || deps["sequelize"] || deps["drizzle-orm"] || deps["slonik"] ||
+				deps["psycopg2"] || deps["psycopg2-binary"] || deps["psycopg"] || deps["asyncpg"] || deps["databases"] || deps["tortoise-orm"] ||
+				deps["github.com/lib/pq"] || deps["github.com/jackc/pgx"] || deps["gorm.io/driver/postgres"] ||
+				deps["tokio-postgres"] || deps["sqlx"] || deps["diesel"] ||
+				deps["ext-pdo_pgsql"] || deps["org.postgresql"] || strings.Contains(combined, "psycopg") || strings.Contains(combined, "asyncpg") || strings.Contains(combined, "lib/pq") || strings.Contains(combined, "pgx") || strings.Contains(combined, "org.postgresql") {
+				registerDetectedDB("postgres")
+			}
+			// Redis
+			if deps["redis"] || deps["ioredis"] || deps["@ioredis/commands"] || deps["bull"] || deps["bullmq"] || deps["connect-redis"] || deps["redis-om"] ||
+				deps["aioredis"] || deps["celery"] ||
+				deps["github.com/redis/go-redis"] || deps["github.com/go-redis/redis"] ||
+				deps["fred"] || deps["predis/predis"] || deps["ext-redis"] ||
+				deps["jedis"] || deps["lettuce"] || strings.Contains(combined, "ioredis") || strings.Contains(combined, "go-redis") {
+				registerDetectedDB("redis")
+			}
+			// MySQL / MariaDB
+			if deps["mysql"] || deps["mysql2"] || deps["mariadb"] ||
+				deps["pymysql"] || deps["mysqlclient"] || deps["aiomysql"] || deps["mysql-connector-python"] ||
+				deps["github.com/go-sql-driver/mysql"] || deps["gorm.io/driver/mysql"] ||
+				deps["mysql_async"] || deps["ext-pdo_mysql"] || deps["ext-mysqli"] ||
+				deps["mysql-connector-java"] || strings.Contains(combined, "pymysql") || strings.Contains(combined, "mysqlclient") {
+				registerDetectedDB("mysql")
+			}
+			// MongoDB
+			if deps["mongodb"] || deps["mongoose"] ||
+				deps["pymongo"] || deps["motor"] || deps["mongoengine"] ||
+				deps["go.mongodb.org/mongo-driver"] ||
+				deps["mongodb/mongodb"] || deps["spring-boot-starter-data-mongodb"] || strings.Contains(combined, "mongoose") || strings.Contains(combined, "pymongo") {
+				registerDetectedDB("mongodb")
+			}
+		}
+
 		// 1. Node.js / JavaScript / TypeScript Ecosystem
 		if hasFile(prefix + "package.json") {
 			pkgContent := fetchRaw(prefix + "package.json")
@@ -938,6 +962,9 @@ func detectFrameworkFromTree(repoPath string, treeFiles map[string]bool, fetchRa
 			for k := range pkg.DevDeps {
 				deps[k] = true
 			}
+
+			// Run database dependency detector
+			detectDatabaseDeps(deps, pkgContent)
 
 			buildCommand := ""
 			startCommand := ""
@@ -1086,6 +1113,8 @@ func detectFrameworkFromTree(repoPath string, treeFiles map[string]bool, fetchRa
 			pyprojectContent := fetchRaw(prefix + "pyproject.toml")
 			combined := strings.ToLower(reqContent + "\n" + pyprojectContent)
 
+			detectDatabaseDeps(map[string]bool{}, combined)
+
 			internalPort := 8000
 			startCommand := "python app.py || python main.py || python server.py"
 			buildCommand := ""
@@ -1133,6 +1162,8 @@ func detectFrameworkFromTree(repoPath string, treeFiles map[string]bool, fetchRa
 
 		// 3. Go Ecosystem
 		if hasFile(prefix + "go.mod") {
+			goModContent := fetchRaw(prefix + "go.mod")
+			detectDatabaseDeps(map[string]bool{}, goModContent)
 			return &ParsedRenderService{
 				Name:            defaultName,
 				Kind:            "web",
@@ -1149,6 +1180,8 @@ func detectFrameworkFromTree(repoPath string, treeFiles map[string]bool, fetchRa
 
 		// 4. Rust Ecosystem
 		if hasFile(prefix + "Cargo.toml") {
+			cargoContent := fetchRaw(prefix + "Cargo.toml")
+			detectDatabaseDeps(map[string]bool{}, cargoContent)
 			return &ParsedRenderService{
 				Name:            defaultName,
 				Kind:            "web",
@@ -1165,6 +1198,9 @@ func detectFrameworkFromTree(repoPath string, treeFiles map[string]bool, fetchRa
 
 		// 5. Java Ecosystem (Maven / Gradle)
 		if hasFile(prefix+"pom.xml") || hasFile(prefix+"build.gradle") {
+			pomContent := fetchRaw(prefix + "pom.xml")
+			gradleContent := fetchRaw(prefix + "build.gradle")
+			detectDatabaseDeps(map[string]bool{}, pomContent+"\n"+gradleContent)
 			buildCmd := "mvn clean package -DskipTests || ./gradlew build"
 			return &ParsedRenderService{
 				Name:            defaultName,
@@ -1182,6 +1218,8 @@ func detectFrameworkFromTree(repoPath string, treeFiles map[string]bool, fetchRa
 
 		// 6. PHP Ecosystem
 		if hasFile(prefix + "composer.json") {
+			composerContent := fetchRaw(prefix + "composer.json")
+			detectDatabaseDeps(map[string]bool{}, composerContent)
 			return &ParsedRenderService{
 				Name:            defaultName,
 				Kind:            "web",
@@ -1196,6 +1234,8 @@ func detectFrameworkFromTree(repoPath string, treeFiles map[string]bool, fetchRa
 
 		// 7. Ruby Ecosystem
 		if hasFile(prefix + "Gemfile") {
+			gemContent := fetchRaw(prefix + "Gemfile")
+			detectDatabaseDeps(map[string]bool{}, gemContent)
 			return &ParsedRenderService{
 				Name:            defaultName,
 				Kind:            "web",
@@ -1225,6 +1265,8 @@ func detectFrameworkFromTree(repoPath string, treeFiles map[string]bool, fetchRa
 
 		// 9. Elixir / Phoenix
 		if hasFile(prefix + "mix.exs") {
+			mixContent := fetchRaw(prefix + "mix.exs")
+			detectDatabaseDeps(map[string]bool{}, mixContent)
 			return &ParsedRenderService{
 				Name:            defaultName,
 				Kind:            "web",
@@ -1456,6 +1498,9 @@ func detectFrameworkFromTree(repoPath string, treeFiles map[string]bool, fetchRa
 
 	// Auto-detect databases referenced in environment variables (.env.example or service envVars)
 	dbAdded := make(map[string]bool)
+	for _, db := range result.Databases {
+		dbAdded[fmt.Sprintf("%v", db["engine"])] = true
+	}
 	for _, s := range result.Services {
 		for k, v := range s.EnvVars {
 			kUpper := strings.ToUpper(k)
@@ -1539,6 +1584,9 @@ func (h *Handler) handleDeployBlueprint(c fiber.Ctx) error {
 	dbUriMap := make(map[string]string)
 	dbHostMap := make(map[string]string)
 	dbPortMap := make(map[string]string)
+	dbUserMap := make(map[string]string)
+	dbPassMap := make(map[string]string)
+	dbNameMap := make(map[string]string)
 
 	for _, dbInfo := range req.Databases {
 		dbName := fmt.Sprintf("%v", dbInfo["name"])
@@ -1571,6 +1619,9 @@ func (h *Handler) handleDeployBlueprint(c fiber.Ctx) error {
 			var meta struct {
 				ConnectionURI         string `json:"connectionUri"`
 				InternalConnectionURI string `json:"internalConnectionUri"`
+				Username              string `json:"username"`
+				Password              string `json:"password"`
+				DatabaseName          string `json:"databaseName"`
 			}
 			if dbRec.ResourceJSON != "" {
 				_ = json.Unmarshal([]byte(dbRec.ResourceJSON), &meta)
@@ -1585,6 +1636,12 @@ func (h *Handler) handleDeployBlueprint(c fiber.Ctx) error {
 			dbHostMap[strings.ToLower(dbName)] = dbRec.InternalHostname
 			dbPortMap[dbName] = fmt.Sprintf("%d", dbRec.InternalPort)
 			dbPortMap[strings.ToLower(dbName)] = fmt.Sprintf("%d", dbRec.InternalPort)
+			dbUserMap[dbName] = meta.Username
+			dbUserMap[strings.ToLower(dbName)] = meta.Username
+			dbPassMap[dbName] = meta.Password
+			dbPassMap[strings.ToLower(dbName)] = meta.Password
+			dbNameMap[dbName] = meta.DatabaseName
+			dbNameMap[strings.ToLower(dbName)] = meta.DatabaseName
 		}
 	}
 
@@ -1701,6 +1758,22 @@ func (h *Handler) handleDeployBlueprint(c fiber.Ctx) error {
 			for dbName, dbPort := range dbPortMap {
 				val = strings.ReplaceAll(val, fmt.Sprintf("${databases.%s.port}", dbName), dbPort)
 				val = strings.ReplaceAll(val, fmt.Sprintf("${%s.port}", dbName), dbPort)
+			}
+			for dbName, dbUser := range dbUserMap {
+				val = strings.ReplaceAll(val, fmt.Sprintf("${databases.%s.username}", dbName), dbUser)
+				val = strings.ReplaceAll(val, fmt.Sprintf("${databases.%s.user}", dbName), dbUser)
+				val = strings.ReplaceAll(val, fmt.Sprintf("${%s.username}", dbName), dbUser)
+			}
+			for dbName, dbPass := range dbPassMap {
+				val = strings.ReplaceAll(val, fmt.Sprintf("${databases.%s.password}", dbName), dbPass)
+				val = strings.ReplaceAll(val, fmt.Sprintf("${databases.%s.pass}", dbName), dbPass)
+				val = strings.ReplaceAll(val, fmt.Sprintf("${%s.password}", dbName), dbPass)
+			}
+			for dbName, dbDatabase := range dbNameMap {
+				val = strings.ReplaceAll(val, fmt.Sprintf("${databases.%s.database}", dbName), dbDatabase)
+				val = strings.ReplaceAll(val, fmt.Sprintf("${databases.%s.databaseName}", dbName), dbDatabase)
+				val = strings.ReplaceAll(val, fmt.Sprintf("${databases.%s.name}", dbName), dbDatabase)
+				val = strings.ReplaceAll(val, fmt.Sprintf("${%s.database}", dbName), dbDatabase)
 			}
 			resolvedEnv[k] = val
 		}

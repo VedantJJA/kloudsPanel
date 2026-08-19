@@ -1,6 +1,7 @@
 package http
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -220,3 +221,183 @@ databases:
 		t.Errorf("expected database engine postgres, got %v", res.Databases[0]["engine"])
 	}
 }
+
+func TestParseUserIventBlueprint(t *testing.T) {
+	iventYaml := `
+version: "1.0"
+project: "ivent-checkin-system"
+
+services:
+  frontend:
+    type: static
+    source:
+      directory: "client"
+    build:
+      command: "npm ci && npm run build"
+      output_dir: "dist"
+    env:
+      - key: VITE_API_URL
+        fromService:
+          name: "backend"
+          property: "url"
+      - key: VITE_WS_URL
+        fromService:
+          name: "backend"
+          property: "url"
+
+  backend:
+    type: web
+    source:
+      directory: "server"
+    build:
+      engine: "node"
+      command: "npm ci"
+    deploy:
+      port: 4000
+      command: "node src/server.js"
+    resources:
+      cpu_limit: "1.0"
+      mem_limit: "512m"
+    volumes:
+      - name: "ivent_data"
+        mount_path: "/app/data"
+    env:
+      - key: PORT
+        value: "4000"
+      - key: NODE_ENV
+        value: "production"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: "postgres-db"
+          property: "connectionString"
+      - key: DB_HOST
+        fromDatabase:
+          name: "postgres-db"
+          property: "host"
+      - key: DB_PORT
+        fromDatabase:
+          name: "postgres-db"
+          property: "port"
+      - key: DB_USER
+        fromDatabase:
+          name: "postgres-db"
+          property: "username"
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: "postgres-db"
+          property: "password"
+      - key: DB_NAME
+        fromDatabase:
+          name: "postgres-db"
+          property: "database"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: QR_HMAC_SECRET
+        generateValue: true
+      - key: GEMINI_API_KEY
+        sync: false
+
+  postgres-db:
+    type: database
+    image: "postgres:16-alpine"
+    deploy:
+      port: 5432
+    volumes:
+      - name: "pg_data"
+        mount_path: "/var/lib/postgresql/data"
+    env:
+      - key: POSTGRES_DB
+        value: "ivent_production"
+      - key: POSTGRES_USER
+        value: "ivent_admin"
+`
+
+	res := parseRenderYAMLString(iventYaml)
+
+	if len(res.Services) != 2 {
+		t.Fatalf("expected exactly 2 services (frontend, backend), got %d: %+v", len(res.Services), res.Services)
+	}
+
+	if res.Services[0].Name != "frontend" || res.Services[0].Kind != "static" {
+		t.Errorf("expected frontend static service, got name: %s, kind: %s", res.Services[0].Name, res.Services[0].Kind)
+	}
+	if res.Services[0].RootDir != "client" {
+		t.Errorf("expected frontend rootDir client, got %s", res.Services[0].RootDir)
+	}
+	if res.Services[0].StaticPublishPath != "dist" {
+		t.Errorf("expected frontend staticPublishPath dist, got %s", res.Services[0].StaticPublishPath)
+	}
+	if res.Services[0].EnvVars["VITE_API_URL"] != "${services.backend.url}" {
+		t.Errorf("expected VITE_API_URL ${services.backend.url}, got %s", res.Services[0].EnvVars["VITE_API_URL"])
+	}
+
+	if res.Services[1].Name != "backend" || res.Services[1].Kind != "web" {
+		t.Errorf("expected backend web service, got name: %s, kind: %s", res.Services[1].Name, res.Services[1].Kind)
+	}
+	if res.Services[1].RootDir != "server" {
+		t.Errorf("expected backend rootDir server, got %s", res.Services[1].RootDir)
+	}
+	if res.Services[1].InternalPort != 4000 {
+		t.Errorf("expected backend port 4000, got %d", res.Services[1].InternalPort)
+	}
+	if res.Services[1].StartCommand != "node src/server.js" {
+		t.Errorf("expected backend startCommand 'node src/server.js', got %s", res.Services[1].StartCommand)
+	}
+	if res.Services[1].EnvVars["DATABASE_URL"] != "${databases.postgres-db.connectionString}" {
+		t.Errorf("expected DATABASE_URL ${databases.postgres-db.connectionString}, got %s", res.Services[1].EnvVars["DATABASE_URL"])
+	}
+
+	if res.Databases[0]["name"] != "postgres-db" {
+		t.Errorf("expected database name postgres-db, got %v", res.Databases[0]["name"])
+	}
+	if res.Databases[0]["engine"] != "postgres" {
+		t.Errorf("expected database engine postgres, got %v", res.Databases[0]["engine"])
+	}
+}
+
+func TestDetectFrameworkAndDatabasesFromTree(t *testing.T) {
+	treeFiles := map[string]bool{
+		"package.json": true,
+	}
+	fetchRaw := func(filename string) string {
+		if filename == "package.json" {
+			return `{"name": "my-express-app", "dependencies": {"express": "^4.18.2", "pg": "^8.11.3", "ioredis": "^5.3.2"}, "scripts": {"start": "node server.js"}}`
+		}
+		return ""
+	}
+
+	result := detectFrameworkFromTree("my-org/my-express-app", treeFiles, fetchRaw, "my-express-app")
+
+	if len(result.Services) != 1 {
+		t.Fatalf("expected 1 service, got %d", len(result.Services))
+	}
+	if result.Services[0].Preset != "nodejs" {
+		t.Errorf("expected preset nodejs, got %s", result.Services[0].Preset)
+	}
+
+	// Should auto-detect both postgres and redis databases from dependencies
+	if len(result.Databases) != 2 {
+		t.Fatalf("expected 2 databases auto-detected (postgres, redis), got %d: %+v", len(result.Databases), result.Databases)
+	}
+
+	engines := make(map[string]bool)
+	for _, db := range result.Databases {
+		engines[fmt.Sprintf("%v", db["engine"])] = true
+	}
+	if !engines["postgres"] {
+		t.Errorf("expected postgres database to be auto-detected from 'pg' dependency")
+	}
+	if !engines["redis"] {
+		t.Errorf("expected redis database to be auto-detected from 'ioredis' dependency")
+	}
+
+	// Should auto-wire DATABASE_URL and REDIS_URL
+	if result.Services[0].EnvVars["DATABASE_URL"] != "${databases.my-express-app-postgres.connectionString}" {
+		t.Errorf("expected DATABASE_URL to be auto-wired, got %s", result.Services[0].EnvVars["DATABASE_URL"])
+	}
+	if result.Services[0].EnvVars["REDIS_URL"] != "${databases.my-express-app-redis.connectionString}" {
+		t.Errorf("expected REDIS_URL to be auto-wired, got %s", result.Services[0].EnvVars["REDIS_URL"])
+	}
+}
+
+

@@ -22,21 +22,29 @@ func nodePnpmSupportedArchSetup() string {
 // detectNodePackageManager returns the install and build commands based on lockfile presence.
 // order: bun > pnpm > yarn > npm (fallback)
 func detectNodeInstallCommand(buildCmd string) string {
-	if buildCmd != "" {
-		return buildCmd
-	}
 	setup := nodePnpmSupportedArchSetup()
-	return fmt.Sprintf(`if [ -f bun.lockb ]; then bun install --frozen-lockfile; \
+	installBlock := fmt.Sprintf(`if [ -f bun.lockb ]; then bun install --frozen-lockfile 2>/dev/null || bun install; \
 elif [ -f pnpm-lock.yaml ]; then corepack enable && (%s) && pnpm install --no-frozen-lockfile && (pnpm rebuild 2>/dev/null || true); \
-elif [ -f yarn.lock ]; then corepack enable && (yarn install --frozen-lockfile || yarn install); \
-elif [ -f package-lock.json ]; then (npm ci || npm install); \
-elif [ -f package.json ]; then npm install; fi && \
+elif [ -f yarn.lock ]; then corepack enable && (yarn install --frozen-lockfile 2>/dev/null || yarn install); \
+elif [ -f package-lock.json ]; then npm ci 2>/dev/null || npm install; \
+elif [ -f package.json ]; then npm install; fi`, setup)
+
+	if buildCmd != "" {
+		if strings.Contains(buildCmd, "install") || strings.Contains(buildCmd, "ci") || strings.Contains(buildCmd, "add") {
+			return buildCmd
+		}
+		return fmt.Sprintf(`%s && \
+(npm config set audit false 2>/dev/null || true; npm config set fund false 2>/dev/null || true; npm config set progress false 2>/dev/null || true) && \
+%s`, installBlock, buildCmd)
+	}
+
+	return fmt.Sprintf(`%s && \
 if grep -q '"build":' package.json 2>/dev/null; then \
   if [ -f bun.lockb ]; then bun run build; \
   elif [ -f pnpm-lock.yaml ]; then pnpm run build; \
   elif [ -f yarn.lock ]; then yarn build; \
   else npm run build; fi; \
-fi`, setup)
+fi`, installBlock)
 }
 
 // detectPythonInstallCommand returns the install command based on dependency file presence.
@@ -559,24 +567,20 @@ CMD ["sh", "-c", "%s"]
 
 	// --- Static / SPA / Nginx ------------------------------------------------
 	case "static", "static-spa", "nginx":
-		bCmd := buildCmd
-		if bCmd != "" {
-			if strings.Contains(bCmd, "npm ci") {
-				bCmd = strings.ReplaceAll(bCmd, "npm ci", "{ npm ci || npm install; }")
-			}
-			if strings.Contains(bCmd, "pnpm") {
-				setup := nodePnpmSupportedArchSetup()
-				bCmd = fmt.Sprintf("%s; %s", setup, bCmd)
-				if strings.Contains(bCmd, "--frozen-lockfile") {
-					bCmd = strings.ReplaceAll(bCmd, "--frozen-lockfile", "--no-frozen-lockfile")
-				}
-			}
-			if strings.Contains(bCmd, "npm") {
-				bCmd = fmt.Sprintf("npm config set audit false 2>/dev/null || true; npm config set fund false 2>/dev/null || true; npm config set progress false 2>/dev/null || true; %s", bCmd)
-			}
+		bCmd := detectNodeInstallCommand(buildCmd)
+		if strings.Contains(bCmd, "npm ci") {
+			bCmd = strings.ReplaceAll(bCmd, "npm ci", "{ npm ci || npm install; }")
+		}
+		if strings.Contains(bCmd, "pnpm") && !strings.Contains(bCmd, "pnpm-workspace.yaml") {
+			setup := nodePnpmSupportedArchSetup()
+			bCmd = fmt.Sprintf("%s; %s", setup, bCmd)
 			if strings.Contains(bCmd, "--frozen-lockfile") {
-				bCmd = strings.ReplaceAll(bCmd, "yarn install --frozen-lockfile", "{ yarn install --frozen-lockfile || yarn install; }")
+				bCmd = strings.ReplaceAll(bCmd, "--frozen-lockfile", "--no-frozen-lockfile")
 			}
+		}
+		if strings.Contains(bCmd, "--frozen-lockfile") {
+			bCmd = strings.ReplaceAll(bCmd, "yarn install --frozen-lockfile", "{ yarn install --frozen-lockfile || yarn install; }")
+		}
 			return fmt.Sprintf(`FROM node:22-bookworm-slim AS builder
 WORKDIR /app
 RUN if ! command -v git >/dev/null 2>&1; then \
@@ -634,15 +638,6 @@ RUN chmod -R 755 /usr/share/nginx/html 2>/dev/null || true
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
 `, bCmd)
-		}
-		return fmt.Sprintf(`FROM nginx:alpine
-RUN rm -rf /etc/nginx/conf.d/default.conf
-RUN printf 'server {\n    listen 80 default_server;\n    listen [::]:80 default_server;\n    server_name _;\n    root /usr/share/nginx/html;\n    index index.html index.htm;\n    gzip on;\n    location / {\n        try_files $uri $uri/ /index.html;\n    }\n    error_page 404 /index.html;\n}\n' > /etc/nginx/conf.d/default.conf
-COPY . /usr/share/nginx/html
-RUN chmod -R 755 /usr/share/nginx/html 2>/dev/null || true
-EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
-`)
 
 	// --- Dockerfile (user-provided) ------------------------------------------
 	case "dockerfile":
