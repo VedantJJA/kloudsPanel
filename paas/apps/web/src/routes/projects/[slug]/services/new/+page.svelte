@@ -1240,8 +1240,12 @@
       </button>
       <div>
         <div class="page-breadcrumbs" style="margin-bottom: 0.2rem;">
-          <a href="/workspaces">Workspaces</a>
-          <span>/</span>
+          {#if project?.workspace_slug || project?.WorkspaceSlug || project?.workspace_id || project?.WorkspaceID}
+            <a href="/workspaces/{project.workspace_slug || project.WorkspaceSlug || project.workspace_id || project.WorkspaceID}">
+              {project.workspace_name || project.WorkspaceName || 'Workspace'}
+            </a>
+            <span>/</span>
+          {/if}
           <a href="/projects/{slug}">{project?.name || slug}</a>
           <span>/</span>
           <span>Deploy Studio</span>

@@ -8,7 +8,7 @@
     if ($activeWorkspaceSlug) {
       goto(`/workspaces/${$activeWorkspaceSlug}/databases`);
     } else {
-      goto('/workspaces');
+      goto('/');
     }
   });
 </script>

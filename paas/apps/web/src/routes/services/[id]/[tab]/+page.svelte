@@ -31,6 +31,7 @@
     ArrowRight
   } from 'lucide-svelte';
   import FrameworkIcon from '$lib/components/icons/FrameworkIcon.svelte';
+  import { activeWorkspaceSlug, workspaces } from '$lib/stores/workspace';
 
   const id = $derived($page.params.id);
   const tab = $derived($page.params.tab);
@@ -430,7 +431,7 @@
   async function loadService() {
     try {
       const res = await fetch(`/api/v1/services/${id}`, { credentials: 'include' });
-      if (!res.ok) { goto('/workspaces'); return; }
+      if (!res.ok) { goto('/'); return; }
       service = await res.json();
 
       // Redirect to overview if user is on a tab that doesn't apply to this service kind
@@ -657,7 +658,7 @@
         if (service?.project_id || service?.ProjectID) {
           goto(`/projects/${service.project_id || service.ProjectID}`);
         } else {
-          goto('/workspaces');
+          goto('/');
         }
       } else {
         const d = await res.json().catch(() => ({}));
@@ -1008,12 +1009,22 @@
   <!-- Service header -->
   <div class="page-header">
     <div style="flex:1; min-width:0;">
-      <p class="text-xs text-muted" style="margin-bottom:0.25rem;">
-        <a href="/workspaces">Workspaces</a> /
-        {#if service?.project_id || service?.ProjectID}
-          <a href="/projects/{service.project_id || service.ProjectID}">{service.project_name || 'Project'}</a> /
+      <div class="page-breadcrumbs" style="margin-bottom:0.35rem;">
+        {#if $activeWorkspaceSlug}
+          {@const activeWs = $workspaces.find(w => (w.slug || (w as any).Slug) === $activeWorkspaceSlug)}
+          <a href="/workspaces/{$activeWorkspaceSlug}">
+            {activeWs?.name || (activeWs as any)?.Name || $activeWorkspaceSlug}
+          </a>
+          <span>/</span>
         {/if}
-      </p>
+        {#if service?.project_id || service?.ProjectID || service?.project_slug || service?.ProjectSlug}
+          <a href="/projects/{service.project_slug || service.ProjectSlug || service.project_id || service.ProjectID}">
+            {service.project_name || service.ProjectName || 'Project'}
+          </a>
+          <span>/</span>
+        {/if}
+        <span>{service?.name || service?.Name}</span>
+      </div>
       <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
         <FrameworkIcon name={parsedResource.presetId || service?.kind || 'node'} size={24} />
         <h1 class="page-title" style="margin:0;">{service?.name || service?.Name}</h1>

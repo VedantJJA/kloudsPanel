@@ -40,6 +40,7 @@
     ShieldCheck
   } from 'lucide-svelte';
   import FrameworkIcon from '$lib/components/icons/FrameworkIcon.svelte';
+  import { activeWorkspaceSlug, workspaces } from '$lib/stores/workspace';
 
   const id = $derived($page.params.id);
   const tab = $derived($page.params.tab);
@@ -517,9 +518,18 @@
   <!-- Header -->
   <div class="page-header">
     <div style="flex:1; min-width:0;">
-      <p class="text-xs text-muted" style="margin-bottom:0.25rem;">
-        <a href="/databases">Databases</a> /
-      </p>
+      <div class="page-breadcrumbs" style="margin-bottom:0.35rem;">
+        {#if $activeWorkspaceSlug}
+          {@const activeWs = $workspaces.find(w => (w.slug || (w as any).Slug) === $activeWorkspaceSlug)}
+          <a href="/workspaces/{$activeWorkspaceSlug}">
+            {activeWs?.name || (activeWs as any)?.Name || $activeWorkspaceSlug}
+          </a>
+          <span>/</span>
+          <a href="/workspaces/{$activeWorkspaceSlug}/databases">Databases</a>
+          <span>/</span>
+        {/if}
+        <span>{database?.name}</span>
+      </div>
       <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
         <FrameworkIcon name={database?.engine} size={28} />
         <h1 class="page-title" style="margin:0;">{database?.name}</h1>

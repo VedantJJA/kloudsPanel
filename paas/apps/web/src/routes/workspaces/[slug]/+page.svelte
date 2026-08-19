@@ -21,7 +21,7 @@
       const wsRes = await fetch(`/api/v1/workspaces/${slug}`, { credentials: 'include' });
       if (!wsRes.ok) { 
         console.error('Failed to load workspace:', wsRes.status);
-        goto('/workspaces'); 
+        goto('/'); 
         return; 
       }
       workspace = await wsRes.json();
@@ -35,7 +35,7 @@
       }
     } catch (e) {
       console.error(e);
-      goto('/workspaces');
+      goto('/');
     } finally {
       loading = false;
     }
@@ -103,8 +103,6 @@
   <div class="page-header">
     <div>
       <div class="page-breadcrumbs">
-        <a href="/workspaces">Workspaces</a>
-        <span>/</span>
         <span>{workspace?.name || workspace?.Name || slug}</span>
       </div>
       <h1 class="page-title">{workspace?.name || workspace?.Name || slug}</h1>

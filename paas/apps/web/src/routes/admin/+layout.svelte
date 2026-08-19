@@ -22,12 +22,12 @@
                       user.platformRole === 'main_admin' || 
                       user.platformRole === 'admin';
       if (!isAdmin) {
-        goto('/workspaces');
+        goto('/');
         return;
       }
       isAuthorized = true;
     } catch {
-      goto('/workspaces');
+      goto('/');
     } finally {
       loading = false;
     }

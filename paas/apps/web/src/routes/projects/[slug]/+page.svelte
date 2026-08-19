@@ -144,7 +144,7 @@
       if (wsSlug) {
         goto(`/workspaces/${wsSlug}`);
       } else {
-        goto('/workspaces');
+        goto('/');
       }
     } catch (e: any) {
       alert('Failed to delete project: ' + e.message);
@@ -191,8 +191,6 @@
   <div class="page-header">
     <div>
       <div class="page-breadcrumbs">
-        <a href="/workspaces">Workspaces</a>
-        <span>/</span>
         {#if project?.workspace_slug || project?.WorkspaceSlug || project?.workspace_id || project?.WorkspaceID}
           <a href="/workspaces/{project.workspace_slug || project.WorkspaceSlug || project.workspace_id || project.WorkspaceID}">
             {project.workspace_name || project.WorkspaceName || 'Workspace'}

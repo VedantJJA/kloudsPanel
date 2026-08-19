@@ -223,7 +223,6 @@
       );
     } else {
       items.push(
-        { label: 'Workspaces', href: '/workspaces', icon: FolderOpen },
         { label: 'New Workspace', href: '/workspaces/new', icon: Plus },
       );
     }

@@ -69,8 +69,6 @@
 <div class="page-header">
   <div>
     <div class="page-breadcrumbs">
-      <a href="/workspaces">Workspaces</a>
-      <span>/</span>
       <a href="/workspaces/{slug}">{workspace?.name || slug}</a>
       <span>/</span>
       <span>Members</span>

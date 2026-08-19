@@ -25,7 +25,7 @@
         error = data.detail ?? data.error ?? 'Invalid credentials';
         return;
       }
-      goto('/workspaces');
+      goto('/');
     } catch (e) {
       error = 'Network error. Please try again.';
     } finally {

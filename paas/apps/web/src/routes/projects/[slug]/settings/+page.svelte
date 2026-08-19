@@ -115,6 +115,12 @@
 <div class="page-header">
   <div>
     <div class="page-breadcrumbs">
+      {#if project?.workspace_slug || project?.WorkspaceSlug || project?.workspace_id || project?.WorkspaceID}
+        <a href="/workspaces/{project.workspace_slug || project.WorkspaceSlug || project.workspace_id || project.WorkspaceID}">
+          {project.workspace_name || project.WorkspaceName || 'Workspace'}
+        </a>
+        <span>/</span>
+      {/if}
       <a href="/projects/{slug}">{project?.name || slug}</a>
       <span>/</span>
       <span>Settings</span>

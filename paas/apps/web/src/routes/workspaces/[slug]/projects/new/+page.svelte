@@ -19,10 +19,10 @@
         const ws = await res.json();
         workspaceId = ws.id || ws.ID;
       } else {
-        goto('/workspaces');
+        goto('/');
       }
     } catch (e) {
-      goto('/workspaces');
+      goto('/');
     }
   });
 

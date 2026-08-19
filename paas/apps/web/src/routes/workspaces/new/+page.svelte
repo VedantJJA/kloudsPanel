@@ -54,9 +54,9 @@
   <div style="display: flex; align-items: center; gap: 0.75rem;">
     <button 
       class="btn btn-secondary" 
-      onclick={() => goto('/workspaces')} 
+      onclick={() => history.back()} 
       style="padding: 0; width: 34px; height: 34px; min-height: 34px; border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; flex-shrink: 0;"
-      aria-label="Back to Workspaces"
+      aria-label="Back"
     >
       <ArrowLeft size={16} />
     </button>

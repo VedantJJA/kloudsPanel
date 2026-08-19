@@ -3,6 +3,7 @@
   import { Menu, X, Plus, Rocket, Layers, Database, Shield, Sun, Moon, Monitor } from 'lucide-svelte';
   import { isMobileNavOpen, toggleMobileNav } from '$lib/stores/ui';
   import { theme } from '$lib/stores/theme';
+  import { activeWorkspaceSlug } from '$lib/stores/workspace';
 
   const pathname = $derived($page.url.pathname);
   
@@ -30,7 +31,7 @@
       {/if}
     </button>
 
-    <a href="/workspaces" class="mobile-logo-link" onclick={() => isMobileNavOpen.set(false)}>
+    <a href="/" class="mobile-logo-link" onclick={() => isMobileNavOpen.set(false)}>
       <div class="sidebar-logo-mark" style="width:28px; height:28px; font-size:0.875rem;" aria-hidden="true">K</div>
       <span class="mobile-brand-title">kloudsPanel</span>
     </a>
@@ -62,13 +63,13 @@
     {/if}
     
     <a 
-      href="/workspaces" 
+      href={$activeWorkspaceSlug ? `/workspaces/${$activeWorkspaceSlug}` : '/'} 
       class="btn btn-primary" 
       style="padding: 4px 10px; min-height: 30px; font-size: 0.75rem; border-radius: var(--radius-md);"
-      title="Workspaces"
+      title="Projects"
       onclick={() => isMobileNavOpen.set(false)}
     >
-      <Layers size={14} /> Workspaces
+      <Layers size={14} /> Projects
     </a>
   </div>
 </header>

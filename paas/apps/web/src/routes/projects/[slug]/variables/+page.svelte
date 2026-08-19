@@ -130,6 +130,12 @@
 <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
   <div>
     <div class="page-breadcrumbs">
+      {#if project?.workspace_slug || project?.WorkspaceSlug || project?.workspace_id || project?.WorkspaceID}
+        <a href="/workspaces/{project.workspace_slug || project.WorkspaceSlug || project.workspace_id || project.WorkspaceID}">
+          {project.workspace_name || project.WorkspaceName || 'Workspace'}
+        </a>
+        <span>/</span>
+      {/if}
       <a href="/projects/{slug}">{project?.name || slug}</a>
       <span>/</span>
       <span>Environment Groups</span>

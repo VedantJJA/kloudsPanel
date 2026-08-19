@@ -42,10 +42,10 @@
           }
         }
       } else {
-        goto('/workspaces');
+        goto('/');
       }
     } catch {
-      goto('/workspaces');
+      goto('/');
     } finally {
       loading = false;
     }
@@ -93,7 +93,7 @@
       });
       if (res.ok) {
         showDeleteModal = false;
-        goto('/workspaces');
+        goto('/');
       } else {
         const d = await res.json().catch(() => ({}));
         alert('Failed to delete workspace: ' + (d.detail || d.message || res.statusText));
@@ -118,8 +118,6 @@
 <div class="page-header">
   <div>
     <div class="page-breadcrumbs">
-      <a href="/workspaces">Workspaces</a>
-      <span>/</span>
       <a href="/workspaces/{slug}">{workspace?.name || slug}</a>
       <span>/</span>
       <span>Settings</span>
