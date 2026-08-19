@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -855,7 +856,16 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 	appendLog(serviceID, depID, "runtime", fmt.Sprintf("[runtime] Deploying container '%s' on network platform-control (mem: %s, cpu: %s)...", containerName, secProfile.MemoryLimit, secProfile.CPULimit))
 
 	_ = exec.Command("docker", "network", "create", "platform-control").Run()
-	_ = exec.Command("docker", "rm", "-f", containerName).Run()
+
+	// Forcefully stop and remove any existing container with this name, ensuring daemon state is clear
+	for attempt := 0; attempt < 5; attempt++ {
+		_ = exec.Command("docker", "stop", "-t", "2", containerName).Run()
+		_ = exec.Command("docker", "rm", "-f", containerName).Run()
+		if err := exec.Command("docker", "inspect", containerName).Run(); err != nil {
+			break
+		}
+		time.Sleep(150 * time.Millisecond)
+	}
 
 	runArgs := []string{
 		"run", "-d",
@@ -908,8 +918,28 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 
 	runArgs = append(runArgs, imageTag)
 
-	runCmd := exec.Command("docker", runArgs...)
-	runOut, err := runCmd.CombinedOutput()
+	var runOut []byte
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		runCmd := exec.Command("docker", runArgs...)
+		runOut, err = runCmd.CombinedOutput()
+		if err == nil {
+			break
+		}
+		outStr := string(runOut)
+		if strings.Contains(outStr, "Conflict") || strings.Contains(outStr, "already in use") {
+			// Extract any conflicting container ID or name and remove it
+			re := regexp.MustCompile(`[a-f0-9]{12,64}`)
+			for _, m := range re.FindAllString(outStr, -1) {
+				_ = exec.Command("docker", "rm", "-f", m).Run()
+			}
+			_ = exec.Command("docker", "rm", "-f", containerName).Run()
+			time.Sleep(300 * time.Millisecond)
+			continue
+		}
+		break
+	}
+
 	for _, line := range strings.Split(string(runOut), "\n") {
 		if strings.TrimSpace(line) != "" {
 			appendLog(serviceID, depID, "stdout", line)
