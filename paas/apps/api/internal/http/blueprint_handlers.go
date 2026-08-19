@@ -193,7 +193,7 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 					val := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
 					idx := len(res.Databases) - 1
 					switch k {
-					case "name", "databasename":
+					case "name":
 						res.Databases[idx]["name"] = val
 						lower := strings.ToLower(val)
 						if strings.Contains(lower, "redis") {
@@ -205,6 +205,12 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 						} else if strings.Contains(lower, "clickhouse") {
 							res.Databases[idx]["engine"] = "clickhouse"
 						}
+					case "databasename", "database_name", "database":
+						res.Databases[idx]["databaseName"] = val
+						res.Databases[idx]["database_name"] = val
+					case "user", "username":
+						res.Databases[idx]["user"] = val
+						res.Databases[idx]["username"] = val
 					case "engine", "image", "type":
 						lower := strings.ToLower(val)
 						if strings.Contains(lower, "redis") {
@@ -1614,6 +1620,13 @@ func (h *Handler) handleDeployBlueprint(c fiber.Ctx) error {
 		}
 
 		var customPass, customDbName string
+		if dbInfo["databaseName"] != nil && fmt.Sprintf("%v", dbInfo["databaseName"]) != "<nil>" && fmt.Sprintf("%v", dbInfo["databaseName"]) != "" {
+			customDbName = fmt.Sprintf("%v", dbInfo["databaseName"])
+		} else if dbInfo["database_name"] != nil && fmt.Sprintf("%v", dbInfo["database_name"]) != "<nil>" && fmt.Sprintf("%v", dbInfo["database_name"]) != "" {
+			customDbName = fmt.Sprintf("%v", dbInfo["database_name"])
+		} else if dbInfo["database"] != nil && fmt.Sprintf("%v", dbInfo["database"]) != "<nil>" && fmt.Sprintf("%v", dbInfo["database"]) != "" {
+			customDbName = fmt.Sprintf("%v", dbInfo["database"])
+		}
 		if rawEnv, ok := dbInfo["env"].([]any); ok {
 			for _, eItem := range rawEnv {
 				if eMap, ok := eItem.(map[string]any); ok {
