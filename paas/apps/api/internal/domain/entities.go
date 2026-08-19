@@ -329,6 +329,30 @@ type UserGitIntegration struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
+// --- Service Database Links --------------------------------------------------
+
+type ConnectionKind string
+
+const (
+	// ConnectionInternal is the default for production services: communicates over
+	// the isolated private Docker network 'platform-control' using internal hostnames/ports.
+	ConnectionInternal ConnectionKind = "internal"
+	// ConnectionExternal is strictly opt-in: connects via public host/port. Not recommended
+	// for production service traffic.
+	ConnectionExternal ConnectionKind = "external"
+)
+
+type ServiceDatabaseLink struct {
+	ID             string         `json:"id"`
+	ServiceID      string         `json:"service_id"`
+	DatabaseID     string         `json:"database_id"`
+	EnvVarName     string         `json:"env_var_name"`
+	ConnectionKind ConnectionKind `json:"connection_kind"`
+	Property       string         `json:"property"` // connectionString | host | port | username | password | database
+	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
+}
+
 // --- Errors -------------------------------------------------------------------
 
 type ErrNotFound struct{ Resource string }

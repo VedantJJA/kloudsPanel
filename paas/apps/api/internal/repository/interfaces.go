@@ -18,6 +18,7 @@ type Store interface {
 	Services() ServiceRepository
 	Deployments() DeploymentRepository
 	Databases() DatabaseRepository
+	ServiceDatabaseLinks() ServiceDatabaseLinkRepository
 	Jobs() JobRepository
 	AuditEvents() AuditRepository
 	GitIntegrations() GitIntegrationRepository
@@ -125,3 +126,13 @@ type AuditRepository interface {
 	Append(ctx context.Context, e *domain.AuditEvent) error
 	List(ctx context.Context, workspaceID *string, limit int, cursor *string) ([]*domain.AuditEvent, error)
 }
+
+// ServiceDatabaseLinkRepository manages explicit links between services and databases.
+type ServiceDatabaseLinkRepository interface {
+	Create(ctx context.Context, link *domain.ServiceDatabaseLink) error
+	GetByID(ctx context.Context, id string) (*domain.ServiceDatabaseLink, error)
+	ListForService(ctx context.Context, serviceID string) ([]*domain.ServiceDatabaseLink, error)
+	ListForDatabase(ctx context.Context, databaseID string) ([]*domain.ServiceDatabaseLink, error)
+	Delete(ctx context.Context, id string) error
+}
+

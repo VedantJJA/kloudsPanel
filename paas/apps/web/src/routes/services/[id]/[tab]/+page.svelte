@@ -28,7 +28,13 @@
     FileText,
     Code,
     Download,
-    ArrowRight
+    ArrowRight,
+    Database,
+    Link2,
+    Unlink,
+    Eye,
+    EyeOff,
+    AlertTriangle
   } from 'lucide-svelte';
   import FrameworkIcon from '$lib/components/icons/FrameworkIcon.svelte';
   import { activeWorkspaceSlug, workspaces } from '$lib/stores/workspace';
@@ -73,6 +79,144 @@
   let envSuccess = $state(false);
   let blueprintImportLoading = $state(false);
   let blueprintNotice = $state<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Database Links state
+  let databaseLinks = $state<any[]>([]);
+  let dbLinksLoading = $state(false);
+  let showLinkDbModal = $state(false);
+  let availableProjectDbs = $state<any[]>([]);
+  let selectedLinkDbId = $state('');
+  let linkEnvVarName = $state('DATABASE_URL');
+  let linkConnectionKind = $state<'internal' | 'external'>('internal');
+  let linkProperty = $state('connectionString');
+  let linkingDb = $state(false);
+  let linkError = $state<string | null>(null);
+  let linkSuccessNotice = $state<string | null>(null);
+  let revealSecrets = $state(false);
+
+  $effect(() => {
+    if (tab === 'variables') {
+      loadDatabaseLinks();
+      loadProjectDatabases();
+    }
+  });
+
+  async function loadDatabaseLinks() {
+    dbLinksLoading = true;
+    try {
+      const targetId = service?.id || id;
+      const res = await fetch(`/api/v1/services/${targetId}/database-links?reveal=${revealSecrets}`, { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        databaseLinks = data.links || [];
+      }
+    } catch {} finally {
+      dbLinksLoading = false;
+    }
+  }
+
+  async function loadProjectDatabases() {
+    try {
+      const res = await fetch('/api/v1/databases', { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        const allDbs = data.databases || [];
+        const projId = service?.projectId || service?.ProjectID || service?.project_id;
+        if (projId) {
+          availableProjectDbs = allDbs.filter((d: any) => (d.projectId === projId || d.ProjectID === projId || d.project_id === projId));
+        } else {
+          availableProjectDbs = allDbs;
+        }
+        if (availableProjectDbs.length > 0 && !selectedLinkDbId) {
+          selectedLinkDbId = availableProjectDbs[0].id || availableProjectDbs[0].ID;
+          suggestEnvVarName(availableProjectDbs[0]);
+        }
+      }
+    } catch {}
+  }
+
+  function suggestEnvVarName(db: any) {
+    if (!db) return;
+    const engine = (db.engine || db.Engine || '').toLowerCase();
+    if (engine.includes('redis')) {
+      linkEnvVarName = 'REDIS_URL';
+    } else if (engine.includes('mongo')) {
+      linkEnvVarName = 'MONGODB_URI';
+    } else {
+      linkEnvVarName = 'DATABASE_URL';
+    }
+  }
+
+  function onSelectLinkDb(dbId: string) {
+    selectedLinkDbId = dbId;
+    const found = availableProjectDbs.find((d: any) => (d.id || d.ID) === dbId);
+    if (found) {
+      suggestEnvVarName(found);
+    }
+  }
+
+  function openLinkDbModal() {
+    linkError = null;
+    linkSuccessNotice = null;
+    if (availableProjectDbs.length > 0) {
+      if (!selectedLinkDbId) selectedLinkDbId = availableProjectDbs[0].id || availableProjectDbs[0].ID;
+      const found = availableProjectDbs.find((d: any) => (d.id || d.ID) === selectedLinkDbId);
+      if (found) suggestEnvVarName(found);
+    }
+    showLinkDbModal = true;
+  }
+
+  async function submitLinkDatabase() {
+    if (!selectedLinkDbId || !linkEnvVarName.trim()) return;
+    linkingDb = true;
+    linkError = null;
+    try {
+      const targetId = service?.id || id;
+      const res = await fetch(`/api/v1/services/${targetId}/database-links`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          databaseId: selectedLinkDbId,
+          envVarName: linkEnvVarName.trim(),
+          connectionKind: linkConnectionKind,
+          property: linkProperty
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to link database');
+      }
+      showLinkDbModal = false;
+      linkSuccessNotice = `Linked database successfully! Environment variable '${linkEnvVarName}' has been added and a new deployment has been triggered.`;
+      await loadDatabaseLinks();
+      await loadService();
+    } catch (e: any) {
+      linkError = e.message;
+    } finally {
+      linkingDb = false;
+    }
+  }
+
+  async function unlinkDatabase(linkId: string, envVar: string) {
+    if (!confirm(`Are you sure you want to unlink '${envVar}'? The environment variable will remain in your service settings until removed.`)) return;
+    try {
+      const targetId = service?.id || id;
+      const res = await fetch(`/api/v1/services/${targetId}/database-links/${linkId}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+      const data = await res.json();
+      if (res.ok) {
+        bannerNotice = { type: 'success', message: data.note || 'Database link removed.' };
+        await loadDatabaseLinks();
+      } else {
+        bannerNotice = { type: 'error', message: data.error || 'Failed to remove link' };
+      }
+    } catch (e: any) {
+      bannerNotice = { type: 'error', message: e.message };
+    }
+  }
 
   // Custom Domains state
   let customDomainsList = $state<any[]>([]);
@@ -1336,6 +1480,131 @@
     {/if}
 
   {:else if tab === 'variables'}
+    <!-- Linked Databases (Render-Style Link System) -->
+    <div class="card" style="margin-bottom: 1.5rem;">
+      <div class="card-header" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.75rem;">
+        <div>
+          <div style="display:flex; align-items:center; gap:0.5rem;">
+            <Database size={16} style="color:var(--color-primary);" />
+            <h3 style="margin:0; font-size:1.05rem;">Linked Databases</h3>
+          </div>
+          <p class="text-xs text-muted" style="margin-top:0.25rem;">Render-style managed database connections automatically injected as environment variables.</p>
+        </div>
+        <div style="display:flex; align-items:center; gap:0.5rem;">
+          <button
+            type="button"
+            class="btn btn-secondary"
+            style="font-size:0.75rem; padding:4px 10px; min-height:30px; display:inline-flex; align-items:center; gap:4px;"
+            onclick={() => { revealSecrets = !revealSecrets; loadDatabaseLinks(); }}
+            title={revealSecrets ? "Mask passwords" : "Reveal passwords in previews"}
+          >
+            {#if revealSecrets}
+              <EyeOff size={13} /> Mask Secrets
+            {:else}
+              <Eye size={13} /> Reveal Secrets
+            {/if}
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary"
+            style="font-size:0.8125rem; padding:4px 12px; min-height:32px; display:inline-flex; align-items:center; gap:6px;"
+            onclick={openLinkDbModal}
+          >
+            <Link2 size={14} /> Link a Database
+          </button>
+        </div>
+      </div>
+
+      {#if linkSuccessNotice}
+        <div style="background:var(--color-success-subtle); border:1px solid rgba(52,211,153,0.3); color:var(--color-success); border-radius:var(--radius-md); padding:0.6rem 1rem; font-size:0.875rem; margin-bottom:1rem; display:flex; justify-content:space-between; align-items:center;">
+          <span>{linkSuccessNotice}</span>
+          <button type="button" class="btn btn-secondary" style="padding:2px 8px; font-size:0.75rem; height:auto; min-height:0;" onclick={() => linkSuccessNotice = null}>
+            <X size={13} />
+          </button>
+        </div>
+      {/if}
+
+      {#if dbLinksLoading && databaseLinks.length === 0}
+        <div style="text-align:center; padding:1.5rem; color:var(--color-ink-secondary); font-size:0.875rem;">
+          <Loader2 size={16} class="animate-spin" style="display:inline-block; margin-right:6px;" /> Loading linked databases...
+        </div>
+      {:else if databaseLinks.length === 0}
+        <div style="text-align:center; padding:2rem 1rem; background:rgba(0,0,0,0.02); border:1px dashed var(--color-border); border-radius:var(--radius-md);">
+          <p class="text-sm text-muted" style="margin-bottom:0.75rem;">No databases currently linked to this service.</p>
+          <button type="button" class="btn btn-secondary" style="font-size:0.8125rem;" onclick={openLinkDbModal}>
+            <Link2 size={14} /> + Link a Database
+          </button>
+        </div>
+      {:else}
+        <div style="overflow-x:auto;">
+          <table class="data-table" style="width:100%;">
+            <thead>
+              <tr>
+                <th style="font-size:0.75rem; text-transform:uppercase;">Environment Variable</th>
+                <th style="font-size:0.75rem; text-transform:uppercase;">Target Database</th>
+                <th style="font-size:0.75rem; text-transform:uppercase;">Connection Kind</th>
+                <th style="font-size:0.75rem; text-transform:uppercase;">Property</th>
+                <th style="font-size:0.75rem; text-transform:uppercase;">Preview Value</th>
+                <th style="font-size:0.75rem; text-transform:uppercase; text-align:right;">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each databaseLinks as link}
+                <tr>
+                  <td>
+                    <span class="font-mono text-xs" style="font-weight:700; color:var(--color-primary); background:rgba(59,130,246,0.08); padding:3px 8px; border-radius:4px; border:1px solid rgba(59,130,246,0.2);">
+                      {link.env_var_name}
+                    </span>
+                  </td>
+                  <td>
+                    <div style="display:flex; align-items:center; gap:6px;">
+                      <span style="font-weight:600; font-size:0.875rem;">{link.database_name || 'Database'}</span>
+                      {#if link.database_engine}
+                        <span class="badge font-mono" style="font-size:0.65rem; text-transform:uppercase; background:var(--color-canvas); border:1px solid var(--color-border);">
+                          {link.database_engine}
+                        </span>
+                      {/if}
+                    </div>
+                  </td>
+                  <td>
+                    {#if link.connection_kind === 'external'}
+                      <span class="badge" style="background:rgba(245,158,11,0.12); color:#d97706; border:1px solid rgba(245,158,11,0.3); font-size:0.7rem; font-weight:600;">
+                        External (Public)
+                      </span>
+                    {:else}
+                      <span class="badge" style="background:rgba(16,185,129,0.12); color:#059669; border:1px solid rgba(16,185,129,0.3); font-size:0.7rem; font-weight:600;">
+                        Internal (Private Network)
+                      </span>
+                    {/if}
+                  </td>
+                  <td>
+                    <span class="font-mono text-xs text-muted">{link.property || 'connectionString'}</span>
+                  </td>
+                  <td>
+                    <span class="font-mono text-xs" style="color:var(--color-ink-secondary); max-width:260px; display:inline-block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title={link.preview_value}>
+                      {link.preview_value || ''}
+                    </span>
+                  </td>
+                  <td style="text-align:right;">
+                    <button
+                      type="button"
+                      class="btn btn-secondary"
+                      style="padding:4px 8px; font-size:0.75rem; color:var(--color-error); border:none;"
+                      onclick={() => unlinkDatabase(link.id, link.env_var_name)}
+                      title="Unlink database"
+                    >
+                      <Unlink size={13} style="margin-right:4px;" /> Unlink
+                    </button>
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      {/if}
+    </div>
+
+    <!-- Environment Variables Card -->
     <div class="card">
       <div class="card-header" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.75rem;">
         <div>
@@ -2218,3 +2487,128 @@
     </div>
   {/if}
 {/if}
+
+<!-- Modal: Link Database to Service (Render-Style) -->
+{#if showLinkDbModal}
+  <div
+    role="presentation"
+    style="position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 1rem;"
+    onclick={(e) => { if (e.target === e.currentTarget) showLinkDbModal = false; }}
+    onkeydown={(e) => { if (e.key === 'Escape') showLinkDbModal = false; }}
+  >
+    <div class="card" style="width: 100%; max-width: 520px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; padding: 0; box-shadow: var(--shadow-xl);">
+      <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; padding:1rem 1.25rem; border-bottom:1px solid var(--color-border); margin:0;">
+        <div style="display:flex; align-items:center; gap:0.5rem;">
+          <Database size={18} style="color:var(--color-primary);" />
+          <h3 style="margin:0; font-size:1.05rem; font-weight:700;">Link Database to Service</h3>
+        </div>
+        <button type="button" class="btn btn-secondary" style="padding:4px; min-height:28px;" onclick={() => showLinkDbModal = false}>
+          <X size={15} />
+        </button>
+      </div>
+
+      <div style="padding:1.25rem; overflow-y:auto;">
+        {#if linkError}
+          <div style="background:var(--color-danger-subtle); border:1px solid rgba(248,113,113,0.3); color:var(--color-danger); border-radius:var(--radius-md); padding:0.6rem 0.85rem; font-size:0.8125rem; margin-bottom:1rem;">
+            {linkError}
+          </div>
+        {/if}
+
+        {#if availableProjectDbs.length === 0}
+          <div style="text-align:center; padding:1.5rem 0;">
+            <p class="text-sm text-muted" style="margin-bottom:1rem;">No databases found in this project. Create a database in your project first before linking.</p>
+            <a href="/databases/new" class="btn btn-primary" style="font-size:0.8125rem;">+ Create Database</a>
+          </div>
+        {:else}
+          <form onsubmit={(e) => { e.preventDefault(); submitLinkDatabase(); }}>
+            <!-- Select Database -->
+            <div class="form-group" style="margin-bottom:1rem;">
+              <label class="form-label" for="link-db-select" style="font-size:0.8125rem; font-weight:600; margin-bottom:0.35rem; display:block;">Select Database</label>
+              <select
+                id="link-db-select"
+                class="form-input"
+                bind:value={selectedLinkDbId}
+                onchange={(e: any) => onSelectLinkDb(e.target.value)}
+                style="width:100%;"
+              >
+                {#each availableProjectDbs as d}
+                  <option value={d.id || d.ID}>
+                    {d.name || d.Name} ({d.engine || d.Engine || 'postgres'})
+                  </option>
+                {/each}
+              </select>
+            </div>
+
+            <!-- Environment Variable Name -->
+            <div class="form-group" style="margin-bottom:1rem;">
+              <label class="form-label" for="link-env-name" style="font-size:0.8125rem; font-weight:600; margin-bottom:0.35rem; display:block;">Environment Variable Name</label>
+              <input
+                id="link-env-name"
+                type="text"
+                class="form-input font-mono text-sm"
+                placeholder="DATABASE_URL"
+                bind:value={linkEnvVarName}
+                required
+                style="width:100%;"
+              />
+              <p class="text-xs text-muted" style="margin-top:0.3rem;">The environment variable name exposed to your application container.</p>
+            </div>
+
+            <!-- Property to Inject -->
+            <div class="form-group" style="margin-bottom:1rem;">
+              <label class="form-label" for="link-prop-select" style="font-size:0.8125rem; font-weight:600; margin-bottom:0.35rem; display:block;">Property</label>
+              <select
+                id="link-prop-select"
+                class="form-input text-sm"
+                bind:value={linkProperty}
+                style="width:100%;"
+              >
+                <option value="connectionString">Full Connection String (URI)</option>
+                <option value="host">Host</option>
+                <option value="port">Port</option>
+                <option value="username">Username</option>
+                <option value="password">Password</option>
+                <option value="database">Database Name</option>
+              </select>
+            </div>
+
+            <!-- Connection Kind (Internal vs External) -->
+            <div class="form-group" style="margin-bottom:1.25rem;">
+              <span class="form-label" style="font-size:0.8125rem; font-weight:600; margin-bottom:0.35rem; display:block;">Connection Kind</span>
+              <div style="display:flex; flex-direction:column; gap:0.5rem; background:var(--color-canvas); padding:0.75rem; border-radius:var(--radius-md); border:1px solid var(--color-border);">
+                <label style="display:flex; align-items:flex-start; gap:0.5rem; cursor:pointer; font-size:0.8125rem;">
+                  <input type="radio" name="connKind" value="internal" bind:group={linkConnectionKind} style="margin-top:2px;" />
+                  <div>
+                    <strong>Internal (Recommended)</strong>
+                    <div class="text-xs text-muted">Communicates securely over the private Docker network (zero external port exposure).</div>
+                  </div>
+                </label>
+                <label style="display:flex; align-items:flex-start; gap:0.5rem; cursor:pointer; font-size:0.8125rem;">
+                  <input type="radio" name="connKind" value="external" bind:group={linkConnectionKind} style="margin-top:2px;" />
+                  <div>
+                    <strong style="color:#d97706;">External (Public Host/Port)</strong>
+                    <div class="text-xs text-muted">Connects via public domain. Not recommended for production service traffic.</div>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <div style="display:flex; justify-content:flex-end; gap:0.5rem; border-top:1px solid var(--color-border); padding-top:1rem;">
+              <button type="button" class="btn btn-secondary" onclick={() => showLinkDbModal = false}>
+                Cancel
+              </button>
+              <button type="submit" class="btn btn-primary" disabled={linkingDb || !linkEnvVarName.trim()}>
+                {#if linkingDb}
+                  <Loader2 size={14} class="animate-spin" /> Linking & Deploying...
+                {:else}
+                  <Link2 size={14} /> Link & Deploy
+                {/if}
+              </button>
+            </div>
+          </form>
+        {/if}
+      </div>
+    </div>
+  </div>
+{/if}
+

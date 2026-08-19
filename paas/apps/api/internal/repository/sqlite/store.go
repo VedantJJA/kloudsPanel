@@ -45,6 +45,10 @@ func (s *store) Databases() repository.DatabaseRepository {
 	return &databaseRepo{db: s.db}
 }
 
+func (s *store) ServiceDatabaseLinks() repository.ServiceDatabaseLinkRepository {
+	return &serviceDatabaseLinkRepo{db: s.db}
+}
+
 func (s *store) Jobs() repository.JobRepository {
 	return &jobRepo{db: s.db}
 }
@@ -84,6 +88,7 @@ func (t *txStore) Projects() repository.ProjectRepository     { return &projectR
 func (t *txStore) Services() repository.ServiceRepository     { return &serviceRepo{db: t.tx} }
 func (t *txStore) Deployments() repository.DeploymentRepository { return &deploymentRepo{db: t.tx} }
 func (t *txStore) Databases() repository.DatabaseRepository   { return &databaseRepo{db: t.tx} }
+func (t *txStore) ServiceDatabaseLinks() repository.ServiceDatabaseLinkRepository { return &serviceDatabaseLinkRepo{db: t.tx} }
 func (t *txStore) Jobs() repository.JobRepository             { return &jobRepo{db: t.tx} }
 func (t *txStore) AuditEvents() repository.AuditRepository   { return &auditRepo{db: t.tx} }
 func (t *txStore) GitIntegrations() repository.GitIntegrationRepository { return &gitIntegrationRepo{db: t.tx} }

@@ -816,3 +816,118 @@ func (r *authSessionRepo) DeleteByToken(ctx context.Context, token string) error
 	)
 	return err
 }
+
+// --- Service Database Links --------------------------------------------------
+
+type serviceDatabaseLinkRepo struct{ db querier }
+
+func (r *serviceDatabaseLinkRepo) Create(ctx context.Context, link *domain.ServiceDatabaseLink) error {
+	if link.CreatedAt.IsZero() {
+		link.CreatedAt = time.Now().UTC()
+	}
+	if link.UpdatedAt.IsZero() {
+		link.UpdatedAt = time.Now().UTC()
+	}
+	createdStr := link.CreatedAt.UTC().Format(time.RFC3339Nano)
+	updatedStr := link.UpdatedAt.UTC().Format(time.RFC3339Nano)
+
+	kind := string(link.ConnectionKind)
+	if kind == "" {
+		kind = string(domain.ConnectionInternal)
+	}
+	prop := link.Property
+	if prop == "" {
+		prop = "connectionString"
+	}
+
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO service_database_links (id, service_id, database_id, env_var_name, connection_kind, property, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		link.ID, link.ServiceID, link.DatabaseID, link.EnvVarName, kind, prop, createdStr, updatedStr,
+	)
+	return err
+}
+
+func (r *serviceDatabaseLinkRepo) GetByID(ctx context.Context, id string) (*domain.ServiceDatabaseLink, error) {
+	row := r.db.QueryRowContext(ctx, `
+		SELECT id, service_id, database_id, env_var_name, connection_kind, property, created_at, updated_at
+		FROM service_database_links
+		WHERE id=?`, id)
+	link := &domain.ServiceDatabaseLink{}
+	var kind, createdStr, updatedStr string
+	err := row.Scan(&link.ID, &link.ServiceID, &link.DatabaseID, &link.EnvVarName, &kind, &link.Property, &createdStr, &updatedStr)
+	if err == sql.ErrNoRows {
+		return nil, domain.ErrNotFound{Resource: "service_database_link"}
+	}
+	if err != nil {
+		return nil, err
+	}
+	link.ConnectionKind = domain.ConnectionKind(kind)
+	link.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdStr)
+	link.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedStr)
+	return link, nil
+}
+
+func (r *serviceDatabaseLinkRepo) ListForService(ctx context.Context, serviceID string) ([]*domain.ServiceDatabaseLink, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, service_id, database_id, env_var_name, connection_kind, property, created_at, updated_at
+		FROM service_database_links
+		WHERE service_id=?
+		ORDER BY created_at ASC`, serviceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []*domain.ServiceDatabaseLink
+	for rows.Next() {
+		link := &domain.ServiceDatabaseLink{}
+		var kind, createdStr, updatedStr string
+		if err := rows.Scan(&link.ID, &link.ServiceID, &link.DatabaseID, &link.EnvVarName, &kind, &link.Property, &createdStr, &updatedStr); err != nil {
+			return nil, err
+		}
+		link.ConnectionKind = domain.ConnectionKind(kind)
+		link.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdStr)
+		link.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedStr)
+		out = append(out, link)
+	}
+	return out, rows.Err()
+}
+
+func (r *serviceDatabaseLinkRepo) ListForDatabase(ctx context.Context, databaseID string) ([]*domain.ServiceDatabaseLink, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, service_id, database_id, env_var_name, connection_kind, property, created_at, updated_at
+		FROM service_database_links
+		WHERE database_id=?
+		ORDER BY created_at ASC`, databaseID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []*domain.ServiceDatabaseLink
+	for rows.Next() {
+		link := &domain.ServiceDatabaseLink{}
+		var kind, createdStr, updatedStr string
+		if err := rows.Scan(&link.ID, &link.ServiceID, &link.DatabaseID, &link.EnvVarName, &kind, &link.Property, &createdStr, &updatedStr); err != nil {
+			return nil, err
+		}
+		link.ConnectionKind = domain.ConnectionKind(kind)
+		link.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdStr)
+		link.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedStr)
+		out = append(out, link)
+	}
+	return out, rows.Err()
+}
+
+func (r *serviceDatabaseLinkRepo) Delete(ctx context.Context, id string) error {
+	res, err := r.db.ExecContext(ctx, `DELETE FROM service_database_links WHERE id=?`, id)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return domain.ErrNotFound{Resource: "service_database_link"}
+	}
+	return nil
+}

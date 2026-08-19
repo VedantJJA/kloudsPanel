@@ -795,6 +795,21 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 			}
 		}
 
+		// Resolve explicit ServiceDatabaseLinks (precedence: explicit links override blueprint heuristics)
+		if links, err := h.store.ServiceDatabaseLinks().ListForService(context.Background(), service.ID); err == nil && len(links) > 0 {
+			for _, link := range links {
+				linkedDB, err := h.store.Databases().GetByID(context.Background(), link.DatabaseID)
+				if err != nil || linkedDB == nil {
+					continue
+				}
+				resolvedVal := resolveLinkValue(linkedDB, link)
+				if resolvedVal != "" {
+					// Explicit service-database links override blueprint auto-wiring and placeholder defaults
+					envMap[link.EnvVarName] = resolvedVal
+				}
+			}
+		}
+
 		// Step 4: Ensure Nginx configuration exists for static sites and generate Dockerfile
 		if service.Kind == domain.ServiceKindStatic || presetId == "static" || presetId == "static-spa" || presetId == "nginx" {
 			port = 80
@@ -1096,6 +1111,23 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 	}
 
 	appendLog(serviceID, depID, "stdout", fmt.Sprintf("Application '%s' is live and accessible at https://%s.%s", service.Name, service.Slug, rootDomain))
+
+	// Deploy-time readiness gating: wait for linked databases to become ready
+	if links, err := h.store.ServiceDatabaseLinks().ListForService(context.Background(), service.ID); err == nil && len(links) > 0 {
+		for _, link := range links {
+			linkedDB, err := h.store.Databases().GetByID(context.Background(), link.DatabaseID)
+			if err != nil || linkedDB == nil {
+				continue
+			}
+			if !waitForDatabaseReady(context.Background(), linkedDB, 30*time.Second) {
+				appendLog(serviceID, depID, "system",
+					fmt.Sprintf("[link] Warning: database '%s' did not become ready within timeout; service will still start but may fail to connect initially.", linkedDB.Name))
+			} else {
+				appendLog(serviceID, depID, "system",
+					fmt.Sprintf("[link] Database '%s' readiness probe passed (%s protocol ready).", linkedDB.Name, linkedDB.Engine))
+			}
+		}
+	}
 
 	finishTime := time.Now().UTC()
 	dep.Status = domain.DeploymentHealthy

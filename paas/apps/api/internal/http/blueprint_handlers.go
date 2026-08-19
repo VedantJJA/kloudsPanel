@@ -12,6 +12,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/yourorg/klouds/api/internal/domain"
+	"github.com/yourorg/klouds/api/internal/domain/ids"
 )
 
 // --- klouds.yaml / Blueprint Parser ------------------------------------------
@@ -1825,6 +1826,42 @@ func (h *Handler) handleDeployBlueprint(c fiber.Ctx) error {
 
 		if err := h.store.Services().Create(c.Context(), s); err != nil {
 			continue
+		}
+
+		// Record explicit ServiceDatabaseLinks for detected database references
+		for _, dbObj := range createdDatabases {
+			if dbRec, ok := dbObj.(*domain.Database); ok && dbRec != nil {
+				for k, v := range svcInfo.EnvVars {
+					if strings.Contains(v, fmt.Sprintf("${databases.%s", dbRec.Name)) ||
+						strings.Contains(v, fmt.Sprintf("${%s.", dbRec.Name)) ||
+						strings.EqualFold(k, "DATABASE_URL") ||
+						strings.EqualFold(k, "REDIS_URL") ||
+						strings.EqualFold(k, "MONGODB_URI") {
+						linkProp := "connectionString"
+						if strings.Contains(v, ".host}") {
+							linkProp = "host"
+						} else if strings.Contains(v, ".port}") {
+							linkProp = "port"
+						} else if strings.Contains(v, ".user}") || strings.Contains(v, ".username}") {
+							linkProp = "username"
+						} else if strings.Contains(v, ".password}") || strings.Contains(v, ".pass}") {
+							linkProp = "password"
+						} else if strings.Contains(v, ".database}") || strings.Contains(v, ".databaseName}") {
+							linkProp = "database"
+						}
+						_ = h.store.ServiceDatabaseLinks().Create(c.Context(), &domain.ServiceDatabaseLink{
+							ID:             ids.NewV7(),
+							ServiceID:      s.ID,
+							DatabaseID:     dbRec.ID,
+							EnvVarName:     k,
+							ConnectionKind: domain.ConnectionInternal,
+							Property:       linkProp,
+							CreatedAt:      time.Now().UTC(),
+							UpdatedAt:      time.Now().UTC(),
+						})
+					}
+				}
+			}
 		}
 
 		// Trigger deployment

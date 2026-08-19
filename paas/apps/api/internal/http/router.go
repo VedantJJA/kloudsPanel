@@ -107,6 +107,9 @@ func NewServer(log *slog.Logger, store repository.Store, addr string) *fiber.App
 	svc.Get("/:id/routes", h.handleGetServiceRoutes)
 	svc.Post("/:id/routes", h.handleUpdateServiceRoutes)
 	svc.Get("/:id/blueprint", h.handleGetServiceBlueprint)
+	svc.Post("/:id/database-links", h.handleCreateServiceDatabaseLink)
+	svc.Get("/:id/database-links", h.handleListServiceDatabaseLinks)
+	svc.Delete("/:id/database-links/:linkId", h.handleDeleteServiceDatabaseLink)
 
 	// Deployment routes
 	dep := v1.Group("/services/:id/deployments", h.requireSession)
@@ -132,6 +135,7 @@ func NewServer(log *slog.Logger, store repository.Store, addr string) *fiber.App
 	db.Post("/:id/query", h.handleExecuteDatabaseQuery)
 	db.Get("/:id/schema", h.handleGetDatabaseSchema)
 	db.Get("/:id/logs", h.handleGetDatabaseLogs)
+	db.Get("/:id/linked-services", h.handleGetDatabaseLinkedServices)
 	db.Delete("/:id", h.handleDeleteDatabase)
 
 	// Git Integrations routes (GitHub, GitLab, Bitbucket)

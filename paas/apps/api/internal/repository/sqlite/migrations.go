@@ -472,4 +472,19 @@ var sqliteMigrations = []string{
 		updated_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
 		PRIMARY KEY (user_id, provider)
 	)`,
+
+	// -- Migration 29: Service Database Links ----------------------------------
+	`CREATE TABLE IF NOT EXISTS service_database_links (
+		id              TEXT PRIMARY KEY,
+		service_id      TEXT NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+		database_id     TEXT NOT NULL REFERENCES databases(id) ON DELETE CASCADE,
+		env_var_name    TEXT NOT NULL,
+		connection_kind TEXT NOT NULL,
+		property        TEXT NOT NULL DEFAULT 'connectionString',
+		created_at      TEXT NOT NULL,
+		updated_at      TEXT NOT NULL,
+		UNIQUE(service_id, env_var_name)
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_sdl_service ON service_database_links(service_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_sdl_database ON service_database_links(database_id)`,
 }
