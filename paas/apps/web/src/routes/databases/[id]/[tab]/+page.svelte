@@ -384,12 +384,17 @@
     const internalHost = database?.internal_hostname || `paas-db-${database?.name}`;
     const internalPort = database?.internal_port || (engine === 'mysql' ? 3306 : engine === 'redis' ? 6379 : 5432);
     const externalPort = raw.externalPort || 15432;
-    const externalHost = raw.externalHost || (typeof window !== 'undefined' ? window.location.hostname : 'yourdomain.com');
+    const currentHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+    const isLocalhost = currentHost === 'localhost' || currentHost === '127.0.0.1' || currentHost === '::1';
+    const externalHost = raw.externalHost || (isLocalhost ? 'localhost' : currentHost);
+    const directHost = isLocalhost ? 'localhost' : (raw.externalHost || currentHost);
     const dbName = raw.databaseName || database?.database_name || database?.name || 'app';
     const user = raw.username || (engine === 'postgres' ? 'postgres' : 'root');
     const pass = raw.password || '********';
-    const internalUri = raw.internalConnectionUri || raw.connectionUri || `${engine}://${user}:${pass}@${internalHost}:${internalPort}/${dbName}`;
-    const externalUri = raw.externalConnectionUri || `${engine}://${user}:${pass}@${externalHost}:${externalPort}/${dbName}`;
+    const sslSuffix = engine === 'postgres' ? '?sslmode=disable' : '';
+    const internalUri = raw.internalConnectionUri || raw.connectionUri || `${engine}://${user}:${pass}@${internalHost}:${internalPort}/${dbName}${sslSuffix}`;
+    const directUri = `${engine}://${user}:${pass}@${directHost}:${externalPort}/${dbName}${sslSuffix}`;
+    const externalUri = raw.externalConnectionUri || `${engine}://${user}:${pass}@${externalHost}:${externalPort}/${dbName}${sslSuffix}`;
 
     return {
       username: user,
@@ -397,7 +402,9 @@
       databaseName: dbName,
       internalConnectionUri: internalUri,
       externalConnectionUri: externalUri,
+      directConnectionUri: directUri,
       externalHost: externalHost,
+      directHost: directHost,
       externalPort: externalPort
     };
   });
@@ -407,17 +414,17 @@
     const m = parsedMeta;
     switch (engine) {
       case 'postgres':
-        return `psql "${m.externalConnectionUri}"`;
+        return `psql "${m.directConnectionUri}"`;
       case 'mysql':
-        return `mysql -h ${m.externalHost} -P ${m.externalPort} -u ${m.username} -p ${m.databaseName}`;
+        return `mysql -h ${m.directHost} -P ${m.externalPort} -u ${m.username} -p ${m.databaseName}`;
       case 'redis':
-        return `redis-cli -h ${m.externalHost} -p ${m.externalPort} -a "${m.password}"`;
+        return `redis-cli -h ${m.directHost} -p ${m.externalPort} -a "${m.password}"`;
       case 'mongodb':
-        return `mongosh "${m.externalConnectionUri}"`;
+        return `mongosh "${m.directConnectionUri}"`;
       case 'clickhouse':
-        return `clickhouse-client --host ${m.externalHost} --port ${m.externalPort} --user ${m.username} --password "${m.password}" --database ${m.databaseName}`;
+        return `clickhouse-client --host ${m.directHost} --port ${m.externalPort} --user ${m.username} --password "${m.password}" --database ${m.databaseName}`;
       default:
-        return `psql "${m.externalConnectionUri}"`;
+        return `psql "${m.directConnectionUri}"`;
     }
   });
 
@@ -586,18 +593,25 @@
         <div>
           <div style="display:flex; align-items:center; gap:0.5rem;">
             <span class="badge" style="background:var(--color-surface-subtle); color:#ffffff; font-weight:700; display:flex; align-items:center; gap:4px;">
-              <Globe size={12} /> External / Public Access
+              <Globe size={12} /> External / Direct Access
             </span>
-            <h3 style="margin:0; font-size:1.05rem;">Public Connection URI</h3>
+            <h3 style="margin:0; font-size:1.05rem;">Direct Connection URI</h3>
           </div>
-          <p class="text-xs text-muted" style="margin-top:0.35rem;">Use this URI to connect from your local laptop (<span class="font-mono">psql</span>, DBeaver, TablePlus, pgAdmin, Prisma Studio, scripts).</p>
+          <p class="text-xs text-muted" style="margin-top:0.35rem;">Use this URI to connect from your local terminal or tools (<span class="font-mono">psql</span>, DBeaver, TablePlus, pgAdmin, Prisma Studio, scripts).</p>
         </div>
-        <button class="btn btn-primary" style="font-size:0.8125rem; padding:5px 12px;" onclick={() => copyText(parsedMeta.externalConnectionUri, 'ext_uri')}>
-          {#if copiedField === 'ext_uri'}<Check size={13} /> Copied!{:else}<Copy size={13} /> Copy Public URI{/if}
-        </button>
+        <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+          <button class="btn btn-primary" style="font-size:0.8125rem; padding:5px 12px;" onclick={() => copyText(parsedMeta.directConnectionUri, 'dir_uri')}>
+            {#if copiedField === 'dir_uri'}<Check size={13} /> Copied!{:else}<Copy size={13} /> Copy Direct URI{/if}
+          </button>
+          {#if parsedMeta.externalHost !== parsedMeta.directHost}
+            <button class="btn btn-secondary" style="font-size:0.8125rem; padding:5px 12px;" onclick={() => copyText(parsedMeta.externalConnectionUri, 'ext_uri')}>
+              {#if copiedField === 'ext_uri'}<Check size={13} /> Copied!{:else}<Copy size={13} /> Copy Public FQDN URI{/if}
+            </button>
+          {/if}
+        </div>
       </div>
       <div style="background: var(--color-code-bg); color: var(--color-info); font-family: var(--font-mono); font-size: 0.875rem; padding: 0.85rem 1rem; border-radius: var(--radius-md); border: 1px solid var(--color-border); word-break: break-all; margin-bottom: 1rem;">
-        {parsedMeta.externalConnectionUri}
+        {parsedMeta.directConnectionUri}
       </div>
 
       <!-- Quick PSQL / CLI Command -->

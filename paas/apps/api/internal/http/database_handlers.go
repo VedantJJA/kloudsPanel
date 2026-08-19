@@ -658,8 +658,21 @@ func (h *Handler) handleExecuteDatabaseQuery(c fiber.Ctx) error {
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		var cmd *exec.Cmd
 		switch db.Engine {
-		case "postgres":
-			cmd = exec.Command("docker", "exec", containerName, "psql", "-U", meta.Username, "-d", meta.DatabaseName, "-c", query, "--csv")
+		case "postgres", "postgresql":
+			user := meta.Username
+			if user == "" {
+				user = "postgres"
+			}
+			dbName := meta.DatabaseName
+			if dbName == "" {
+				dbName = "postgres"
+			}
+			execArgs := []string{"exec"}
+			if meta.Password != "" {
+				execArgs = append(execArgs, "-e", fmt.Sprintf("PGPASSWORD=%s", meta.Password))
+			}
+			execArgs = append(execArgs, containerName, "psql", "-U", user, "-d", dbName, "-c", query, "--csv")
+			cmd = exec.Command("docker", execArgs...)
 		case "mysql":
 			cmd = exec.Command("docker", "exec", containerName, "mysql", "-u", meta.Username, fmt.Sprintf("-p%s", meta.Password), meta.DatabaseName, "-e", query, "--batch", "--raw")
 		case "redis":
@@ -897,78 +910,103 @@ func (h *Handler) handleGetDatabaseSchema(c fiber.Ctx) error {
 	var tablesOrder []string
 	var relationships []SchemaRelationship
 
-	if db.Engine == "postgres" || db.Engine == "" {
-		// 1. Fetch columns and primary keys
-		colsQuery := `SELECT c.table_name, c.column_name, c.data_type, c.is_nullable, COALESCE(c.column_default, '') as column_default, CASE WHEN tc.constraint_type = 'PRIMARY KEY' THEN 'true' ELSE 'false' END as is_primary FROM information_schema.columns c LEFT JOIN information_schema.key_column_usage kcu ON c.table_name = kcu.table_name AND c.column_name = kcu.column_name AND c.table_schema = kcu.table_schema LEFT JOIN information_schema.table_constraints tc ON kcu.constraint_name = tc.constraint_name AND kcu.table_schema = tc.table_schema AND tc.constraint_type = 'PRIMARY KEY' WHERE c.table_schema = 'public' ORDER BY c.table_name, c.ordinal_position;`
-		cmd := exec.Command("docker", "exec", containerName, "psql", "-U", meta.Username, "-d", meta.DatabaseName, "-c", colsQuery, "--csv")
-		out, err := cmd.CombinedOutput()
-		if err == nil {
-			r := csv.NewReader(bytes.NewReader(out))
-			rows, _ := r.ReadAll()
-			if len(rows) > 1 {
-				for _, row := range rows[1:] {
-					if len(row) >= 6 {
-						tableName := row[0]
-						colName := row[1]
-						dataType := row[2]
-						isNullable := row[3] == "YES"
-						colDef := row[4]
-						isPrimary := row[5] == "true"
+	if db.Engine == "postgres" || db.Engine == "" || db.Engine == "postgresql" {
+		user := meta.Username
+		if user == "" {
+			user = "postgres"
+		}
+		dbName := meta.DatabaseName
+		if dbName == "" {
+			dbName = "postgres"
+		}
 
-						tbl, exists := tablesMap[tableName]
-						if !exists {
-							tbl = &SchemaTable{Name: tableName, Columns: []SchemaColumn{}}
-							tablesMap[tableName] = tbl
-							tablesOrder = append(tablesOrder, tableName)
+		runPgSchema := func(targetDb string) {
+			colsQuery := `SELECT c.table_name, c.column_name, c.data_type, c.is_nullable, COALESCE(c.column_default, '') as column_default, CASE WHEN tc.constraint_type = 'PRIMARY KEY' THEN 'true' ELSE 'false' END as is_primary FROM information_schema.columns c LEFT JOIN information_schema.key_column_usage kcu ON c.table_name = kcu.table_name AND c.column_name = kcu.column_name AND c.table_schema = kcu.table_schema LEFT JOIN information_schema.table_constraints tc ON kcu.constraint_name = tc.constraint_name AND kcu.table_schema = tc.table_schema AND tc.constraint_type = 'PRIMARY KEY' WHERE c.table_schema = 'public' ORDER BY c.table_name, c.ordinal_position;`
+			execArgs := []string{"exec"}
+			if meta.Password != "" {
+				execArgs = append(execArgs, "-e", fmt.Sprintf("PGPASSWORD=%s", meta.Password))
+			}
+			execArgs = append(execArgs, containerName, "psql", "-U", user, "-d", targetDb, "-c", colsQuery, "--csv")
+			cmd := exec.Command("docker", execArgs...)
+			out, err := cmd.CombinedOutput()
+			if err == nil {
+				r := csv.NewReader(bytes.NewReader(out))
+				rows, _ := r.ReadAll()
+				if len(rows) > 1 {
+					for _, row := range rows[1:] {
+						if len(row) >= 6 {
+							tableName := row[0]
+							colName := row[1]
+							dataType := row[2]
+							isNullable := row[3] == "YES"
+							colDef := row[4]
+							isPrimary := row[5] == "true"
+
+							tbl, exists := tablesMap[tableName]
+							if !exists {
+								tbl = &SchemaTable{Name: tableName, Columns: []SchemaColumn{}}
+								tablesMap[tableName] = tbl
+								tablesOrder = append(tablesOrder, tableName)
+							}
+							tbl.Columns = append(tbl.Columns, SchemaColumn{
+								Name:         colName,
+								Type:         dataType,
+								IsPrimary:    isPrimary,
+								Nullable:     isNullable,
+								DefaultValue: colDef,
+							})
 						}
-						tbl.Columns = append(tbl.Columns, SchemaColumn{
-							Name:         colName,
-							Type:         dataType,
-							IsPrimary:    isPrimary,
-							Nullable:     isNullable,
-							DefaultValue: colDef,
-						})
 					}
 				}
 			}
-		}
 
-		// 2. Fetch foreign key relationships
-		fkQuery := `SELECT tc.table_name as from_table, kcu.column_name as from_column, ccu.table_name AS to_table, ccu.column_name AS to_column, tc.constraint_name FROM information_schema.table_constraints AS tc JOIN information_schema.key_column_usage AS kcu ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema JOIN information_schema.constraint_column_usage AS ccu ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = 'public';`
-		fkCmd := exec.Command("docker", "exec", containerName, "psql", "-U", meta.Username, "-d", meta.DatabaseName, "-c", fkQuery, "--csv")
-		fkOut, fkErr := fkCmd.CombinedOutput()
-		if fkErr == nil {
-			r := csv.NewReader(bytes.NewReader(fkOut))
-			rows, _ := r.ReadAll()
-			if len(rows) > 1 {
-				for _, row := range rows[1:] {
-					if len(row) >= 4 {
-						fromTbl := row[0]
-						fromCol := row[1]
-						toTbl := row[2]
-						toCol := row[3]
-						cName := ""
-						if len(row) >= 5 {
-							cName = row[4]
-						}
-						relationships = append(relationships, SchemaRelationship{
-							FromTable:      fromTbl,
-							FromColumn:     fromCol,
-							ToTable:        toTbl,
-							ToColumn:       toCol,
-							ConstraintName: cName,
-						})
-						// Mark column as foreign in tablesMap
-						if tbl, ok := tablesMap[fromTbl]; ok {
-							for i := range tbl.Columns {
-								if tbl.Columns[i].Name == fromCol {
-									tbl.Columns[i].IsForeign = true
+			// 2. Fetch foreign key relationships
+			fkQuery := `SELECT tc.table_name as from_table, kcu.column_name as from_column, ccu.table_name AS to_table, ccu.column_name AS to_column, tc.constraint_name FROM information_schema.table_constraints AS tc JOIN information_schema.key_column_usage AS kcu ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema JOIN information_schema.constraint_column_usage AS ccu ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = 'public';`
+			fkArgs := []string{"exec"}
+			if meta.Password != "" {
+				fkArgs = append(fkArgs, "-e", fmt.Sprintf("PGPASSWORD=%s", meta.Password))
+			}
+			fkArgs = append(fkArgs, containerName, "psql", "-U", user, "-d", targetDb, "-c", fkQuery, "--csv")
+			fkCmd := exec.Command("docker", fkArgs...)
+			fkOut, fkErr := fkCmd.CombinedOutput()
+			if fkErr == nil {
+				r := csv.NewReader(bytes.NewReader(fkOut))
+				rows, _ := r.ReadAll()
+				if len(rows) > 1 {
+					for _, row := range rows[1:] {
+						if len(row) >= 4 {
+							fromTbl := row[0]
+							fromCol := row[1]
+							toTbl := row[2]
+							toCol := row[3]
+							cName := ""
+							if len(row) >= 5 {
+								cName = row[4]
+							}
+							relationships = append(relationships, SchemaRelationship{
+								FromTable:      fromTbl,
+								FromColumn:     fromCol,
+								ToTable:        toTbl,
+								ToColumn:       toCol,
+								ConstraintName: cName,
+							})
+							// Mark column as foreign in tablesMap
+							if tbl, ok := tablesMap[fromTbl]; ok {
+								for i := range tbl.Columns {
+									if tbl.Columns[i].Name == fromCol {
+										tbl.Columns[i].IsForeign = true
+									}
 								}
 							}
 						}
 					}
 				}
 			}
+		}
+
+		runPgSchema(dbName)
+		if len(tablesMap) == 0 && dbName != "postgres" {
+			runPgSchema("postgres")
 		}
 	} else if db.Engine == "mysql" {
 		// MySQL schema extraction

@@ -1613,7 +1613,22 @@ func (h *Handler) handleDeployBlueprint(c fiber.Ctx) error {
 			dbVersion = ""
 		}
 
-		dbRec, err := h.provisionDatabaseInternal(c.Context(), project.ID, dbName, engine, dbVersion, "", "")
+		var customPass, customDbName string
+		if rawEnv, ok := dbInfo["env"].([]any); ok {
+			for _, eItem := range rawEnv {
+				if eMap, ok := eItem.(map[string]any); ok {
+					k := fmt.Sprintf("%v", eMap["key"])
+					v := fmt.Sprintf("%v", eMap["value"])
+					if strings.EqualFold(k, "POSTGRES_DB") || strings.EqualFold(k, "MYSQL_DATABASE") {
+						customDbName = v
+					} else if strings.EqualFold(k, "POSTGRES_PASSWORD") || strings.EqualFold(k, "MYSQL_ROOT_PASSWORD") {
+						customPass = v
+					}
+				}
+			}
+		}
+
+		dbRec, err := h.provisionDatabaseInternal(c.Context(), project.ID, dbName, engine, dbVersion, customPass, customDbName)
 		if err == nil && dbRec != nil {
 			createdDatabases = append(createdDatabases, dbRec)
 			var meta struct {
