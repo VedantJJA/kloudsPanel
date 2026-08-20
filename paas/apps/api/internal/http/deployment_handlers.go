@@ -726,9 +726,7 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 				}
 
 				for k, v := range envMap {
-					val := strings.ReplaceAll(v, fmt.Sprintf("paas-db-%s", db.Name), uri)
-					val = strings.ReplaceAll(val, fmt.Sprintf("paas-db-%s", strings.ToLower(db.Name)), uri)
-					val = strings.ReplaceAll(val, fmt.Sprintf("${databases.%s.connectionString}", db.Name), uri)
+					val := strings.ReplaceAll(v, fmt.Sprintf("${databases.%s.connectionString}", db.Name), uri)
 					val = strings.ReplaceAll(val, fmt.Sprintf("${databases.%s.url}", db.Name), uri)
 					val = strings.ReplaceAll(val, fmt.Sprintf("${%s.connectionString}", db.Name), uri)
 					val = strings.ReplaceAll(val, fmt.Sprintf("${databases.%s.host}", db.Name), dbHost)
@@ -745,7 +743,8 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 					val = strings.ReplaceAll(val, fmt.Sprintf("${databases.%s.databaseName}", db.Name), dbDatabase)
 					val = strings.ReplaceAll(val, fmt.Sprintf("${databases.%s.name}", db.Name), dbDatabase)
 					val = strings.ReplaceAll(val, fmt.Sprintf("${%s.database}", db.Name), dbDatabase)
-					if strings.EqualFold(k, "DATABASE_URL") && (val == "" || val == db.Name || strings.HasPrefix(val, "paas-db-")) {
+					val = strings.ReplaceAll(val, fmt.Sprintf("${%s.databaseName}", db.Name), dbDatabase)
+					if strings.EqualFold(k, "DATABASE_URL") && (val == "" || val == db.Name || val == fmt.Sprintf("paas-db-%s", strings.ToLower(db.Name))) {
 						val = uri
 					}
 					envMap[k] = val

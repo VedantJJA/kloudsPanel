@@ -1767,11 +1767,10 @@ func (h *Handler) handleDeployBlueprint(c fiber.Ctx) error {
 				val = strings.ReplaceAll(val, fmt.Sprintf("${%s.internalUrl}", refName), refIntUrl)
 			}
 			for dbName, dbUri := range dbUriMap {
-				val = strings.ReplaceAll(val, fmt.Sprintf("paas-db-%s", dbName), dbUri)
 				val = strings.ReplaceAll(val, fmt.Sprintf("${databases.%s.connectionString}", dbName), dbUri)
 				val = strings.ReplaceAll(val, fmt.Sprintf("${databases.%s.url}", dbName), dbUri)
 				val = strings.ReplaceAll(val, fmt.Sprintf("${%s.connectionString}", dbName), dbUri)
-				if strings.EqualFold(k, "DATABASE_URL") && (val == "" || val == dbName || strings.HasPrefix(val, "paas-db-")) {
+				if strings.EqualFold(k, "DATABASE_URL") && (val == "" || val == dbName || val == fmt.Sprintf("paas-db-%s", strings.ToLower(dbName))) {
 					val = dbUri
 				}
 			}
