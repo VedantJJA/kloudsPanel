@@ -11,6 +11,7 @@ import (
 
 	"github.com/yourorg/klouds/api/internal/domain"
 	"github.com/yourorg/klouds/api/internal/repository"
+	"github.com/yourorg/klouds/api/internal/tcpproxy"
 )
 
 // Supervisor monitors and reconciles system dependencies, database containers, and runtime images.
@@ -91,7 +92,30 @@ func (s *Supervisor) ReconcileDatabases(ctx context.Context) {
 	}
 
 	for _, db := range dbs {
-		s.EnsureDatabaseContainerRunning(ctx, db)
+		_ = s.EnsureDatabaseContainerRunning(ctx, db)
+
+		// Reconcile TCP proxy forwarder and IP whitelisting
+		var meta struct {
+			PublicAccess *bool             `json:"publicAccess"`
+			IPWhitelist  []tcpproxy.IPRule `json:"ipWhitelist"`
+			ExternalPort float64           `json:"externalPort"`
+		}
+		if db.ResourceJSON != "" {
+			_ = json.Unmarshal([]byte(db.ResourceJSON), &meta)
+		}
+		pubAcc := true
+		if meta.PublicAccess != nil {
+			pubAcc = *meta.PublicAccess
+		}
+		rules := meta.IPWhitelist
+		if len(rules) == 0 {
+			rules = []tcpproxy.IPRule{{CIDR: "0.0.0.0/0", Description: "Anywhere (Default)", CreatedAt: db.CreatedAt}}
+		}
+		extPort := int(meta.ExternalPort)
+		if extPort > 0 {
+			targetAddr := fmt.Sprintf("127.0.0.1:%d", extPort)
+			_ = tcpproxy.DefaultManager().EnsureProxy(db.ID, extPort, targetAddr, rules, pubAcc)
+		}
 	}
 }
 

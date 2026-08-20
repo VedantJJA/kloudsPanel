@@ -15,6 +15,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/yourorg/klouds/api/internal/domain"
+	"github.com/yourorg/klouds/api/internal/tcpproxy"
 )
 
 // --- Database Handlers -----------------------------------------------------
@@ -297,7 +298,11 @@ func (h *Handler) provisionDatabaseInternal(ctx context.Context, projectID, name
 		"externalConnectionUri": externalConnURI,
 		"externalHost":          externalHost,
 		"externalPort":          externalPort,
-		"psqlCommand":           fmt.Sprintf("psql \"%s\"", externalConnURI),
+		"publicAccess":          true,
+		"ipWhitelist": []tcpproxy.IPRule{
+			{CIDR: "0.0.0.0/0", Description: "Anywhere (Default)", CreatedAt: time.Now().UTC()},
+		},
+		"psqlCommand": fmt.Sprintf("psql \"%s\"", externalConnURI),
 	}
 	metaBytes, _ := json.Marshal(metaMap)
 
@@ -546,6 +551,24 @@ func (h *Handler) startDatabaseContainer(dbID, dbSlug, containerName, defaultUse
 					}
 				}
 				_ = h.store.Databases().Update(ctx, db)
+
+				// Ensure TCP proxy forwarder is active
+				var metaObj struct {
+					PublicAccess *bool             `json:"publicAccess"`
+					IPWhitelist  []tcpproxy.IPRule `json:"ipWhitelist"`
+				}
+				if db.ResourceJSON != "" {
+					_ = json.Unmarshal([]byte(db.ResourceJSON), &metaObj)
+				}
+				pubAcc := true
+				if metaObj.PublicAccess != nil {
+					pubAcc = *metaObj.PublicAccess
+				}
+				rList := metaObj.IPWhitelist
+				if len(rList) == 0 {
+					rList = []tcpproxy.IPRule{{CIDR: "0.0.0.0/0", Description: "Anywhere (Default)", CreatedAt: db.CreatedAt}}
+				}
+				_ = tcpproxy.DefaultManager().EnsureProxy(db.ID, allocatedPort, fmt.Sprintf("127.0.0.1:%d", allocatedPort), rList, pubAcc)
 			}
 		}
 	}
@@ -1137,6 +1160,7 @@ func (h *Handler) handleDeleteDatabase(c fiber.Ctx) error {
 	db, _ := h.store.Databases().GetByID(c.Context(), id)
 	if db != nil {
 		cleanupDatabaseResources(db.Name, db.InternalHostname)
+		tcpproxy.DefaultManager().StopProxy(db.ID)
 	}
 
 	if err := h.store.Databases().Delete(c.Context(), id); err != nil {
@@ -1144,3 +1168,335 @@ func (h *Handler) handleDeleteDatabase(c fiber.Ctx) error {
 	}
 	return c.SendStatus(204)
 }
+
+// GET /api/v1/databases/:id/access
+func (h *Handler) handleGetDatabaseAccess(c fiber.Ctx) error {
+	id := c.Params("id")
+	db, err := h.store.Databases().GetByID(c.Context(), id)
+	if err != nil || db == nil {
+		return c.Status(404).JSON(fiber.Map{"error": "database not found"})
+	}
+
+	var meta struct {
+		PublicAccess          *bool             `json:"publicAccess"`
+		IPWhitelist           []tcpproxy.IPRule `json:"ipWhitelist"`
+		ExternalHost          string            `json:"externalHost"`
+		ExternalPort          int               `json:"externalPort"`
+		InternalConnectionURI string            `json:"internalConnectionUri"`
+		ExternalConnectionURI string            `json:"externalConnectionUri"`
+	}
+	if db.ResourceJSON != "" {
+		_ = json.Unmarshal([]byte(db.ResourceJSON), &meta)
+	}
+
+	publicAccess := true
+	if meta.PublicAccess != nil {
+		publicAccess = *meta.PublicAccess
+	}
+
+	rules := meta.IPWhitelist
+	if len(rules) == 0 {
+		rules = []tcpproxy.IPRule{
+			{CIDR: "0.0.0.0/0", Description: "Anywhere (Default)", CreatedAt: db.CreatedAt},
+		}
+	}
+
+	extHost := meta.ExternalHost
+	if extHost == "" {
+		extHost = getRootDomain()
+		if extHost == "" {
+			extHost = "localhost"
+		}
+	}
+
+	extPort := meta.ExternalPort
+	if extPort <= 0 {
+		extPort = db.InternalPort
+	}
+
+	stats, _ := tcpproxy.DefaultManager().GetStats(db.ID)
+
+	clientIP := c.IP()
+	if xff := c.Get("X-Forwarded-For"); xff != "" {
+		parts := strings.Split(xff, ",")
+		if len(parts) > 0 && strings.TrimSpace(parts[0]) != "" {
+			clientIP = strings.TrimSpace(parts[0])
+		}
+	}
+
+	return c.JSON(fiber.Map{
+		"databaseId":    db.ID,
+		"databaseName":  db.Name,
+		"engine":        string(db.Engine),
+		"publicAccess":  publicAccess,
+		"ipWhitelist":   rules,
+		"externalHost":  extHost,
+		"externalPort":  extPort,
+		"internalHost":  db.InternalHostname,
+		"internalPort":  db.InternalPort,
+		"clientIp":      clientIP,
+		"stats":         stats,
+	})
+}
+
+// PUT /api/v1/databases/:id/access
+func (h *Handler) handleUpdateDatabaseAccess(c fiber.Ctx) error {
+	id := c.Params("id")
+	db, err := h.store.Databases().GetByID(c.Context(), id)
+	if err != nil || db == nil {
+		return c.Status(404).JSON(fiber.Map{"error": "database not found"})
+	}
+
+	var req struct {
+		PublicAccess *bool             `json:"publicAccess"`
+		IPWhitelist  []tcpproxy.IPRule `json:"ipWhitelist"`
+	}
+	if err := c.Bind().JSON(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid request payload: " + err.Error()})
+	}
+
+	var cleanRules []tcpproxy.IPRule
+	now := time.Now().UTC()
+	for _, r := range req.IPWhitelist {
+		trimmed := strings.TrimSpace(r.CIDR)
+		if trimmed == "" {
+			continue
+		}
+		if trimmed != "*" && trimmed != "0.0.0.0/0" && trimmed != "::/0" {
+			if strings.Contains(trimmed, "/") {
+				if _, _, errNet := net.ParseCIDR(trimmed); errNet != nil {
+					return c.Status(400).JSON(fiber.Map{"error": fmt.Sprintf("invalid CIDR block %q: %v", trimmed, errNet)})
+				}
+			} else {
+				if parsedIP := net.ParseIP(trimmed); parsedIP == nil {
+					return c.Status(400).JSON(fiber.Map{"error": fmt.Sprintf("invalid IP address %q", trimmed)})
+				}
+				if !strings.Contains(trimmed, ":") {
+					trimmed = trimmed + "/32"
+				}
+			}
+		}
+		createdAt := r.CreatedAt
+		if createdAt.IsZero() {
+			createdAt = now
+		}
+		cleanRules = append(cleanRules, tcpproxy.IPRule{
+			CIDR:        trimmed,
+			Description: strings.TrimSpace(r.Description),
+			CreatedAt:   createdAt,
+		})
+	}
+
+	metaMap := make(map[string]any)
+	if db.ResourceJSON != "" {
+		_ = json.Unmarshal([]byte(db.ResourceJSON), &metaMap)
+	}
+
+	publicAccess := true
+	if req.PublicAccess != nil {
+		publicAccess = *req.PublicAccess
+	}
+	metaMap["publicAccess"] = publicAccess
+	metaMap["ipWhitelist"] = cleanRules
+
+	metaBytes, _ := json.Marshal(metaMap)
+	db.ResourceJSON = string(metaBytes)
+
+	if err := h.store.Databases().Update(c.Context(), db); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "failed to update database access config: " + err.Error()})
+	}
+
+	extPort := 0
+	if p, ok := metaMap["externalPort"].(float64); ok {
+		extPort = int(p)
+	}
+	if extPort > 0 {
+		targetAddr := fmt.Sprintf("127.0.0.1:%d", extPort)
+		_ = tcpproxy.DefaultManager().EnsureProxy(db.ID, extPort, targetAddr, cleanRules, publicAccess)
+	}
+
+	stats, _ := tcpproxy.DefaultManager().GetStats(db.ID)
+	return c.JSON(fiber.Map{
+		"databaseId":   db.ID,
+		"publicAccess": publicAccess,
+		"ipWhitelist":  cleanRules,
+		"stats":        stats,
+		"message":      "Database access rules updated successfully",
+	})
+}
+
+// POST /api/v1/databases/:id/access/whitelist
+func (h *Handler) handleAddDatabaseIPWhitelist(c fiber.Ctx) error {
+	id := c.Params("id")
+	db, err := h.store.Databases().GetByID(c.Context(), id)
+	if err != nil || db == nil {
+		return c.Status(404).JSON(fiber.Map{"error": "database not found"})
+	}
+
+	var req struct {
+		CIDR        string `json:"cidr"`
+		Description string `json:"description"`
+	}
+	if err := c.Bind().JSON(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid payload"})
+	}
+
+	cidr := strings.TrimSpace(req.CIDR)
+	if cidr == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "CIDR or IP address is required"})
+	}
+
+	if cidr != "*" && cidr != "0.0.0.0/0" && cidr != "::/0" {
+		if strings.Contains(cidr, "/") {
+			if _, _, errNet := net.ParseCIDR(cidr); errNet != nil {
+				return c.Status(400).JSON(fiber.Map{"error": fmt.Sprintf("invalid CIDR format %q", cidr)})
+			}
+		} else {
+			if parsedIP := net.ParseIP(cidr); parsedIP == nil {
+				return c.Status(400).JSON(fiber.Map{"error": fmt.Sprintf("invalid IP format %q", cidr)})
+			}
+			if !strings.Contains(cidr, ":") {
+				cidr = cidr + "/32"
+			}
+		}
+	}
+
+	metaMap := make(map[string]any)
+	if db.ResourceJSON != "" {
+		_ = json.Unmarshal([]byte(db.ResourceJSON), &metaMap)
+	}
+
+	var existingRules []tcpproxy.IPRule
+	if raw, ok := metaMap["ipWhitelist"].([]any); ok {
+		for _, item := range raw {
+			if m, okM := item.(map[string]any); okM {
+				cStr, _ := m["cidr"].(string)
+				dStr, _ := m["description"].(string)
+				existingRules = append(existingRules, tcpproxy.IPRule{
+					CIDR:        cStr,
+					Description: dStr,
+					CreatedAt:   time.Now().UTC(),
+				})
+			}
+		}
+	}
+
+	for _, r := range existingRules {
+		if strings.EqualFold(r.CIDR, cidr) {
+			return c.Status(409).JSON(fiber.Map{"error": fmt.Sprintf("Rule for %q already exists", cidr)})
+		}
+	}
+
+	newRule := tcpproxy.IPRule{
+		CIDR:        cidr,
+		Description: strings.TrimSpace(req.Description),
+		CreatedAt:   time.Now().UTC(),
+	}
+	existingRules = append(existingRules, newRule)
+
+	metaMap["ipWhitelist"] = existingRules
+	metaBytes, _ := json.Marshal(metaMap)
+	db.ResourceJSON = string(metaBytes)
+
+	_ = h.store.Databases().Update(c.Context(), db)
+
+	publicAccess := true
+	if p, ok := metaMap["publicAccess"].(bool); ok {
+		publicAccess = p
+	}
+	extPort := 0
+	if p, ok := metaMap["externalPort"].(float64); ok {
+		extPort = int(p)
+	}
+	if extPort > 0 {
+		targetAddr := fmt.Sprintf("127.0.0.1:%d", extPort)
+		_ = tcpproxy.DefaultManager().EnsureProxy(db.ID, extPort, targetAddr, existingRules, publicAccess)
+	}
+
+	return c.Status(201).JSON(fiber.Map{
+		"rule":        newRule,
+		"ipWhitelist": existingRules,
+		"message":     "IP rule added successfully",
+	})
+}
+
+// DELETE /api/v1/databases/:id/access/whitelist
+func (h *Handler) handleDeleteDatabaseIPWhitelist(c fiber.Ctx) error {
+	id := c.Params("id")
+	db, err := h.store.Databases().GetByID(c.Context(), id)
+	if err != nil || db == nil {
+		return c.Status(404).JSON(fiber.Map{"error": "database not found"})
+	}
+
+	cidr := strings.TrimSpace(c.Query("cidr"))
+	if cidr == "" {
+		var req struct {
+			CIDR string `json:"cidr"`
+		}
+		_ = c.Bind().JSON(&req)
+		cidr = strings.TrimSpace(req.CIDR)
+	}
+
+	if cidr == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "cidr parameter is required"})
+	}
+
+	metaMap := make(map[string]any)
+	if db.ResourceJSON != "" {
+		_ = json.Unmarshal([]byte(db.ResourceJSON), &metaMap)
+	}
+
+	var filteredRules []tcpproxy.IPRule
+	if raw, ok := metaMap["ipWhitelist"].([]any); ok {
+		for _, item := range raw {
+			if m, okM := item.(map[string]any); okM {
+				cStr, _ := m["cidr"].(string)
+				dStr, _ := m["description"].(string)
+				if !strings.EqualFold(cStr, cidr) && !strings.EqualFold(cStr, cidr+"/32") {
+					filteredRules = append(filteredRules, tcpproxy.IPRule{
+						CIDR:        cStr,
+						Description: dStr,
+						CreatedAt:   time.Now().UTC(),
+					})
+				}
+			}
+		}
+	}
+
+	metaMap["ipWhitelist"] = filteredRules
+	metaBytes, _ := json.Marshal(metaMap)
+	db.ResourceJSON = string(metaBytes)
+
+	_ = h.store.Databases().Update(c.Context(), db)
+
+	publicAccess := true
+	if p, ok := metaMap["publicAccess"].(bool); ok {
+		publicAccess = p
+	}
+	extPort := 0
+	if p, ok := metaMap["externalPort"].(float64); ok {
+		extPort = int(p)
+	}
+	if extPort > 0 {
+		targetAddr := fmt.Sprintf("127.0.0.1:%d", extPort)
+		_ = tcpproxy.DefaultManager().EnsureProxy(db.ID, extPort, targetAddr, filteredRules, publicAccess)
+	}
+
+	return c.JSON(fiber.Map{
+		"ipWhitelist": filteredRules,
+		"message":     "IP rule deleted successfully",
+	})
+}
+
+// GET /api/v1/client-ip
+func (h *Handler) handleGetClientIP(c fiber.Ctx) error {
+	clientIP := c.IP()
+	if xff := c.Get("X-Forwarded-For"); xff != "" {
+		parts := strings.Split(xff, ",")
+		if len(parts) > 0 && strings.TrimSpace(parts[0]) != "" {
+			clientIP = strings.TrimSpace(parts[0])
+		}
+	}
+	return c.JSON(fiber.Map{"clientIp": clientIP})
+}
+

@@ -402,6 +402,7 @@ code, pre {
   font-family: var(--font-sans);
   font-size: 0.8125rem;
   font-weight: 500;
+  color: var(--color-ink);
   line-height: 1;
   cursor: pointer;
   border: 1px solid transparent;

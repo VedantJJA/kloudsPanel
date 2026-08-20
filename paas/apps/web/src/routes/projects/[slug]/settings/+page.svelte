@@ -23,10 +23,11 @@
 
   async function loadData() {
     try {
+      const targetSlug = slug || '';
       const [projRes, svcRes, dbRes] = await Promise.all([
-        fetch(`/api/v1/projects/${encodeURIComponent(slug)}`, { credentials: 'include' }),
-        fetch(`/api/v1/services?projectId=${encodeURIComponent(slug)}`, { credentials: 'include' }),
-        fetch(`/api/v1/databases?projectId=${encodeURIComponent(slug)}`, { credentials: 'include' })
+        fetch(`/api/v1/projects/${encodeURIComponent(targetSlug)}`, { credentials: 'include' }),
+        fetch(`/api/v1/services?projectId=${encodeURIComponent(targetSlug)}`, { credentials: 'include' }),
+        fetch(`/api/v1/databases?projectId=${encodeURIComponent(targetSlug)}`, { credentials: 'include' })
       ]);
       if (projRes.ok) {
         project = await projRes.json();
@@ -228,11 +229,13 @@
 
 <!-- Two-Step Delete Confirmation Modal -->
 <DeleteConfirmationModal
-  bind:open={showDeleteModal}
-  resourceType="project"
-  resourceName={project?.name || project?.Name || slug}
-  resourceSlug={project?.slug || project?.Slug || slug}
-  activeResourceCount={activeResourceCount}
+  show={showDeleteModal}
+  title="Delete Project"
+  entityType="project"
+  entityName={project?.name || project?.Name || slug || 'Project'}
+  servicesCount={services.length}
+  databasesCount={databases.length}
   loading={deleting}
   onConfirm={executeDeleteProject}
+  onCancel={() => showDeleteModal = false}
 />

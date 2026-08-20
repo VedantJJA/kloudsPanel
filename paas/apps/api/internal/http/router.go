@@ -131,12 +131,19 @@ func NewServer(log *slog.Logger, store repository.Store, addr string) *fiber.App
 	db.Get("/", h.handleListDatabases)
 	db.Post("/", h.handleCreateDatabase)
 	db.Get("/:id", h.handleGetDatabase)
+	db.Get("/:id/access", h.handleGetDatabaseAccess)
+	db.Put("/:id/access", h.handleUpdateDatabaseAccess)
+	db.Post("/:id/access/whitelist", h.handleAddDatabaseIPWhitelist)
+	db.Delete("/:id/access/whitelist", h.handleDeleteDatabaseIPWhitelist)
 	db.Post("/:id/restart", h.handleRestartDatabase)
 	db.Post("/:id/query", h.handleExecuteDatabaseQuery)
 	db.Get("/:id/schema", h.handleGetDatabaseSchema)
 	db.Get("/:id/logs", h.handleGetDatabaseLogs)
 	db.Get("/:id/linked-services", h.handleGetDatabaseLinkedServices)
 	db.Delete("/:id", h.handleDeleteDatabase)
+
+	// Utility routes
+	v1.Get("/client-ip", h.handleGetClientIP)
 
 	// Git Integrations routes (GitHub, GitLab, Bitbucket)
 	v1.Get("/integrations/git/:provider/callback", h.handleGitOAuthCallback)

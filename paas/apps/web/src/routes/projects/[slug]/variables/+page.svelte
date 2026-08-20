@@ -31,7 +31,8 @@
 
   async function loadData() {
     try {
-      const projRes = await fetch(`/api/v1/projects/${encodeURIComponent(slug)}`, { credentials: 'include' });
+      const targetSlug = slug || '';
+      const projRes = await fetch(`/api/v1/projects/${encodeURIComponent(targetSlug)}`, { credentials: 'include' });
       if (projRes.ok) {
         project = await projRes.json();
         const wsSlug = project.workspace_slug || project.WorkspaceSlug || project.workspace_id || project.WorkspaceID;

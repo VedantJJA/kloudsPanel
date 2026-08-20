@@ -20,6 +20,9 @@
     Layers,
     Server,
     ShieldAlert,
+    ShieldCheck,
+    Network,
+    Code,
     ChevronLeft,
     ChevronRight,
     ChevronsUpDown,
@@ -250,7 +253,7 @@
     return items;
   });
 
-  const serviceTabs = $derived([
+  const serviceTabs = $derived<NavItem[]>([
     { label: 'Overview', href: `/services/${currentServiceId}/overview`, icon: LayoutDashboard },
     { label: 'Deployments', href: `/services/${currentServiceId}/deployments`, icon: Rocket },
     { label: 'Logs', href: `/services/${currentServiceId}/logs`, icon: Terminal },
@@ -260,21 +263,23 @@
     { label: 'Settings', href: `/services/${currentServiceId}/settings`, icon: Settings },
   ]);
 
-  const databaseTabs = $derived([
-    { label: 'Connection', href: `/databases/${currentDatabaseId}/overview`, icon: Database },
-    { label: 'Metrics', href: `/databases/${currentDatabaseId}/metrics`, icon: Activity },
-    { label: 'Logs & Queries', href: `/databases/${currentDatabaseId}/logs`, icon: Terminal },
+  const databaseTabs = $derived<NavItem[]>([
+    { label: 'Overview', href: `/databases/${currentDatabaseId}/overview`, icon: Database },
+    { label: 'Access Control', href: `/databases/${currentDatabaseId}/access`, icon: ShieldCheck },
+    { label: 'SQL Console', href: `/databases/${currentDatabaseId}/query`, icon: Terminal },
+    { label: 'ER Diagram', href: `/databases/${currentDatabaseId}/visualizer`, icon: Network },
+    { label: 'Logs', href: `/databases/${currentDatabaseId}/logs`, icon: Code },
     { label: 'Settings', href: `/databases/${currentDatabaseId}/settings`, icon: Settings },
   ]);
 
-  const projectTabs = $derived([
+  const projectTabs = $derived<NavItem[]>([
     { label: 'Services & Overview', href: `/projects/${currentProjectSlug}`, icon: LayoutDashboard },
     { label: 'Databases', href: `/projects/${currentProjectSlug}/databases`, icon: Database },
     { label: 'Shared Env Groups', href: `/projects/${currentProjectSlug}/variables`, icon: Key },
     { label: 'Settings', href: `/projects/${currentProjectSlug}/settings`, icon: Settings },
   ]);
 
-  const workspaceTabs = $derived([
+  const workspaceTabs = $derived<NavItem[]>([
     { label: 'Projects', href: `/workspaces/${targetWsSlug}`, icon: FolderOpen },
     { label: 'Databases', href: `/workspaces/${targetWsSlug}/databases`, icon: Database },
     { label: 'Shared Env Vars', href: `/workspaces/${targetWsSlug}/variables`, icon: Key },

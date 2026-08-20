@@ -37,20 +37,34 @@
     Share2,
     Plus,
     Globe,
-    ShieldCheck
+    ShieldCheck,
+    Lock,
+    Unlock,
+    Shield,
+    X
   } from 'lucide-svelte';
   import FrameworkIcon from '$lib/components/icons/FrameworkIcon.svelte';
   import { activeWorkspaceSlug, workspaces } from '$lib/stores/workspace';
 
   const id = $derived($page.params.id);
   const tab = $derived($page.params.tab);
-  const tabs = ['overview', 'query', 'visualizer', 'logs', 'settings'];
+  const tabs = ['overview', 'access', 'query', 'visualizer', 'logs', 'settings'];
 
   let database = $state<any>(null);
   let loading = $state(true);
   let actionLoading = $state(false);
   let copied = $state(false);
   let copiedField = $state<string | null>(null);
+
+  // Access Control & IP Whitelist state
+  let accessData = $state<any>(null);
+  let accessLoading = $state(false);
+  let accessSaving = $state(false);
+  let detectedClientIp = $state<string>('');
+  let newRuleCidr = $state('');
+  let newRuleDescription = $state('');
+  let ruleAdding = $state(false);
+  let accessNotice = $state<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Live Logs state
   let logs = $state<any[]>([]);
@@ -371,9 +385,122 @@
     }, 2500);
   });
 
+  async function loadAccessConfig() {
+    accessLoading = true;
+    try {
+      const res = await fetch(`/api/v1/databases/${id}/access`, { credentials: 'include' });
+      if (res.ok) {
+        accessData = await res.json();
+        if (accessData?.clientIp) {
+          detectedClientIp = accessData.clientIp;
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      accessLoading = false;
+    }
+  }
+
+  async function togglePublicAccess() {
+    if (!accessData) return;
+    const updated = !accessData.publicAccess;
+    accessSaving = true;
+    accessNotice = null;
+    try {
+      const res = await fetch(`/api/v1/databases/${id}/access`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          publicAccess: updated,
+          ipWhitelist: accessData.ipWhitelist || []
+        })
+      });
+      if (res.ok) {
+        accessData.publicAccess = updated;
+        accessNotice = { type: 'success', message: updated ? 'Public TCP access enabled' : 'Public access disabled (Internal only)' };
+        await loadDatabase();
+      } else {
+        const err = await res.json();
+        accessNotice = { type: 'error', message: err.error || 'Failed to update access' };
+      }
+    } catch (e: any) {
+      accessNotice = { type: 'error', message: e.message };
+    } finally {
+      accessSaving = false;
+    }
+  }
+
+  async function addIpRule() {
+    let cidr = newRuleCidr.trim();
+    if (!cidr) return;
+    if (!cidr.includes('/') && cidr !== '*' && !cidr.includes(':')) {
+      cidr = cidr + '/32';
+    }
+    ruleAdding = true;
+    accessNotice = null;
+    try {
+      const res = await fetch(`/api/v1/databases/${id}/access/whitelist`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          cidr: cidr,
+          description: newRuleDescription.trim()
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        newRuleCidr = '';
+        newRuleDescription = '';
+        accessNotice = { type: 'success', message: `Added rule for ${cidr}` };
+        await loadAccessConfig();
+      } else {
+        accessNotice = { type: 'error', message: data.error || 'Failed to add rule' };
+      }
+    } catch (e: any) {
+      accessNotice = { type: 'error', message: e.message };
+    } finally {
+      ruleAdding = false;
+    }
+  }
+
+  async function deleteIpRule(cidr: string) {
+    if (!confirm(`Remove ${cidr} from IP whitelist?`)) return;
+    try {
+      const res = await fetch(`/api/v1/databases/${id}/access/whitelist?cidr=${encodeURIComponent(cidr)}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+      if (res.ok) {
+        accessNotice = { type: 'success', message: `Removed rule for ${cidr}` };
+        await loadAccessConfig();
+      }
+    } catch (e: any) {
+      accessNotice = { type: 'error', message: e.message };
+    }
+  }
+
+  function setMyCurrentIp() {
+    if (detectedClientIp) {
+      const clean = detectedClientIp.trim();
+      newRuleCidr = clean.includes(':') ? clean : `${clean}/32`;
+      newRuleDescription = 'My Current IP';
+    }
+  }
+
+  function setAllowAll() {
+    newRuleCidr = '0.0.0.0/0';
+    newRuleDescription = 'Anywhere';
+  }
+
   $effect(() => {
     if (tab === 'visualizer') {
       loadSchema();
+    }
+    if (tab === 'access' || tab === 'overview') {
+      loadAccessConfig();
     }
   });
 
@@ -405,6 +532,8 @@
     const internalUri = raw.internalConnectionUri || raw.connectionUri || `${engine}://${user}:${pass}@${internalHost}:${internalPort}/${dbName}${sslSuffix}`;
     const directUri = `${engine}://${user}:${pass}@${directHost}:${externalPort}/${dbName}${sslSuffix}`;
     const externalUri = raw.externalConnectionUri || `${engine}://${user}:${pass}@${externalHost}:${externalPort}/${dbName}${sslSuffix}`;
+    const publicAccess = raw.publicAccess !== undefined ? raw.publicAccess : true;
+    const ipWhitelist = raw.ipWhitelist || [];
 
     return {
       username: user,
@@ -415,7 +544,9 @@
       directConnectionUri: directUri,
       externalHost: externalHost,
       directHost: directHost,
-      externalPort: externalPort
+      externalPort: externalPort,
+      publicAccess: publicAccess,
+      ipWhitelist: ipWhitelist
     };
   });
 
@@ -598,14 +729,18 @@
         href="/databases/{id}/{t}"
         class="tab-btn"
         class:active={tab === t}
-        onclick={() => { if (t === 'visualizer') loadSchema(); }}
+        onclick={() => {
+          if (t === 'visualizer') loadSchema();
+          if (t === 'access') loadAccessConfig();
+        }}
       >
         {#if t === 'overview'}<Database size={14} />{/if}
+        {#if t === 'access'}<ShieldCheck size={14} />{/if}
         {#if t === 'query'}<Terminal size={14} />{/if}
         {#if t === 'visualizer'}<Network size={14} />{/if}
         {#if t === 'logs'}<Code size={14} />{/if}
         {#if t === 'settings'}<Settings size={14} />{/if}
-        {t === 'query' ? 'SQL / Query Studio' : t === 'visualizer' ? 'ER Diagram & Schema' : t.charAt(0).toUpperCase() + t.slice(1)}
+        {t === 'access' ? 'Access Control' : t === 'query' ? 'SQL / Query Studio' : t === 'visualizer' ? 'ER Diagram & Schema' : t.charAt(0).toUpperCase() + t.slice(1)}
       </a>
     {/each}
   </div>
@@ -720,6 +855,299 @@
           <button class="btn btn-secondary" style="padding:2px 6px; min-height:24px; border:none;" onclick={() => copyText(parsedMeta.databaseName, 'dbname')}>
             {#if copiedField === 'dbname'}<Check size={12} />{:else}<Copy size={12} />{/if}
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Access Control & IP Whitelisting Summary Card (Render-Style) -->
+    <div class="card" style="margin-bottom:1.5rem; border: 1px solid var(--color-border); background: var(--color-surface);">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem;">
+        <div style="display:flex; align-items:center; gap:0.75rem;">
+          <div style="width:36px; height:36px; border-radius:var(--radius-md); background:var(--color-surface-subtle); display:flex; align-items:center; justify-content:center; color:var(--color-ink);">
+            {#if parsedMeta.publicAccess}
+              <Unlock size={18} style="color:var(--color-success);" />
+            {:else}
+              <Lock size={18} style="color:var(--color-warning);" />
+            {/if}
+          </div>
+          <div>
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+              <span style="font-weight:600; font-size:0.9375rem; color:var(--color-ink);">Public Network Access & IP Whitelisting</span>
+              {#if parsedMeta.publicAccess}
+                <span class="badge badge-success" style="font-size:0.7rem;">TCP Forwarding Active</span>
+              {:else}
+                <span class="badge badge-warning" style="font-size:0.7rem;">Private Only</span>
+              {/if}
+            </div>
+            <p class="text-xs text-muted" style="margin-top:2px;">
+              {#if parsedMeta.publicAccess}
+                {#if (accessData?.ipWhitelist || parsedMeta.ipWhitelist || []).length > 0}
+                  Public connections accepted from {(accessData?.ipWhitelist || parsedMeta.ipWhitelist || []).length} configured IP rule(s).
+                {:else}
+                  Public access open to all IP addresses (0.0.0.0/0).
+                {/if}
+              {:else}
+                Public connections are blocked. Only internal platform services can connect.
+              {/if}
+            </p>
+          </div>
+        </div>
+        <div style="display:flex; gap:0.5rem; align-items:center;">
+          <a href="/databases/{id}/access" class="btn btn-secondary" style="font-size:0.8125rem; display:flex; align-items:center; gap:6px;">
+            <ShieldCheck size={14} /> Manage IP Whitelist
+          </a>
+        </div>
+      </div>
+    </div>
+
+  {:else if tab === 'access'}
+    <!-- Access Control & IP Whitelisting Dashboard (Render-Style) -->
+    
+    {#if accessNotice}
+      <div style="margin-bottom:1rem; padding:0.75rem 1rem; border-radius:var(--radius-md); font-size:0.8125rem; display:flex; justify-content:space-between; align-items:center; background: {accessNotice.type === 'success' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)'}; color: {accessNotice.type === 'success' ? 'var(--color-success)' : 'var(--color-danger)'}; border: 1px solid {accessNotice.type === 'success' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'};">
+        <span>{accessNotice.message}</span>
+        <button onclick={() => accessNotice = null} style="background:none; border:none; cursor:pointer; color:inherit;">
+          <X size={14} />
+        </button>
+      </div>
+    {/if}
+
+    <!-- 1. Public Network Access Toggle Card -->
+    <div class="card" style="margin-bottom:1.5rem;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:1rem;">
+        <div style="max-width:650px;">
+          <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.35rem;">
+            <span class="badge" style="background:var(--color-surface-subtle); color:var(--color-ink); font-weight:600; display:flex; align-items:center; gap:4px;">
+              <Globe size={12} /> Public TCP Request Forwarding
+            </span>
+            {#if accessData?.publicAccess}
+              <span class="badge badge-success" style="font-size:0.75rem;">Active on port :{parsedMeta.externalPort}</span>
+            {:else}
+              <span class="badge badge-warning" style="font-size:0.75rem;">Disabled (Private Only)</span>
+            {/if}
+          </div>
+          <h3 style="margin:0; font-size:1.1rem; color:var(--color-ink);">Public Network Access</h3>
+          <p class="text-xs text-muted" style="margin-top:0.35rem; line-height:1.5;">
+            When enabled, kloudsPanel runs a high-performance TCP request forwarding proxy listening on public port <span class="font-mono" style="color:var(--color-ink);">:{parsedMeta.externalPort}</span>.
+            External client connections are evaluated against the IP Whitelist below in real-time. Unauthorized IP addresses are closed immediately.
+          </p>
+        </div>
+        <div style="display:flex; align-items:center; gap:0.75rem;">
+          <button
+            class="btn {accessData?.publicAccess ? 'btn-danger' : 'btn-primary'}"
+            style="font-size:0.875rem; padding:6px 14px; min-height:36px; display:flex; align-items:center; gap:6px;"
+            disabled={accessSaving}
+            onclick={togglePublicAccess}
+          >
+            {#if accessSaving}
+              <Loader2 size={14} class="animate-spin" /> Updating...
+            {:else if accessData?.publicAccess}
+              <Lock size={14} /> Disable Public Access
+            {:else}
+              <Unlock size={14} /> Enable Public Access
+            {/if}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. Real-Time TCP Proxy Connection Metrics -->
+    {#if accessData?.stats}
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:1rem; margin-bottom:1.5rem;">
+        <div class="card" style="padding:1rem;">
+          <div class="text-xs text-muted" style="margin-bottom:0.25rem;">Active TCP Streams</div>
+          <div style="display:flex; align-items:center; gap:0.5rem;">
+            <Activity size={16} style="color:var(--color-accent);" />
+            <span class="font-mono text-lg" style="font-weight:700; color:var(--color-ink);">
+              {accessData.stats.activeConnections ?? 0}
+            </span>
+          </div>
+        </div>
+
+        <div class="card" style="padding:1rem;">
+          <div class="text-xs text-muted" style="margin-bottom:0.25rem;">Total Connections Forwarded</div>
+          <div style="display:flex; align-items:center; gap:0.5rem;">
+            <Check size={16} style="color:var(--color-success);" />
+            <span class="font-mono text-lg" style="font-weight:700; color:var(--color-ink);">
+              {accessData.stats.totalConnections ?? 0}
+            </span>
+          </div>
+        </div>
+
+        <div class="card" style="padding:1rem;">
+          <div class="text-xs text-muted" style="margin-bottom:0.25rem;">Blocked Connection Attempts</div>
+          <div style="display:flex; align-items:center; gap:0.5rem;">
+            <ShieldAlert size={16} style="color:var(--color-danger);" />
+            <span class="font-mono text-lg" style="font-weight:700; color:var(--color-ink);">
+              {accessData.stats.blockedAttempts ?? 0}
+            </span>
+          </div>
+        </div>
+      </div>
+    {/if}
+
+    <!-- 3. Add IP Whitelist Rule Card -->
+    <div class="card" style="margin-bottom:1.5rem;">
+      <div class="card-header" style="margin-bottom:0.75rem;">
+        <h3 style="margin:0; font-size:1rem; color:var(--color-ink); display:flex; align-items:center; gap:6px;">
+          <Plus size={16} /> Add IP Whitelist Rule
+        </h3>
+        <p class="text-xs text-muted" style="margin-top:0.25rem;">
+          Allow access from a single IPv4/IPv6 address or a CIDR subnet block (e.g. <span class="font-mono">192.168.1.1/32</span> or <span class="font-mono">0.0.0.0/0</span>).
+        </p>
+      </div>
+
+      <div style="display:flex; gap:0.5rem; margin-bottom:1rem; flex-wrap:wrap;">
+        {#if detectedClientIp}
+          <button class="btn btn-secondary" style="font-size:0.75rem; padding:4px 10px; min-height:28px;" onclick={setMyCurrentIp}>
+            + Add My Current IP ({detectedClientIp})
+          </button>
+        {/if}
+        <button class="btn btn-secondary" style="font-size:0.75rem; padding:4px 10px; min-height:28px;" onclick={setAllowAll}>
+          Allow All (0.0.0.0/0)
+        </button>
+      </div>
+
+      <form onsubmit={(e) => { e.preventDefault(); addIpRule(); }} style="display:flex; gap:0.75rem; align-items:flex-end; flex-wrap:wrap;">
+        <div style="flex:1; min-width:220px;">
+          <label class="form-label" style="font-size:0.75rem;" for="cidr-input">CIDR Block / IP Address</label>
+          <input
+            id="cidr-input"
+            type="text"
+            class="form-control font-mono"
+            placeholder="e.g. 203.0.113.50/32 or 0.0.0.0/0"
+            bind:value={newRuleCidr}
+            required
+            style="font-size:0.8125rem;"
+          />
+        </div>
+
+        <div style="flex:1.5; min-width:220px;">
+          <label class="form-label" style="font-size:0.75rem;" for="desc-input">Description (Optional)</label>
+          <input
+            id="desc-input"
+            type="text"
+            class="form-control"
+            placeholder="e.g. Office VPN, Home Router, CI/CD Runner"
+            bind:value={newRuleDescription}
+            style="font-size:0.8125rem;"
+          />
+        </div>
+
+        <button
+          type="submit"
+          class="btn btn-primary"
+          style="font-size:0.8125rem; padding:6px 14px; min-height:36px; display:flex; align-items:center; gap:6px;"
+          disabled={ruleAdding || !newRuleCidr.trim()}
+        >
+          {#if ruleAdding}
+            <Loader2 size={13} class="animate-spin" /> Adding...
+          {:else}
+            <Plus size={13} /> Add Rule
+          {/if}
+        </button>
+      </form>
+    </div>
+
+    <!-- 4. Active IP Whitelist Rules Table -->
+    <div class="card" style="margin-bottom:1.5rem;">
+      <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+        <div>
+          <h3 style="margin:0; font-size:1rem; color:var(--color-ink); display:flex; align-items:center; gap:6px;">
+            <ShieldCheck size={16} /> Configured Whitelist Rules
+          </h3>
+          <p class="text-xs text-muted" style="margin-top:0.25rem;">
+            Only connections matching one or more of these CIDR rules will be allowed through the TCP proxy.
+          </p>
+        </div>
+        <button class="btn btn-secondary" style="font-size:0.75rem; padding:4px 10px; min-height:28px;" onclick={loadAccessConfig} disabled={accessLoading}>
+          <RefreshCw size={12} class={accessLoading ? 'animate-spin' : ''} /> Refresh
+        </button>
+      </div>
+
+      {#if accessLoading && !accessData}
+        <div style="padding:2rem; text-align:center; color:var(--color-ink-secondary);">
+          <Loader2 size={20} class="animate-spin" style="margin:0 auto 0.5rem auto;" />
+          <p class="text-xs">Loading IP whitelist rules...</p>
+        </div>
+      {:else if !accessData?.ipWhitelist || accessData.ipWhitelist.length === 0}
+        <div style="padding:2rem; text-align:center; color:var(--color-ink-secondary); background:var(--color-surface-subtle); border-radius:var(--radius-md);">
+          <Shield size={24} style="margin:0 auto 0.5rem auto; opacity:0.5;" />
+          <p class="text-sm font-semibold" style="color:var(--color-ink);">No IP whitelist rules configured</p>
+          <p class="text-xs text-muted" style="margin-top:0.25rem;">Add a rule above or click 'Allow All (0.0.0.0/0)' to accept connections from any IP.</p>
+        </div>
+      {:else}
+        <div style="overflow-x:auto;">
+          <table style="width:100%; border-collapse:collapse; font-size:0.8125rem;">
+            <thead>
+              <tr style="border-bottom:1px solid var(--color-border); text-align:left; color:var(--color-ink-secondary);">
+                <th style="padding:8px 12px; font-weight:600;">CIDR / IP Block</th>
+                <th style="padding:8px 12px; font-weight:600;">Description</th>
+                <th style="padding:8px 12px; font-weight:600;">Access</th>
+                <th style="padding:8px 12px; font-weight:600; text-align:right;">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each accessData.ipWhitelist as rule}
+                <tr style="border-bottom:1px solid var(--color-border);">
+                  <td style="padding:10px 12px; font-family:var(--font-mono); color:var(--color-ink); font-weight:600;">
+                    {rule.cidr}
+                    {#if rule.cidr === '0.0.0.0/0' || rule.cidr === '::/0'}
+                      <span class="badge" style="margin-left:6px; font-size:0.6875rem; background:var(--color-surface-subtle); color:var(--color-ink);">Anywhere</span>
+                    {/if}
+                  </td>
+                  <td style="padding:10px 12px; color:var(--color-ink-secondary);">
+                    {rule.description || '-'}
+                  </td>
+                  <td style="padding:10px 12px;">
+                    <span class="badge badge-success" style="font-size:0.6875rem;">Allowed</span>
+                  </td>
+                  <td style="padding:10px 12px; text-align:right;">
+                    <button
+                      class="btn btn-danger"
+                      style="font-size:0.75rem; padding:3px 8px; min-height:26px; display:inline-flex; align-items:center; gap:4px;"
+                      onclick={() => deleteIpRule(rule.cidr)}
+                    >
+                      <Trash2 size={12} /> Remove
+                    </button>
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      {/if}
+    </div>
+
+    <!-- 5. Internal vs External Architecture Reference (Render-Style) -->
+    <div class="card" style="margin-bottom:1.5rem; background:var(--color-surface); border:1px solid var(--color-border);">
+      <div class="card-header" style="margin-bottom:0.75rem;">
+        <h3 style="margin:0; font-size:0.9375rem; color:var(--color-ink);">Network Architecture Overview</h3>
+        <p class="text-xs text-muted" style="margin-top:0.25rem;">How database networking and isolation work on kloudsPanel.</p>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:1rem;">
+        <div style="padding:0.875rem; background:var(--color-surface-subtle); border-radius:var(--radius-md); border:1px solid var(--color-border);">
+          <div style="font-weight:600; font-size:0.8125rem; color:var(--color-ink); display:flex; align-items:center; gap:6px; margin-bottom:0.35rem;">
+            <ShieldCheck size={14} style="color:var(--color-success);" /> Private Platform Network (Internal)
+          </div>
+          <p class="text-xs text-muted" style="line-height:1.4;">
+            Internal connections between web services, background workers, and databases communicate through the isolated Docker bridge network. Traffic never crosses the public internet and is never blocked by IP whitelist rules.
+          </p>
+          <div class="font-mono text-xs" style="margin-top:0.5rem; color:var(--color-ink); word-break:break-all;">
+            Host: {database?.internal_hostname}:{database?.internal_port}
+          </div>
+        </div>
+
+        <div style="padding:0.875rem; background:var(--color-surface-subtle); border-radius:var(--radius-md); border:1px solid var(--color-border);">
+          <div style="font-weight:600; font-size:0.8125rem; color:var(--color-ink); display:flex; align-items:center; gap:6px; margin-bottom:0.35rem;">
+            <Globe size={14} style="color:var(--color-accent);" /> Public TCP Forwarding (External)
+          </div>
+          <p class="text-xs text-muted" style="line-height:1.4;">
+            External requests from developers, CLI tools, and desktop database clients are routed through our Go TCP proxy on port <span class="font-mono">:{parsedMeta.externalPort}</span> and filtered in real-time against your IP whitelist rules.
+          </p>
+          <div class="font-mono text-xs" style="margin-top:0.5rem; color:var(--color-ink); word-break:break-all;">
+            Public Port: :{parsedMeta.externalPort} (IP Whitelisted)
+          </div>
         </div>
       </div>
     </div>
