@@ -547,10 +547,18 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 		// Project-wide auto-wiring for all dynamic service URLs and database URIs
 		if projectServices, err := h.store.Services().ListForProject(context.Background(), service.ProjectID); err == nil {
 			var primaryBackend *domain.Service
+			var primaryFrontend *domain.Service
 			for _, otherSvc := range projectServices {
-				if otherSvc.ID != service.ID && (otherSvc.Kind == domain.ServiceKindWeb || otherSvc.Kind == "api") {
-					if primaryBackend == nil {
-						primaryBackend = otherSvc
+				if otherSvc.ID != service.ID {
+					if otherSvc.Kind == domain.ServiceKindWeb || otherSvc.Kind == "api" {
+						if primaryBackend == nil {
+							primaryBackend = otherSvc
+						}
+					}
+					if otherSvc.Kind == domain.ServiceKindStatic || otherSvc.Kind == "static" || strings.Contains(strings.ToLower(otherSvc.Name), "client") || strings.Contains(strings.ToLower(otherSvc.Name), "frontend") || strings.Contains(strings.ToLower(otherSvc.Name), "web") {
+						if primaryFrontend == nil {
+							primaryFrontend = otherSvc
+						}
 					}
 				}
 				otherUrl := fmt.Sprintf("https://%s.%s", otherSvc.Slug, rootDomain)
@@ -568,13 +576,43 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 					val = strings.ReplaceAll(val, fmt.Sprintf("${%s.url}", otherSvc.Slug), otherUrl)
 					val = strings.ReplaceAll(val, fmt.Sprintf("${services.%s.host}", otherSvc.Name), otherHost)
 					val = strings.ReplaceAll(val, fmt.Sprintf("${services.%s.host}", otherSvc.Slug), otherHost)
+					val = strings.ReplaceAll(val, fmt.Sprintf("${%s.host}", otherSvc.Name), otherHost)
+					val = strings.ReplaceAll(val, fmt.Sprintf("${%s.host}", otherSvc.Slug), otherHost)
 					val = strings.ReplaceAll(val, fmt.Sprintf("${services.%s.internalUrl}", otherSvc.Name), otherIntUrl)
 					val = strings.ReplaceAll(val, fmt.Sprintf("${services.%s.internalUrl}", otherSvc.Slug), otherIntUrl)
+					val = strings.ReplaceAll(val, fmt.Sprintf("${%s.internalUrl}", otherSvc.Name), otherIntUrl)
+					val = strings.ReplaceAll(val, fmt.Sprintf("${%s.internalUrl}", otherSvc.Slug), otherIntUrl)
+					val = strings.ReplaceAll(val, fmt.Sprintf("https://{%s}.onrender.com", otherSvc.Name), otherUrl)
+					val = strings.ReplaceAll(val, fmt.Sprintf("https://{%s}.onrender.com", otherSvc.Slug), otherUrl)
+					val = strings.ReplaceAll(val, fmt.Sprintf("{%s}.onrender.com", otherSvc.Name), otherHost)
+					val = strings.ReplaceAll(val, fmt.Sprintf("{%s}.onrender.com", otherSvc.Slug), otherHost)
+					val = strings.ReplaceAll(val, fmt.Sprintf("{%s}", otherSvc.Name), otherHost)
+					val = strings.ReplaceAll(val, fmt.Sprintf("{%s}", otherSvc.Slug), otherHost)
 					internalHost := fmt.Sprintf("paas-svc-%s", otherSvc.Slug)
 					if val == otherSvc.Name || val == otherSvc.Slug {
 						val = internalHost
 					}
 					envMap[k] = val
+				}
+			}
+
+			// Auto-wire client API URLs for frontend services (both SSR/Node like Next.js and Static)
+			if primaryBackend != nil {
+				backendPublicUrl := fmt.Sprintf("https://%s.%s", primaryBackend.Slug, rootDomain)
+				for _, clientKey := range []string{"NEXT_PUBLIC_API_URL", "VITE_API_URL", "REACT_APP_API_URL", "PUBLIC_API_URL", "NUXT_PUBLIC_API_URL", "ASTRO_PUBLIC_API_URL", "API_URL", "BACKEND_URL"} {
+					if cur, ok := envMap[clientKey]; !ok || cur == "" || strings.Contains(cur, "localhost") || strings.HasPrefix(cur, "${") {
+						envMap[clientKey] = backendPublicUrl
+					}
+				}
+			}
+
+			// Auto-wire client URLs / CORS for backend services
+			if primaryFrontend != nil {
+				frontendPublicUrl := fmt.Sprintf("https://%s.%s", primaryFrontend.Slug, rootDomain)
+				for _, corsKey := range []string{"CLIENT_URL", "FRONTEND_URL", "CORS_ORIGIN", "ALLOWED_ORIGINS"} {
+					if cur, ok := envMap[corsKey]; !ok || cur == "" || strings.Contains(cur, "localhost") || strings.HasPrefix(cur, "${") {
+						envMap[corsKey] = frontendPublicUrl
+					}
 				}
 			}
 
@@ -878,7 +916,7 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 				appendLog(serviceID, depID, "system", fmt.Sprintf("[version] Using configured %s version %s", presetId, runtimeVersion))
 			}
 			appendLog(serviceID, depID, "build", fmt.Sprintf("[builder] Generating runtime Dockerfile (preset: %s, port: %d, version: %s)", presetId, port, runtimeVersion))
-			dfContent := generateDockerfileForPreset(presetId, buildCommand, startCommand, port, runtimeVersion)
+			dfContent := generateDockerfileForPreset(presetId, buildCommand, startCommand, port, runtimeVersion, envMap)
 			_ = os.WriteFile(dockerfilePath, []byte(dfContent), 0644)
 		} else {
 			// User-provided Dockerfile: scan for dangerous patterns

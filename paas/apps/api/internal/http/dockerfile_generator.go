@@ -62,10 +62,35 @@ elif [ -f pyproject.toml ]; then \
 fi`
 }
 
+// buildArgDirectives generates ARG and ENV directives for build-time environment injection (Next.js, Vite, Nuxt, CRA, etc.)
+func buildArgDirectives(envMap ...map[string]string) string {
+	var sb strings.Builder
+	standardArgs := []string{
+		"NEXT_PUBLIC_API_URL", "VITE_API_URL", "REACT_APP_API_URL",
+		"PUBLIC_API_URL", "NUXT_PUBLIC_API_URL", "ASTRO_PUBLIC_API_URL",
+		"API_URL", "BACKEND_URL", "CLIENT_URL", "FRONTEND_URL",
+	}
+	seen := make(map[string]bool)
+	for _, arg := range standardArgs {
+		sb.WriteString(fmt.Sprintf("ARG %s\nENV %s=$%s\n", arg, arg, arg))
+		seen[arg] = true
+	}
+	for _, m := range envMap {
+		for k := range m {
+			kClean := strings.TrimSpace(k)
+			if kClean != "" && !seen[kClean] && !strings.ContainsAny(kClean, " \t\r\n=\"'#") {
+				sb.WriteString(fmt.Sprintf("ARG %s\nENV %s=$%s\n", kClean, kClean, kClean))
+				seen[kClean] = true
+			}
+		}
+	}
+	return sb.String()
+}
+
 // generateDockerfileForPreset generates a Dockerfile for the given preset.
 // runtimeVersion is an optional user/auto-detected version string (e.g. "20", "3.12").
 // If empty, falls back to the default version for that preset.
-func generateDockerfileForPreset(preset, buildCmd, startCmd string, port int, runtimeVersion string) string {
+func generateDockerfileForPreset(preset, buildCmd, startCmd string, port int, runtimeVersion string, envMap ...map[string]string) string {
 	p := strings.ToLower(preset)
 
 	// Resolve the Docker image tag dynamically
@@ -75,6 +100,7 @@ func generateDockerfileForPreset(preset, buildCmd, startCmd string, port int, ru
 	// Generate non-root user and healthcheck directives
 	nonRoot := NonRootDirective(p)
 	healthcheck := HealthcheckDirective(port, p)
+	buildArgs := buildArgDirectives(envMap...)
 
 	switch p {
 
@@ -107,12 +133,12 @@ RUN if command -v apk >/dev/null 2>&1; then \
     else \
         apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev curl git && rm -rf /var/lib/apt/lists/*; \
     fi
-COPY . /app
+%sCOPY . /app
 RUN %s
 ENV PORT=%d HOST=0.0.0.0 FLASK_RUN_HOST=0.0.0.0 FLASK_RUN_PORT=%d UVICORN_HOST=0.0.0.0 UVICORN_PORT=%d FASTAPI_HOST=0.0.0.0 FASTAPI_PORT=%d GUNICORN_CMD_ARGS="--bind=0.0.0.0:%d" PYTHONUNBUFFERED=1
 EXPOSE %d%s%s
 CMD ["sh", "-c", "%s"]
-`, imageTag, bCmd, port, port, port, port, port, port, nonRoot, healthcheck, sCmd)
+`, imageTag, buildArgs, bCmd, port, port, port, port, port, port, nonRoot, healthcheck, sCmd)
 
 	// --- Node.js -------------------------------------------------------------
 	case "node", "nodejs":
@@ -151,12 +177,12 @@ RUN if ! command -v git >/dev/null 2>&1; then \
         fi; \
     fi && \
     corepack enable 2>/dev/null || true
-COPY . /app
+%sCOPY . /app
 RUN %s
 ENV PORT=%d HOST=0.0.0.0 NODE_ENV=production
 EXPOSE %d%s%s
 CMD ["sh", "-c", "%s"]
-`, imageTag, bCmd, port, port, nonRoot, healthcheck, sCmd)
+`, imageTag, buildArgs, bCmd, port, port, nonRoot, healthcheck, sCmd)
 
 	// --- Go / Golang ---------------------------------------------------------
 	case "go", "golang":
