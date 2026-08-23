@@ -73,6 +73,9 @@ func TestBuildDatabaseRunArgs(t *testing.T) {
 			args := BuildDatabaseRunArgs(tt.engine, "paas-db-test-db", "test-db", tt.defaultUser, tt.password, tt.dbName, 15432, 5432)
 			joined := strings.Join(args, " ")
 
+			if !strings.Contains(joined, "127.0.0.1:15432:5432") {
+				t.Errorf("expected localhost-only port binding '127.0.0.1:15432:5432', got: %s", joined)
+			}
 			if !strings.Contains(joined, tt.expectedImg) {
 				t.Errorf("expected image %q in args, got: %s", tt.expectedImg, joined)
 			}

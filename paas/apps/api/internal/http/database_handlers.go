@@ -436,7 +436,7 @@ func (h *Handler) startDatabaseContainer(dbID, dbSlug, containerName, defaultUse
 			"--label", "io.paas.managed=true",
 			"--label", "io.paas.type=database",
 			"--label", fmt.Sprintf("io.paas.engine=%s", engine),
-			"-p", fmt.Sprintf("%d:%d", allocatedPort, internalPort),
+			"-p", fmt.Sprintf("127.0.0.1:%d:%d", allocatedPort, internalPort),
 		}
 
 		var engineArgs []string
