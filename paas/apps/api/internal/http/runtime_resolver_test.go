@@ -446,5 +446,99 @@ databases:
 	}
 }
 
+func TestRenderYAMLFormatCompatibility(t *testing.T) {
+	renderYAML := `
+services:
+  # Express Backend Web Service
+  - type: web
+    name: ivent-api
+    runtime: node
+    plan: free
+    region: oregon
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ivent-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ADMIN_EMAIL
+        value: admin@example.com
+      - key: CLIENT_URL
+        fromService:
+          type: web
+          name: ivent-client
+          property: host
+          format: https://{host}.onrender.com
+      - key: GEMINI_API_KEY
+        sync: false
+
+  # Next.js Frontend Web Service
+  - type: web
+    name: ivent-client
+    runtime: node
+    plan: free
+    region: oregon
+    rootDir: client
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: ivent-api
+          property: host
+          format: https://{host}.onrender.com
+
+databases:
+  # Managed PostgreSQL Database
+  - name: ivent-db
+    plan: free
+    region: oregon
+    databaseName: ivent
+    user: ivent_user
+`
+	res := parseRenderYAMLString(renderYAML)
+	if len(res.Services) != 2 {
+		t.Fatalf("expected 2 services parsed, got %d", len(res.Services))
+	}
+	if len(res.Databases) != 1 {
+		t.Fatalf("expected 1 database parsed, got %d", len(res.Databases))
+	}
+
+	apiSvc := res.Services[0]
+	if apiSvc.Name != "ivent-api" {
+		t.Errorf("expected service name ivent-api, got %s", apiSvc.Name)
+	}
+	if apiSvc.EnvVars["DATABASE_URL"] != "${databases.ivent-db.connectionString}" {
+		t.Errorf("expected DATABASE_URL fromDatabase connectionString, got %s", apiSvc.EnvVars["DATABASE_URL"])
+	}
+	if apiSvc.EnvVars["CLIENT_URL"] != "https://${services.ivent-client.host}" {
+		t.Errorf("expected CLIENT_URL formatted with service host, got %s", apiSvc.EnvVars["CLIENT_URL"])
+	}
+
+	clientSvc := res.Services[1]
+	if clientSvc.Name != "ivent-client" {
+		t.Errorf("expected service name ivent-client, got %s", clientSvc.Name)
+	}
+	if clientSvc.EnvVars["NEXT_PUBLIC_API_URL"] != "https://${services.ivent-api.host}" {
+		t.Errorf("expected NEXT_PUBLIC_API_URL formatted with service host, got %s", clientSvc.EnvVars["NEXT_PUBLIC_API_URL"])
+	}
+
+	db := res.Databases[0]
+	if db["name"] != "ivent-db" {
+		t.Errorf("expected database name ivent-db, got %v", db["name"])
+	}
+	if db["databaseName"] != "ivent" {
+		t.Errorf("expected databaseName ivent, got %v", db["databaseName"])
+	}
+	if db["user"] != "ivent_user" {
+		t.Errorf("expected user ivent_user, got %v", db["user"])
+	}
+}
+
 
 

@@ -455,8 +455,27 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 					} else if currentRefType == "service" {
 						if prop == "url" || prop == "endpoint" {
 							currentSvc.EnvVars[currentEnvKey] = fmt.Sprintf("${services.%s.url}", currentRefName)
+						} else if prop == "host" || prop == "hostname" {
+							currentSvc.EnvVars[currentEnvKey] = fmt.Sprintf("${services.%s.host}", currentRefName)
+						} else if prop == "internalurl" || prop == "internal_url" {
+							currentSvc.EnvVars[currentEnvKey] = fmt.Sprintf("${services.%s.internalUrl}", currentRefName)
+						} else if prop == "port" {
+							currentSvc.EnvVars[currentEnvKey] = fmt.Sprintf("${services.%s.port}", currentRefName)
 						}
 					}
+				}
+			} else if strings.HasPrefix(trimmed, "format:") {
+				parts := strings.SplitN(trimmed, ":", 2)
+				if len(parts) > 1 && currentEnvKey != "" && currentRefName != "" {
+					fmtTemplate := strings.Trim(strings.TrimSpace(parts[1]), `"'`)
+					if strings.Contains(fmtTemplate, "{host}") {
+						if strings.Contains(fmtTemplate, ".onrender.com") {
+							fmtTemplate = strings.ReplaceAll(fmtTemplate, "{host}.onrender.com", fmt.Sprintf("${services.%s.host}", currentRefName))
+						} else {
+							fmtTemplate = strings.ReplaceAll(fmtTemplate, "{host}", fmt.Sprintf("${services.%s.host}", currentRefName))
+						}
+					}
+					currentSvc.EnvVars[currentEnvKey] = fmtTemplate
 				}
 			} else if strings.HasPrefix(trimmed, "generateValue:") || strings.HasPrefix(trimmed, "generate_value:") {
 				parts := strings.SplitN(trimmed, ":", 2)

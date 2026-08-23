@@ -775,46 +775,13 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 					envMap[k] = val
 				}
 
-				// For non-static services (web/api/backend/worker), automatically inject database environment if unset
+				// For non-static services (web/api/backend/worker), automatically inject single database connection URL if unset (Render-style)
 				if service.Kind != domain.ServiceKindStatic && presetId != "static" && presetId != "static-spa" {
 					canonicalEngine := domain.CanonicalizeEngine(string(db.Engine))
 					switch canonicalEngine {
 					case "postgres":
 						if _, ok := envMap["DATABASE_URL"]; !ok || envMap["DATABASE_URL"] == "" {
 							envMap["DATABASE_URL"] = uri
-						}
-						if _, ok := envMap["PGHOST"]; !ok {
-							envMap["PGHOST"] = dbHost
-						}
-						if _, ok := envMap["PGPORT"]; !ok {
-							envMap["PGPORT"] = fmt.Sprintf("%d", dbPort)
-						}
-						if _, ok := envMap["PGUSER"]; !ok {
-							envMap["PGUSER"] = dbUser
-						}
-						if _, ok := envMap["PGPASSWORD"]; !ok {
-							envMap["PGPASSWORD"] = meta.Password
-						}
-						if _, ok := envMap["PGDATABASE"]; !ok {
-							envMap["PGDATABASE"] = dbDatabase
-						}
-						if _, ok := envMap["PGSSLMODE"]; !ok {
-							envMap["PGSSLMODE"] = "disable"
-						}
-						if _, ok := envMap["DB_HOST"]; !ok {
-							envMap["DB_HOST"] = dbHost
-						}
-						if _, ok := envMap["DB_PORT"]; !ok {
-							envMap["DB_PORT"] = fmt.Sprintf("%d", dbPort)
-						}
-						if _, ok := envMap["DB_USER"]; !ok {
-							envMap["DB_USER"] = dbUser
-						}
-						if _, ok := envMap["DB_PASSWORD"]; !ok {
-							envMap["DB_PASSWORD"] = meta.Password
-						}
-						if _, ok := envMap["DB_NAME"]; !ok {
-							envMap["DB_NAME"] = dbDatabase
 						}
 					case "mysql":
 						if _, ok := envMap["MYSQL_URL"]; !ok || envMap["MYSQL_URL"] == "" {
@@ -823,50 +790,9 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 						if _, ok := envMap["DATABASE_URL"]; !ok || envMap["DATABASE_URL"] == "" {
 							envMap["DATABASE_URL"] = uri
 						}
-						if _, ok := envMap["MYSQL_HOST"]; !ok {
-							envMap["MYSQL_HOST"] = dbHost
-						}
-						if _, ok := envMap["MYSQL_PORT"]; !ok {
-							envMap["MYSQL_PORT"] = fmt.Sprintf("%d", dbPort)
-						}
-						if _, ok := envMap["MYSQL_USER"]; !ok {
-							envMap["MYSQL_USER"] = dbUser
-						}
-						if _, ok := envMap["MYSQL_PASSWORD"]; !ok {
-							envMap["MYSQL_PASSWORD"] = meta.Password
-						}
-						if _, ok := envMap["MYSQL_DATABASE"]; !ok {
-							envMap["MYSQL_DATABASE"] = dbDatabase
-						}
-						if _, ok := envMap["DB_HOST"]; !ok {
-							envMap["DB_HOST"] = dbHost
-						}
-						if _, ok := envMap["DB_PORT"]; !ok {
-							envMap["DB_PORT"] = fmt.Sprintf("%d", dbPort)
-						}
-						if _, ok := envMap["DB_USER"]; !ok {
-							envMap["DB_USER"] = dbUser
-						}
-						if _, ok := envMap["DB_PASSWORD"]; !ok {
-							envMap["DB_PASSWORD"] = meta.Password
-						}
-						if _, ok := envMap["DB_NAME"]; !ok {
-							envMap["DB_NAME"] = dbDatabase
-						}
 					case "redis":
 						if _, ok := envMap["REDIS_URL"]; !ok || envMap["REDIS_URL"] == "" {
 							envMap["REDIS_URL"] = uri
-						}
-						if _, ok := envMap["REDIS_HOST"]; !ok {
-							envMap["REDIS_HOST"] = dbHost
-						}
-						if _, ok := envMap["REDIS_PORT"]; !ok {
-							envMap["REDIS_PORT"] = fmt.Sprintf("%d", dbPort)
-						}
-						if meta.Password != "" {
-							if _, ok := envMap["REDIS_PASSWORD"]; !ok {
-								envMap["REDIS_PASSWORD"] = meta.Password
-							}
 						}
 					case "mongodb":
 						if _, ok := envMap["MONGODB_URI"]; !ok || envMap["MONGODB_URI"] == "" {
@@ -875,39 +801,9 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 						if _, ok := envMap["MONGO_URL"]; !ok || envMap["MONGO_URL"] == "" {
 							envMap["MONGO_URL"] = uri
 						}
-						if _, ok := envMap["MONGO_HOST"]; !ok {
-							envMap["MONGO_HOST"] = dbHost
-						}
-						if _, ok := envMap["MONGO_PORT"]; !ok {
-							envMap["MONGO_PORT"] = fmt.Sprintf("%d", dbPort)
-						}
-						if _, ok := envMap["MONGO_DATABASE"]; !ok {
-							envMap["MONGO_DATABASE"] = dbDatabase
-						}
-						if _, ok := envMap["MONGO_INITDB_ROOT_USERNAME"]; !ok {
-							envMap["MONGO_INITDB_ROOT_USERNAME"] = dbUser
-						}
-						if _, ok := envMap["MONGO_INITDB_ROOT_PASSWORD"]; !ok {
-							envMap["MONGO_INITDB_ROOT_PASSWORD"] = meta.Password
-						}
 					case "clickhouse":
 						if _, ok := envMap["CLICKHOUSE_URL"]; !ok || envMap["CLICKHOUSE_URL"] == "" {
 							envMap["CLICKHOUSE_URL"] = uri
-						}
-						if _, ok := envMap["CLICKHOUSE_HOST"]; !ok {
-							envMap["CLICKHOUSE_HOST"] = dbHost
-						}
-						if _, ok := envMap["CLICKHOUSE_PORT"]; !ok {
-							envMap["CLICKHOUSE_PORT"] = fmt.Sprintf("%d", dbPort)
-						}
-						if _, ok := envMap["CLICKHOUSE_USER"]; !ok {
-							envMap["CLICKHOUSE_USER"] = dbUser
-						}
-						if _, ok := envMap["CLICKHOUSE_PASSWORD"]; !ok {
-							envMap["CLICKHOUSE_PASSWORD"] = meta.Password
-						}
-						if _, ok := envMap["CLICKHOUSE_DATABASE"]; !ok {
-							envMap["CLICKHOUSE_DATABASE"] = dbDatabase
 						}
 					}
 				}
