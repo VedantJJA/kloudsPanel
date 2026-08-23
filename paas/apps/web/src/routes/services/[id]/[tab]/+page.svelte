@@ -1807,7 +1807,7 @@
             </div>
           </div>
           <p class="text-xs text-muted" style="margin-bottom: 0.85rem; line-height: 1.5;">
-            Type any relative path (e.g. <code>/api/login</code>) or full URL (e.g. <code>https://my-app.klouds.online/api/login?ref=1</code>) to preview how your redirect and rewrite rules will execute in real-time.
+            Type any relative path (e.g. <code>/api/login</code>) or full URL (e.g. <code>https://your-service.your-domain.com/api/login?ref=1</code>) to preview how your redirect and rewrite rules will execute in real-time.
           </p>
           <div style="display: flex; gap: 0.5rem; align-items: center;">
             <input

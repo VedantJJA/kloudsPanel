@@ -2,6 +2,8 @@ package http
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"log/slog"
 	"os"
 
@@ -25,7 +27,18 @@ func (h *Handler) bootstrapAdmin() {
 	ctx := context.Background()
 	users, err := h.store.Users().ListAll(ctx, 10, 0)
 	if err == nil && len(users) == 0 {
-		hash, _ := bcrypt.GenerateFromPassword([]byte("admin321"), bcrypt.DefaultCost)
+		adminPassword := os.Getenv("ADMIN_PASSWORD")
+		if adminPassword == "" {
+			b := make([]byte, 16)
+			_, _ = rand.Read(b)
+			adminPassword = hex.EncodeToString(b)[:16]
+			h.log.Info("=============================================================")
+			h.log.Info("FIRST BOOT: Auto-generated admin password", "password", adminPassword)
+			h.log.Info("Save this password now. It will not be shown again.")
+			h.log.Info("You can set ADMIN_PASSWORD env var to control this on next fresh install.")
+			h.log.Info("=============================================================")
+		}
+		hash, _ := bcrypt.GenerateFromPassword([]byte(adminPassword), bcrypt.DefaultCost)
 		adminEmail := os.Getenv("ADMIN_EMAIL")
 		if adminEmail == "" {
 			adminEmail = "admin@klouds.local"

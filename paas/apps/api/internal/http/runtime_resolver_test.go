@@ -182,7 +182,7 @@ func TestParseRenderYamlMultiService(t *testing.T) {
 services:
   # 1. Frontend Web Service
   - type: web
-    name: devpanel-frontend
+    name: app-frontend
     runtime: static
     rootDir: web
     buildCommand: npm install && npm run build
@@ -193,14 +193,14 @@ services:
         destination: /index.html
       - type: rewrite
         source: /api/*
-        destination: https://devpanel-backend.klouds.online
+        destination: https://app-backend.example.com
     envVars:
       - key: API_URL
-        value: https://devpanel-backend.klouds.online
+        value: https://app-backend.example.com
 
   # 2. Backend REST API
   - type: web
-    name: devpanel-backend
+    name: app-backend
     runtime: node
     rootDir: api
     buildCommand: npm install
@@ -215,11 +215,11 @@ databases:
 	if len(res.Services) != 2 {
 		t.Fatalf("expected exactly 2 services (no phantom route services), got %d", len(res.Services))
 	}
-	if res.Services[0].Name != "devpanel-frontend" && res.Services[0].Name != "devpanel" {
-		t.Errorf("expected first service name devpanel-frontend, got %s", res.Services[0].Name)
+	if res.Services[0].Name != "app-frontend" && res.Services[0].Name != "app" {
+		t.Errorf("expected first service name app-frontend, got %s", res.Services[0].Name)
 	}
-	if res.Services[1].Name != "devpanel-backend" {
-		t.Errorf("expected second service name devpanel-backend, got %s", res.Services[1].Name)
+	if res.Services[1].Name != "app-backend" {
+		t.Errorf("expected second service name app-backend, got %s", res.Services[1].Name)
 	}
 	if len(res.Databases) != 1 {
 		t.Fatalf("expected exactly 1 database parsed, got %d", len(res.Databases))

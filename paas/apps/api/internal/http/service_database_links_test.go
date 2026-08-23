@@ -15,9 +15,9 @@ func TestResolveLinkValue(t *testing.T) {
 		InternalPort:     5432,
 		ResourceJSON: `{
 			"internalConnectionUri": "postgresql://postgres:secret123@paas-db-main-postgres:5432/main_db?sslmode=disable",
-			"externalConnectionUri": "postgresql://postgres:secret123@klouds.online:15432/main_db?sslmode=disable",
-			"connectionUri": "postgresql://postgres:secret123@klouds.online:15432/main_db?sslmode=disable",
-			"externalHost": "klouds.online",
+			"externalConnectionUri": "postgresql://postgres:secret123@example.com:15432/main_db?sslmode=disable",
+			"connectionUri": "postgresql://postgres:secret123@example.com:15432/main_db?sslmode=disable",
+			"externalHost": "example.com",
 			"externalPort": 15432,
 			"username": "postgres",
 			"password": "secret123",
@@ -44,7 +44,7 @@ func TestResolveLinkValue(t *testing.T) {
 				ConnectionKind: domain.ConnectionExternal,
 				Property:       "connectionString",
 			},
-			expected: "postgresql://postgres:secret123@klouds.online:15432/main_db?sslmode=disable",
+			expected: "postgresql://postgres:secret123@example.com:15432/main_db?sslmode=disable",
 		},
 		{
 			name: "Internal Host",

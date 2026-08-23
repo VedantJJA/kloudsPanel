@@ -57,6 +57,14 @@ func envOr(key, def string) string {
 func Run(ctx context.Context, logger *slog.Logger) error {
 	cfg := configFromEnv()
 
+	// Startup configuration validation
+	if cfg.RootDomain == "" {
+		logger.Warn("ROOT_DOMAIN is not set. Service routing and SSL will not work. Set ROOT_DOMAIN in your .env file.")
+	}
+	if cfg.MasterKeyHex == "" || cfg.MasterKeyHex == "changeme_generate_32_bytes_hex_64_chars" {
+		logger.Warn("MASTER_KEY_HEX is not set or still using the default placeholder. Generate a secure key with: python3 -c \"import secrets; print(secrets.token_hex(32))\"")
+	}
+
 	// Validate master key
 	masterKey, err := crypto.ParseMasterKeyHex(cfg.MasterKeyHex)
 	if err != nil {

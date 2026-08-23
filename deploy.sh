@@ -88,6 +88,24 @@ ensure_prerequisites() {
     # 5. Ensure Traefik ACME storage volume has strict 600 permissions
     docker volume create klouds-traefik-acme >/dev/null 2>&1 || true
     docker run --rm -v klouds-traefik-acme:/acme alpine sh -c "touch /acme/acme.json && chmod 600 /acme/acme.json" >/dev/null 2>&1 || true
+
+    # 6. Pre-flight: validate required configuration
+    if [ -f "$ENV_FILE" ]; then
+        source "$ENV_FILE" 2>/dev/null || true
+    fi
+    if [ -z "${ROOT_DOMAIN:-}" ]; then
+        echo -e "${RED}Error: ROOT_DOMAIN is not set in $ENV_FILE. Services cannot be routed without a domain.${NC}"
+        echo -e "${YELLOW}Set ROOT_DOMAIN=your-domain.com in $ENV_FILE and re-run.${NC}"
+        exit 1
+    fi
+    if [ -z "${ACME_EMAIL:-}" ]; then
+        echo -e "${YELLOW}Warning: ACME_EMAIL is not set. Let's Encrypt certificates will not be issued.${NC}"
+    fi
+    if [ "${MASTER_KEY_HEX:-}" = "changeme_generate_32_bytes_hex_64_chars" ]; then
+        echo -e "${RED}Error: MASTER_KEY_HEX is still the default placeholder. Generate a secure key:${NC}"
+        echo -e "${YELLOW}  python3 -c \"import secrets; print(secrets.token_hex(32))\"${NC}"
+        exit 1
+    fi
 }
 
 run_deployment() {
