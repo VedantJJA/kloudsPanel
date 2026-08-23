@@ -169,14 +169,7 @@ CMD ["sh", "-c", "%s"]
 		}
 		return fmt.Sprintf(`FROM %s
 WORKDIR /app
-RUN if ! command -v git >/dev/null 2>&1; then \
-        if command -v apt-get >/dev/null 2>&1; then \
-            apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*; \
-        else \
-            apk add --no-cache git ca-certificates; \
-        fi; \
-    fi && \
-    corepack enable 2>/dev/null || true
+RUN corepack enable 2>/dev/null || true
 %sCOPY . /app
 RUN %s
 ENV PORT=%d HOST=0.0.0.0 NODE_ENV=production
@@ -629,27 +622,8 @@ CMD ["sh", "-c", "%s"]
 		}
 			return fmt.Sprintf(`FROM node:22-bookworm-slim AS builder
 WORKDIR /app
-RUN if ! command -v git >/dev/null 2>&1; then \
-        apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*; \
-    fi && \
-    corepack enable 2>/dev/null || true
-ARG VITE_API_URL
-ENV VITE_API_URL=$VITE_API_URL
-ARG API_URL
-ENV API_URL=$API_URL
-ARG BACKEND_URL
-ENV BACKEND_URL=$BACKEND_URL
-ARG REACT_APP_API_URL
-ENV REACT_APP_API_URL=$REACT_APP_API_URL
-ARG NEXT_PUBLIC_API_URL
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
-ARG PUBLIC_API_URL
-ENV PUBLIC_API_URL=$PUBLIC_API_URL
-ARG NUXT_PUBLIC_API_URL
-ENV NUXT_PUBLIC_API_URL=$NUXT_PUBLIC_API_URL
-ARG ASTRO_PUBLIC_API_URL
-ENV ASTRO_PUBLIC_API_URL=$ASTRO_PUBLIC_API_URL
-COPY . ./
+RUN corepack enable 2>/dev/null || true
+%sCOPY . ./
 RUN %s
 RUN mkdir -p /dist && \
     FOUND="" && \
@@ -691,7 +665,7 @@ COPY --from=builder /dist /usr/share/nginx/html
 RUN chmod -R 755 /usr/share/nginx/html 2>/dev/null || true
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
-`, bCmd)
+`, buildArgs, bCmd)
 
 	// --- Dockerfile (user-provided) ------------------------------------------
 	case "dockerfile":

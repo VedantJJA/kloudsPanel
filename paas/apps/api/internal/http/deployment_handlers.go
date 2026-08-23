@@ -978,20 +978,11 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 			return cmd.Wait()
 		}
 
-		// Quick probe: check if BuildKit/buildx is available (non-streaming, fast)
-		probeArgs := []string{"buildx", "version"}
-		probeOut, probeErr := exec.Command("docker", probeArgs...).CombinedOutput()
-		usesBuildKit := probeErr == nil && !strings.Contains(string(probeOut), "not found")
-
-		var buildErr error
-		if usesBuildKit {
-			buildErr = streamDockerBuild(append(os.Environ(), "DOCKER_BUILDKIT=1", "BUILDKIT_PROGRESS=plain"))
-		}
-		if !usesBuildKit || buildErr != nil {
-			if !usesBuildKit {
-				appendLog(serviceID, depID, "build", "[builder] Docker buildx plugin not found on host. Falling back to standard container builder...")
-			}
-			buildErr = streamDockerBuild(append(os.Environ(), "DOCKER_BUILDKIT=0"))
+		// Build container image using modern BuildKit engine (with clean fallback to default)
+		buildErr := streamDockerBuild(append(os.Environ(), "DOCKER_BUILDKIT=1", "BUILDKIT_PROGRESS=plain"))
+		if buildErr != nil {
+			appendLog(serviceID, depID, "build", "[builder] BuildKit attempt encountered an issue, retrying with host default container builder...")
+			buildErr = streamDockerBuild(os.Environ())
 		}
 
 		if buildErr != nil {
