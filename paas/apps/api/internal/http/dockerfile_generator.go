@@ -85,7 +85,7 @@ func generateDockerfileForPreset(preset, buildCmd, startCmd string, port int, ru
 			sCmd = fmt.Sprintf(
 				"if [ -f main.py ]; then (uvicorn main:app --host 0.0.0.0 --port %d 2>/dev/null || gunicorn main:app --bind 0.0.0.0:%d --workers 2 2>/dev/null || python main.py); "+
 					"elif [ -f app.py ]; then (gunicorn app:app --bind 0.0.0.0:%d --workers 2 2>/dev/null || uvicorn app:app --host 0.0.0.0 --port %d 2>/dev/null || flask run --host=0.0.0.0 --port=%d 2>/dev/null || python app.py); "+
-					"elif [ -f manage.py ]; then (gunicorn config.wsgi:application --bind 0.0.0.0:%d --workers 2 2>/dev/null || python manage.py runserver 0.0.0.0:%d); "+
+					"elif [ -f manage.py ]; then (python manage.py collectstatic --noinput 2>/dev/null || true) && (gunicorn config.wsgi:application --bind 0.0.0.0:%d --workers 2 2>/dev/null || python manage.py runserver 0.0.0.0:%d); "+
 					"else (python -m uvicorn app:app --host 0.0.0.0 --port %d 2>/dev/null || python -m flask run --host=0.0.0.0 --port=%d 2>/dev/null || python server.py || python main.py || python app.py); fi",
 				port, port, port, port, port, port, port, port, port)
 		} else {
@@ -102,7 +102,11 @@ func generateDockerfileForPreset(preset, buildCmd, startCmd string, port int, ru
 		bCmd := detectPythonInstallCommand(buildCmd)
 		return fmt.Sprintf(`FROM %s
 WORKDIR /app
-RUN apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev curl && rm -rf /var/lib/apt/lists/*
+RUN if command -v apk >/dev/null 2>&1; then \
+        apk add --no-cache gcc musl-dev libpq-dev curl git; \
+    else \
+        apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev curl git && rm -rf /var/lib/apt/lists/*; \
+    fi
 COPY . /app
 RUN %s
 ENV PORT=%d HOST=0.0.0.0 FLASK_RUN_HOST=0.0.0.0 FLASK_RUN_PORT=%d UVICORN_HOST=0.0.0.0 UVICORN_PORT=%d FASTAPI_HOST=0.0.0.0 FASTAPI_PORT=%d GUNICORN_CMD_ARGS="--bind=0.0.0.0:%d" PYTHONUNBUFFERED=1
@@ -114,7 +118,7 @@ CMD ["sh", "-c", "%s"]
 	case "node", "nodejs":
 		sCmd := startCmd
 		if sCmd == "" {
-			sCmd = "npm start || node index.js || node server.js || node app.js || node dist/index.js || node dist/server.js"
+			sCmd = "npm start || npm run start || node index.js || node server.js || node app.js || node dist/index.js || node dist/server.js"
 		}
 		bCmd := buildCmd
 		if bCmd == "" {
@@ -172,7 +176,11 @@ CMD ["sh", "-c", "%s"]
 		}
 		return fmt.Sprintf(`FROM %s AS builder
 WORKDIR /app
-RUN apk add --no-cache git ca-certificates
+RUN if command -v apk >/dev/null 2>&1; then \
+        apk add --no-cache git ca-certificates tzdata; \
+    else \
+        apt-get update && apt-get install -y --no-install-recommends git ca-certificates tzdata && rm -rf /var/lib/apt/lists/*; \
+    fi
 COPY . .
 RUN if [ -f go.mod ]; then go mod download; fi
 RUN %s
@@ -204,7 +212,11 @@ fi`
 		runtimeImage := getJavaBaseImage(javaVersion, "runtime")
 		return fmt.Sprintf(`FROM %s AS builder
 WORKDIR /app
-RUN apk add --no-cache bash curl && \
+RUN if command -v apk >/dev/null 2>&1; then \
+        apk add --no-cache bash curl git; \
+    else \
+        apt-get update && apt-get install -y --no-install-recommends bash curl git && rm -rf /var/lib/apt/lists/*; \
+    fi && \
     curl -sL https://dlcdn.apache.org/maven/maven-3/3.9.9/binaries/apache-maven-3.9.9-bin.tar.gz | tar xz -C /opt && \
     ln -s /opt/apache-maven-3.9.9/bin/mvn /usr/local/bin/mvn
 COPY . .
@@ -257,7 +269,11 @@ CMD ["%s"]
 		}
 		return fmt.Sprintf(`FROM %s
 WORKDIR /app
-RUN apk add --no-cache build-base libpq-dev tzdata nodejs
+RUN if command -v apk >/dev/null 2>&1; then \
+        apk add --no-cache build-base libpq-dev tzdata nodejs git; \
+    else \
+        apt-get update && apt-get install -y --no-install-recommends build-essential libpq-dev tzdata nodejs git && rm -rf /var/lib/apt/lists/*; \
+    fi
 COPY . /app
 RUN if [ -f Gemfile ]; then bundle install --without development test; fi
 ENV PORT=%d RAILS_ENV=production RACK_ENV=production
@@ -273,7 +289,11 @@ CMD ["sh", "-c", "%s"]
 		}
 		return fmt.Sprintf(`FROM %s AS builder
 WORKDIR /app
-RUN apk add --no-cache musl-dev pkgconfig openssl-dev
+RUN if command -v apk >/dev/null 2>&1; then \
+        apk add --no-cache musl-dev pkgconfig openssl-dev build-base git ca-certificates; \
+    else \
+        apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev build-essential git ca-certificates && rm -rf /var/lib/apt/lists/*; \
+    fi
 COPY . .
 RUN %s && \
     binary=$(find target/release -maxdepth 1 -type f -executable ! -name "*.d" ! -name "*.so" | head -1) && \
@@ -591,15 +611,23 @@ ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
 ARG API_URL
 ENV API_URL=$API_URL
+ARG BACKEND_URL
+ENV BACKEND_URL=$BACKEND_URL
 ARG REACT_APP_API_URL
 ENV REACT_APP_API_URL=$REACT_APP_API_URL
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ARG PUBLIC_API_URL
+ENV PUBLIC_API_URL=$PUBLIC_API_URL
+ARG NUXT_PUBLIC_API_URL
+ENV NUXT_PUBLIC_API_URL=$NUXT_PUBLIC_API_URL
+ARG ASTRO_PUBLIC_API_URL
+ENV ASTRO_PUBLIC_API_URL=$ASTRO_PUBLIC_API_URL
 COPY . ./
 RUN %s
 RUN mkdir -p /dist && \
     FOUND="" && \
-    for candidate in dist/public dist build out public artifacts/*/dist/public artifacts/*/dist packages/*/dist apps/*/dist client/dist frontend/dist; do \
+    for candidate in dist/public dist build out public .output/public build/client .svelte-kit/output/client dist/browser dist/*/browser _site artifacts/*/dist/public artifacts/*/dist packages/*/dist apps/*/dist client/dist frontend/dist; do \
         if [ -d "$candidate" ] && [ -f "$candidate/index.html" ]; then \
             FOUND="$candidate"; \
             break; \

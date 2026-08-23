@@ -54,7 +54,7 @@ func TestRuntimeVersionResolver(t *testing.T) {
 	_ = os.WriteFile(filepath.Join(goDir, "go.mod"), []byte("module myapp\n\ngo 1.22.4\n"), 0644)
 
 	goAuto := resolveRuntimeVersion("go", goDir, "")
-	if goAuto.Version != "1.22" || goAuto.FullImage != "golang:1.22-bookworm" || goAuto.Source != "project-file" {
+	if goAuto.Version != "1.22" || goAuto.FullImage != "golang:1.22-alpine" || goAuto.Source != "project-file" {
 		t.Errorf("expected go 1.22 auto-detected from go.mod, got %+v", goAuto)
 	}
 }

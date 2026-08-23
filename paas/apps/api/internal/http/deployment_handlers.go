@@ -464,7 +464,7 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 
 		// 3b. Monorepo Subfolder Auto-Discovery if root has no project manifest
 		if contextDir == workspaceDir && rootDirectory == "" {
-			subFolders := []string{"web", "frontend", "client", "ui", "api", "backend", "server", "app", "src/backend", "src/frontend"}
+			subFolders := []string{"web", "frontend", "client", "ui", "api", "backend", "server", "app", "apps/web", "apps/api", "apps/frontend", "apps/backend", "apps/client", "packages/web", "packages/api", "packages/frontend", "packages/backend", "services/web", "services/api", "src/backend", "src/frontend"}
 			manifests := []string{"package.json", "requirements.txt", "pyproject.toml", "go.mod", "Cargo.toml", "pom.xml", "build.gradle", "build.gradle.kts", "Gemfile", "composer.json", "mix.exs", "deno.json", "pubspec.yaml", "shard.yml", "Dockerfile"}
 			for _, sub := range subFolders {
 				subPath := filepath.Join(workspaceDir, sub)
@@ -669,6 +669,27 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 					if cur, ok := envMap["VITE_API_URL"]; !ok || cur == "" || strings.HasPrefix(cur, "${") {
 						envMap["VITE_API_URL"] = backendPublicUrl
 					}
+					if cur, ok := envMap["NEXT_PUBLIC_API_URL"]; !ok || cur == "" || strings.HasPrefix(cur, "${") {
+						envMap["NEXT_PUBLIC_API_URL"] = backendPublicUrl
+					}
+					if cur, ok := envMap["REACT_APP_API_URL"]; !ok || cur == "" || strings.HasPrefix(cur, "${") {
+						envMap["REACT_APP_API_URL"] = backendPublicUrl
+					}
+					if cur, ok := envMap["PUBLIC_API_URL"]; !ok || cur == "" || strings.HasPrefix(cur, "${") {
+						envMap["PUBLIC_API_URL"] = backendPublicUrl
+					}
+					if cur, ok := envMap["NUXT_PUBLIC_API_URL"]; !ok || cur == "" || strings.HasPrefix(cur, "${") {
+						envMap["NUXT_PUBLIC_API_URL"] = backendPublicUrl
+					}
+					if cur, ok := envMap["ASTRO_PUBLIC_API_URL"]; !ok || cur == "" || strings.HasPrefix(cur, "${") {
+						envMap["ASTRO_PUBLIC_API_URL"] = backendPublicUrl
+					}
+					if cur, ok := envMap["API_URL"]; !ok || cur == "" || strings.HasPrefix(cur, "${") {
+						envMap["API_URL"] = backendPublicUrl
+					}
+					if cur, ok := envMap["BACKEND_URL"]; !ok || cur == "" || strings.HasPrefix(cur, "${") {
+						envMap["BACKEND_URL"] = backendPublicUrl
+					}
 					otherPort := 8080
 					if primaryBackend.InternalPort != nil && *primaryBackend.InternalPort > 0 {
 						otherPort = *primaryBackend.InternalPort
@@ -708,6 +729,10 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 						dbPort = 3306
 					} else if db.Engine == "redis" {
 						dbPort = 6379
+					} else if db.Engine == "mongodb" || db.Engine == "mongo" {
+						dbPort = 27017
+					} else if db.Engine == "clickhouse" {
+						dbPort = 8123
 					} else {
 						dbPort = 5432
 					}
@@ -752,10 +777,12 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 
 				// For non-static services (web/api/backend/worker), automatically inject database environment if unset
 				if service.Kind != domain.ServiceKindStatic && presetId != "static" && presetId != "static-spa" {
-					if _, ok := envMap["DATABASE_URL"]; !ok || envMap["DATABASE_URL"] == "" {
-						envMap["DATABASE_URL"] = uri
-					}
-					if db.Engine == "postgres" || db.Engine == "postgresql" || db.Engine == "" {
+					canonicalEngine := domain.CanonicalizeEngine(string(db.Engine))
+					switch canonicalEngine {
+					case "postgres":
+						if _, ok := envMap["DATABASE_URL"]; !ok || envMap["DATABASE_URL"] == "" {
+							envMap["DATABASE_URL"] = uri
+						}
 						if _, ok := envMap["PGHOST"]; !ok {
 							envMap["PGHOST"] = dbHost
 						}
@@ -788,6 +815,99 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 						}
 						if _, ok := envMap["DB_NAME"]; !ok {
 							envMap["DB_NAME"] = dbDatabase
+						}
+					case "mysql":
+						if _, ok := envMap["MYSQL_URL"]; !ok || envMap["MYSQL_URL"] == "" {
+							envMap["MYSQL_URL"] = uri
+						}
+						if _, ok := envMap["DATABASE_URL"]; !ok || envMap["DATABASE_URL"] == "" {
+							envMap["DATABASE_URL"] = uri
+						}
+						if _, ok := envMap["MYSQL_HOST"]; !ok {
+							envMap["MYSQL_HOST"] = dbHost
+						}
+						if _, ok := envMap["MYSQL_PORT"]; !ok {
+							envMap["MYSQL_PORT"] = fmt.Sprintf("%d", dbPort)
+						}
+						if _, ok := envMap["MYSQL_USER"]; !ok {
+							envMap["MYSQL_USER"] = dbUser
+						}
+						if _, ok := envMap["MYSQL_PASSWORD"]; !ok {
+							envMap["MYSQL_PASSWORD"] = meta.Password
+						}
+						if _, ok := envMap["MYSQL_DATABASE"]; !ok {
+							envMap["MYSQL_DATABASE"] = dbDatabase
+						}
+						if _, ok := envMap["DB_HOST"]; !ok {
+							envMap["DB_HOST"] = dbHost
+						}
+						if _, ok := envMap["DB_PORT"]; !ok {
+							envMap["DB_PORT"] = fmt.Sprintf("%d", dbPort)
+						}
+						if _, ok := envMap["DB_USER"]; !ok {
+							envMap["DB_USER"] = dbUser
+						}
+						if _, ok := envMap["DB_PASSWORD"]; !ok {
+							envMap["DB_PASSWORD"] = meta.Password
+						}
+						if _, ok := envMap["DB_NAME"]; !ok {
+							envMap["DB_NAME"] = dbDatabase
+						}
+					case "redis":
+						if _, ok := envMap["REDIS_URL"]; !ok || envMap["REDIS_URL"] == "" {
+							envMap["REDIS_URL"] = uri
+						}
+						if _, ok := envMap["REDIS_HOST"]; !ok {
+							envMap["REDIS_HOST"] = dbHost
+						}
+						if _, ok := envMap["REDIS_PORT"]; !ok {
+							envMap["REDIS_PORT"] = fmt.Sprintf("%d", dbPort)
+						}
+						if meta.Password != "" {
+							if _, ok := envMap["REDIS_PASSWORD"]; !ok {
+								envMap["REDIS_PASSWORD"] = meta.Password
+							}
+						}
+					case "mongodb":
+						if _, ok := envMap["MONGODB_URI"]; !ok || envMap["MONGODB_URI"] == "" {
+							envMap["MONGODB_URI"] = uri
+						}
+						if _, ok := envMap["MONGO_URL"]; !ok || envMap["MONGO_URL"] == "" {
+							envMap["MONGO_URL"] = uri
+						}
+						if _, ok := envMap["MONGO_HOST"]; !ok {
+							envMap["MONGO_HOST"] = dbHost
+						}
+						if _, ok := envMap["MONGO_PORT"]; !ok {
+							envMap["MONGO_PORT"] = fmt.Sprintf("%d", dbPort)
+						}
+						if _, ok := envMap["MONGO_DATABASE"]; !ok {
+							envMap["MONGO_DATABASE"] = dbDatabase
+						}
+						if _, ok := envMap["MONGO_INITDB_ROOT_USERNAME"]; !ok {
+							envMap["MONGO_INITDB_ROOT_USERNAME"] = dbUser
+						}
+						if _, ok := envMap["MONGO_INITDB_ROOT_PASSWORD"]; !ok {
+							envMap["MONGO_INITDB_ROOT_PASSWORD"] = meta.Password
+						}
+					case "clickhouse":
+						if _, ok := envMap["CLICKHOUSE_URL"]; !ok || envMap["CLICKHOUSE_URL"] == "" {
+							envMap["CLICKHOUSE_URL"] = uri
+						}
+						if _, ok := envMap["CLICKHOUSE_HOST"]; !ok {
+							envMap["CLICKHOUSE_HOST"] = dbHost
+						}
+						if _, ok := envMap["CLICKHOUSE_PORT"]; !ok {
+							envMap["CLICKHOUSE_PORT"] = fmt.Sprintf("%d", dbPort)
+						}
+						if _, ok := envMap["CLICKHOUSE_USER"]; !ok {
+							envMap["CLICKHOUSE_USER"] = dbUser
+						}
+						if _, ok := envMap["CLICKHOUSE_PASSWORD"]; !ok {
+							envMap["CLICKHOUSE_PASSWORD"] = meta.Password
+						}
+						if _, ok := envMap["CLICKHOUSE_DATABASE"]; !ok {
+							envMap["CLICKHOUSE_DATABASE"] = dbDatabase
 						}
 					}
 				}
