@@ -1028,9 +1028,10 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 					}
 				}
 
-				// If user explicitly configured runtimeVersion (e.g. 1.25.0), upgrade base image tag in Dockerfile
-				if runtimeVersion != "" && !strings.EqualFold(runtimeVersion, "auto") {
-					cleanVer := strings.TrimPrefix(strings.TrimSpace(runtimeVersion), "go")
+				// If user explicitly configured a valid numeric runtimeVersion (e.g. 1.25.0, 22, 3.12), upgrade base image tag in Dockerfile
+				cleanVer := strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(runtimeVersion), "go"), "v")
+				isNumericVersion := regexp.MustCompile(`^\d+(\.\d+)*$`).MatchString(cleanVer)
+				if isNumericVersion && cleanVer != "" && !strings.EqualFold(cleanVer, "auto") && !strings.EqualFold(cleanVer, "custom") && !strings.EqualFold(cleanVer, "docker") {
 					if strings.Contains(dfContent, "golang:") {
 						reGo := regexp.MustCompile(`golang:\d+(\.\d+)*(-alpine[a-z0-9.]*)?`)
 						if reGo.MatchString(dfContent) {
