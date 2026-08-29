@@ -1041,6 +1041,16 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 					}
 				}
 
+				// Auto-fix malformed docker CLI image tags (e.g. docker:26-cli-alpine -> docker:26-cli)
+				reDockerCli := regexp.MustCompile(`docker:(\d+)-cli-alpine`)
+				if reDockerCli.MatchString(dfContent) {
+					dfContent = reDockerCli.ReplaceAllString(dfContent, "docker:$1-cli")
+					appendLog(serviceID, depID, "build", "[builder] Auto-corrected image tag from 'docker:*-cli-alpine' to 'docker:*-cli'")
+				}
+				if strings.Contains(dfContent, "docker:cli-alpine") {
+					dfContent = strings.ReplaceAll(dfContent, "docker:cli-alpine", "docker:cli")
+				}
+
 				_ = os.WriteFile(dockerfilePath, []byte(dfContent), 0644)
 
 				warnings, dangers := ScanDockerfileForDangers(dfContent, isAdmin)
