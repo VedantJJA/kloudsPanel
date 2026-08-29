@@ -87,6 +87,7 @@ func NewServer(log *slog.Logger, store repository.Store, addr string) *fiber.App
 	proj.Get("/:id", h.handleGetProject)
 	proj.Patch("/:id", h.handleUpdateProject)
 	proj.Delete("/:id", h.handleDeleteProject)
+	proj.Post("/:id/upload", h.handleUploadProjectSource)
 	proj.Post("/:id/blueprint/deploy", h.handleDeployBlueprint)
 
 	// Service routes
@@ -97,6 +98,7 @@ func NewServer(log *slog.Logger, store repository.Store, addr string) *fiber.App
 	svc.Get("/:id", h.handleGetService)
 	svc.Patch("/:id", h.handleUpdateService)
 	svc.Delete("/:id", h.handleDeleteService)
+	svc.Post("/:id/upload", h.handleUploadServiceSource)
 	svc.Post("/:id/deploy", h.handleTriggerDeployment)
 	svc.Post("/:id/stop", h.handleStopService)
 	svc.Post("/:id/start", h.handleStartService)
@@ -110,6 +112,9 @@ func NewServer(log *slog.Logger, store repository.Store, addr string) *fiber.App
 	svc.Post("/:id/database-links", h.handleCreateServiceDatabaseLink)
 	svc.Get("/:id/database-links", h.handleListServiceDatabaseLinks)
 	svc.Delete("/:id/database-links/:linkId", h.handleDeleteServiceDatabaseLink)
+
+	// Blueprint upload parsing
+	v1.Post("/blueprints/upload/parse", h.requireSession, h.handleParseUploadedArchive)
 
 	// Deployment routes
 	dep := v1.Group("/services/:id/deployments", h.requireSession)

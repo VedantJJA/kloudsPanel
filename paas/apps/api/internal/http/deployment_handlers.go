@@ -136,7 +136,27 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 		return
 	}
 
-	// Build security profile from service resource config
+	// Determine whether the service owner / deployer is an Admin
+	isAdmin := false
+	var deployerUserID string
+	if dep.TriggeredBy != nil && *dep.TriggeredBy != "" {
+		deployerUserID = *dep.TriggeredBy
+	} else if service.CreatedBy != "" {
+		deployerUserID = service.CreatedBy
+	}
+	if deployerUserID != "" {
+		if u, err := h.store.Users().GetByID(context.Background(), deployerUserID); err == nil && u != nil {
+			isAdmin = (u.PlatformRole == domain.PlatformRoleMainAdmin || u.PlatformRole == domain.PlatformRoleAdmin)
+		}
+	} else {
+		if proj, err := h.store.Projects().GetByID(context.Background(), service.ProjectID); err == nil && proj != nil && proj.CreatedBy != "" {
+			if u, err := h.store.Users().GetByID(context.Background(), proj.CreatedBy); err == nil && u != nil {
+				isAdmin = (u.PlatformRole == domain.PlatformRoleMainAdmin || u.PlatformRole == domain.PlatformRoleAdmin)
+			}
+		}
+	}
+
+	// Build security profile from service resource config and user admin role
 	var resMap map[string]any
 	if service.ResourceJSON != "" {
 		_ = json.Unmarshal([]byte(service.ResourceJSON), &resMap)
@@ -144,7 +164,12 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 	if resMap == nil {
 		resMap = make(map[string]any)
 	}
-	secProfile := BuildSecurityProfile(resMap)
+	secProfile := BuildSecurityProfile(resMap, isAdmin)
+	if isAdmin {
+		appendLog(serviceID, depID, "system", fmt.Sprintf("[security] Administrator profile active (privileged mode enabled: %v)", secProfile.Privileged))
+	} else {
+		appendLog(serviceID, depID, "system", "[security] Standard user profile: running in restricted mode for platform safety.")
+	}
 
 	// Track runtime version for dynamic resolution
 	var runtimeVersion string
@@ -267,7 +292,7 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 
 	imageTag := fmt.Sprintf("paas-svc-%s:latest", service.Slug)
 
-	// Step 1: Check for Direct Docker Image Deployment (No git repo required)
+	// Step 1: Check Source Kind (Docker Image, Git, or User Uploaded Archive)
 	dockerImageName, _ := resMap["image"].(string)
 	if dockerImageName == "" {
 		if dImg, ok := resMap["dockerImage"].(string); ok {
@@ -275,7 +300,34 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 		}
 	}
 
-	if gitRepoUrl == "" && dockerImageName != "" {
+	// Check if user uploaded archive exists for service or project
+	var sourceArchiveFound string
+	uploadsBase := getUploadsBaseDir()
+	candidatePaths := []string{
+		filepath.Join(uploadsBase, "services", service.ID, "source.zip"),
+		filepath.Join(uploadsBase, "services", service.ID, "source.tar.gz"),
+		filepath.Join(uploadsBase, "services", service.ID, "source.tgz"),
+		filepath.Join(uploadsBase, "services", service.ID, "source.tar"),
+		filepath.Join(uploadsBase, "projects", service.ProjectID, "source.zip"),
+		filepath.Join(uploadsBase, "projects", service.ProjectID, "source.tar.gz"),
+		filepath.Join(uploadsBase, "projects", service.ProjectID, "source.tgz"),
+		filepath.Join(uploadsBase, "projects", service.ProjectID, "source.tar"),
+	}
+	if customUpload, ok := resMap["uploadPath"].(string); ok && customUpload != "" {
+		candidatePaths = append([]string{customUpload}, candidatePaths...)
+	}
+	if customUpload, ok := resMap["uploaded_file"].(string); ok && customUpload != "" {
+		candidatePaths = append([]string{customUpload}, candidatePaths...)
+	}
+
+	for _, p := range candidatePaths {
+		if info, err := os.Stat(p); err == nil && !info.IsDir() && info.Size() > 0 {
+			sourceArchiveFound = p
+			break
+		}
+	}
+
+	if gitRepoUrl == "" && dockerImageName != "" && sourceArchiveFound == "" {
 		appendLog(serviceID, depID, "build", fmt.Sprintf("[docker-image] Pulling image '%s' from registry...", dockerImageName))
 		pullCmd := exec.Command("docker", "pull", dockerImageName)
 		pullOut, pullErr := pullCmd.CombinedOutput()
@@ -290,45 +342,57 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 		}
 		imageTag = dockerImageName
 		appendLog(serviceID, depID, "build", fmt.Sprintf("Docker image '%s' is ready.", dockerImageName))
-	} else if gitRepoUrl != "" {
-		authGitUrl := gitRepoUrl
-		if token := h.findGitAuthToken(gitRepoUrl, service.ProjectID); token != "" {
-			authGitUrl = injectGitToken(gitRepoUrl, token)
-		}
+	} else {
+		if gitRepoUrl != "" {
+			authGitUrl := gitRepoUrl
+			if token := h.findGitAuthToken(gitRepoUrl, service.ProjectID); token != "" {
+				authGitUrl = injectGitToken(gitRepoUrl, token)
+			}
 
-		safeLogUrl := sanitizeGitUrl(gitRepoUrl)
-		appendLog(serviceID, depID, "system", fmt.Sprintf("[git] Cloning %s (branch: %s)...", safeLogUrl, gitBranch))
+			safeLogUrl := sanitizeGitUrl(gitRepoUrl)
+			appendLog(serviceID, depID, "system", fmt.Sprintf("[git] Cloning %s (branch: %s)...", safeLogUrl, gitBranch))
 
-		cmd := exec.Command("git", "clone", "--depth", "1", "--branch", gitBranch, authGitUrl, workspaceDir)
-		cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=echo")
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			// Fallback clone without branch
-			cmd = exec.Command("git", "clone", "--depth", "1", authGitUrl, workspaceDir)
+			cmd := exec.Command("git", "clone", "--depth", "1", "--branch", gitBranch, authGitUrl, workspaceDir)
 			cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=echo")
-			out, err = cmd.CombinedOutput()
-		}
-		if err != nil && authGitUrl == gitRepoUrl {
-			// Fallback clone with .git appended if missing
-			if !strings.HasSuffix(authGitUrl, ".git") {
-				cmd = exec.Command("git", "clone", "--depth", "1", authGitUrl+".git", workspaceDir)
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				// Fallback clone without branch
+				cmd = exec.Command("git", "clone", "--depth", "1", authGitUrl, workspaceDir)
 				cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=echo")
 				out, err = cmd.CombinedOutput()
 			}
-		}
-
-		for _, line := range strings.Split(string(out), "\n") {
-			cleanLine := sanitizeGitUrl(strings.TrimSpace(line))
-			if cleanLine != "" {
-				appendLog(serviceID, depID, "stdout", cleanLine)
+			if err != nil && authGitUrl == gitRepoUrl {
+				// Fallback clone with .git appended if missing
+				if !strings.HasSuffix(authGitUrl, ".git") {
+					cmd = exec.Command("git", "clone", "--depth", "1", authGitUrl+".git", workspaceDir)
+					cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=echo")
+					out, err = cmd.CombinedOutput()
+				}
 			}
-		}
 
-		if err != nil {
-			h.failDeployment(service, dep, fmt.Sprintf("[git] Error cloning repository: %v", err))
+			for _, line := range strings.Split(string(out), "\n") {
+				cleanLine := sanitizeGitUrl(strings.TrimSpace(line))
+				if cleanLine != "" {
+					appendLog(serviceID, depID, "stdout", cleanLine)
+				}
+			}
+
+			if err != nil {
+				h.failDeployment(service, dep, fmt.Sprintf("[git] Error cloning repository: %v", err))
+				return
+			}
+			appendLog(serviceID, depID, "system", "[git] Repository checkout complete.")
+		} else if sourceArchiveFound != "" {
+			appendLog(serviceID, depID, "system", fmt.Sprintf("[upload] Loading user uploaded source archive (%s)...", filepath.Base(sourceArchiveFound)))
+			if err := ExtractArchive(sourceArchiveFound, workspaceDir); err != nil {
+				h.failDeployment(service, dep, fmt.Sprintf("[upload] Failed to extract user uploaded archive: %v", err))
+				return
+			}
+			appendLog(serviceID, depID, "system", "[upload] User uploaded archive unpacked successfully.")
+		} else {
+			h.failDeployment(service, dep, "[source] No source repository, user uploaded archive (.zip/.tar.gz), or Docker image provided for this service.")
 			return
 		}
-		appendLog(serviceID, depID, "system", "[git] Repository checkout complete.")
 
 		var rootDirectory string
 		if rd, ok := resMap["rootDirectory"].(string); ok && rd != "" && rd != "." {
@@ -921,7 +985,7 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 		} else {
 			// User-provided Dockerfile: scan for dangerous patterns
 			if dfBytes, err := os.ReadFile(dockerfilePath); err == nil {
-				warnings, dangers := ScanDockerfileForDangers(string(dfBytes))
+				warnings, dangers := ScanDockerfileForDangers(string(dfBytes), isAdmin)
 				for _, w := range warnings {
 					appendLog(serviceID, depID, "system", fmt.Sprintf("[security] %s", w))
 				}
@@ -929,7 +993,7 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 					for _, d := range dangers {
 						appendLog(serviceID, depID, "stderr", fmt.Sprintf("[security] %s", d))
 					}
-					h.failDeployment(service, dep, "[security] Dockerfile contains blocked patterns. Remove privileged/host-network directives.")
+					h.failDeployment(service, dep, "[security] Dockerfile contains restricted directives (privileged mode / docker.sock / host network). These are restricted to Platform Administrators.")
 					return
 				}
 			}

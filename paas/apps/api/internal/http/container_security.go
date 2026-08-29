@@ -12,63 +12,126 @@ import (
 
 // SecurityProfile defines configurable resource limits and security flags.
 type SecurityProfile struct {
-	MemoryLimit    string // e.g. "512m", "1g"
-	CPULimit       string // e.g. "1.0", "2.0"
-	PIDLimit       int    // max process count, prevents fork bombs
-	ReadOnlyRoot   bool   // mount root filesystem read-only
-	NoNewPrivs     bool   // prevent privilege escalation
-	DropAllCaps    bool   // drop all Linux capabilities
-	AllowRoot      bool   // allow running as root (opt-in)
-	BuildTimeoutS  int    // max build duration in seconds
-	TmpfsSize      string // tmpfs mount size for /tmp
-	NetworkMode    string // "platform-control" (isolated bridge)
+	MemoryLimit   string // e.g. "512m", "1g"
+	CPULimit      string // e.g. "1.0", "2.0"
+	PIDLimit      int    // max process count, prevents fork bombs
+	ReadOnlyRoot  bool   // mount root filesystem read-only
+	NoNewPrivs    bool   // prevent privilege escalation
+	DropAllCaps   bool   // drop all Linux capabilities
+	AllowRoot     bool   // allow running as root (opt-in)
+	BuildTimeoutS int    // max build duration in seconds
+	TmpfsSize     string // tmpfs mount size for /tmp
+	NetworkMode   string // "platform-control" (isolated bridge)
+	Privileged    bool   // run container in privileged mode (admin only)
+	IsAdmin       bool   // whether container belongs to an admin account
 }
 
-// DefaultSecurityProfile returns production-safe defaults.
+// DefaultSecurityProfile returns production-safe defaults for standard users.
 func DefaultSecurityProfile() SecurityProfile {
 	return SecurityProfile{
 		MemoryLimit:   "512m",
 		CPULimit:      "1.0",
 		PIDLimit:      256,
-		ReadOnlyRoot:  false, // many apps need writable fs, opt-in
-		NoNewPrivs:    false, // allow setuid/setgid for standard image user switching like Nginx/Postgres/Node
-		DropAllCaps:   false, // avoid breaking standard multi-process daemons
+		ReadOnlyRoot:  false,
+		NoNewPrivs:    true,  // restricted mode for standard accounts
+		DropAllCaps:   true,  // restricted mode for standard accounts
 		AllowRoot:     false,
 		BuildTimeoutS: 600, // 10 minutes
 		TmpfsSize:     "128m",
 		NetworkMode:   "platform-control",
+		Privileged:    false,
+		IsAdmin:       false,
 	}
 }
 
-// BuildSecurityProfile creates a profile from blueprint resource config.
-func BuildSecurityProfile(resMap map[string]any) SecurityProfile {
-	profile := DefaultSecurityProfile()
+// BuildSecurityProfile creates a profile from blueprint resource config and user admin role.
+func BuildSecurityProfile(resMap map[string]any, isAdmin ...bool) SecurityProfile {
+	admin := false
+	if len(isAdmin) > 0 {
+		admin = isAdmin[0]
+	}
 
-	if resMap == nil {
+	if admin {
+		profile := SecurityProfile{
+			MemoryLimit:   "",
+			CPULimit:      "",
+			PIDLimit:      0,
+			ReadOnlyRoot:  false,
+			NoNewPrivs:    false,
+			DropAllCaps:   false,
+			AllowRoot:     true,
+			BuildTimeoutS: 1800, // 30 minutes for admin builds
+			TmpfsSize:     "",
+			NetworkMode:   "platform-control",
+			Privileged:    false,
+			IsAdmin:       true,
+		}
+
+		if resMap != nil {
+			if mem, ok := resMap["mem_limit"].(string); ok && mem != "" {
+				profile.MemoryLimit = sanitizeResourceLimit(mem)
+			}
+			if mem, ok := resMap["memory"].(string); ok && mem != "" {
+				profile.MemoryLimit = sanitizeResourceLimit(mem)
+			}
+			if cpu, ok := resMap["cpu_limit"].(string); ok && cpu != "" {
+				profile.CPULimit = sanitizeResourceLimit(cpu)
+			}
+			if cpu, ok := resMap["cpus"].(string); ok && cpu != "" {
+				profile.CPULimit = sanitizeResourceLimit(cpu)
+			}
+			if pids, ok := resMap["pids_limit"].(float64); ok && pids > 0 {
+				profile.PIDLimit = int(pids)
+			}
+			if timeout, ok := resMap["build_timeout"].(float64); ok && timeout > 0 {
+				profile.BuildTimeoutS = int(timeout)
+			}
+			// Admin accounts can enable privileged mode
+			if priv, ok := resMap["privileged"].(bool); ok && priv {
+				profile.Privileged = true
+			}
+			if priv, ok := resMap["privileged_mode"].(bool); ok && priv {
+				profile.Privileged = true
+			}
+			if modeStr, ok := resMap["mode"].(string); ok && strings.EqualFold(modeStr, "privileged") {
+				profile.Privileged = true
+			}
+		}
 		return profile
 	}
 
-	// Parse resource limits from blueprint or service config
-	if mem, ok := resMap["mem_limit"].(string); ok && mem != "" {
-		profile.MemoryLimit = sanitizeResourceLimit(mem)
-	}
-	if mem, ok := resMap["memory"].(string); ok && mem != "" {
-		profile.MemoryLimit = sanitizeResourceLimit(mem)
-	}
-	if cpu, ok := resMap["cpu_limit"].(string); ok && cpu != "" {
-		profile.CPULimit = sanitizeResourceLimit(cpu)
-	}
-	if cpu, ok := resMap["cpus"].(string); ok && cpu != "" {
-		profile.CPULimit = sanitizeResourceLimit(cpu)
-	}
-	if allowRoot, ok := resMap["allowRoot"].(bool); ok {
-		profile.AllowRoot = allowRoot
-	}
-	if pids, ok := resMap["pids_limit"].(float64); ok && pids > 0 {
-		profile.PIDLimit = int(pids)
-	}
-	if timeout, ok := resMap["build_timeout"].(float64); ok && timeout > 0 {
-		profile.BuildTimeoutS = int(timeout)
+	// Non-admin / standard account: Restricted Mode for platform safety
+	profile := DefaultSecurityProfile()
+	profile.IsAdmin = false
+	profile.Privileged = false // strictly blocked for non-admin accounts
+
+	if resMap != nil {
+		if mem, ok := resMap["mem_limit"].(string); ok && mem != "" {
+			profile.MemoryLimit = sanitizeResourceLimit(mem)
+		}
+		if mem, ok := resMap["memory"].(string); ok && mem != "" {
+			profile.MemoryLimit = sanitizeResourceLimit(mem)
+		}
+		if cpu, ok := resMap["cpu_limit"].(string); ok && cpu != "" {
+			profile.CPULimit = sanitizeResourceLimit(cpu)
+		}
+		if cpu, ok := resMap["cpus"].(string); ok && cpu != "" {
+			profile.CPULimit = sanitizeResourceLimit(cpu)
+		}
+		if pids, ok := resMap["pids_limit"].(float64); ok && pids > 0 {
+			if pids > 512 {
+				profile.PIDLimit = 512
+			} else {
+				profile.PIDLimit = int(pids)
+			}
+		}
+		if timeout, ok := resMap["build_timeout"].(float64); ok && timeout > 0 {
+			if timeout > 900 {
+				profile.BuildTimeoutS = 900
+			} else {
+				profile.BuildTimeoutS = int(timeout)
+			}
+		}
 	}
 
 	return profile
@@ -78,52 +141,59 @@ func BuildSecurityProfile(resMap map[string]any) SecurityProfile {
 func ContainerSecurityArgs(profile SecurityProfile) []string {
 	args := []string{}
 
-	// Memory limit  -  prevents OOM and memory abuse
-	if profile.MemoryLimit != "" {
-		args = append(args, "--memory", profile.MemoryLimit)
-		// Set memory+swap equal to memory to disable swap
-		args = append(args, "--memory-swap", profile.MemoryLimit)
+	if profile.IsAdmin {
+		if profile.Privileged {
+			args = append(args, "--privileged", "--label", "io.paas.security=privileged")
+		} else {
+			args = append(args, "--label", "io.paas.security=admin")
+		}
+		if profile.MemoryLimit != "" {
+			args = append(args, "--memory", profile.MemoryLimit, "--memory-swap", profile.MemoryLimit)
+		}
+		if profile.CPULimit != "" {
+			args = append(args, "--cpus", profile.CPULimit)
+		}
+		if profile.PIDLimit > 0 {
+			args = append(args, "--pids-limit", fmt.Sprintf("%d", profile.PIDLimit))
+		}
+		return args
 	}
 
-	// CPU limit  -  prevents CPU monopolization
+	// Restricted Mode for standard non-admin users
+	if profile.MemoryLimit != "" {
+		args = append(args, "--memory", profile.MemoryLimit, "--memory-swap", profile.MemoryLimit)
+	}
 	if profile.CPULimit != "" {
 		args = append(args, "--cpus", profile.CPULimit)
 	}
-
-	// PID limit  -  prevents fork bombs
 	if profile.PIDLimit > 0 {
 		args = append(args, "--pids-limit", fmt.Sprintf("%d", profile.PIDLimit))
+	} else {
+		args = append(args, "--pids-limit", "256")
 	}
 
 	// Prevent privilege escalation
-	if profile.NoNewPrivs {
-		args = append(args, "--security-opt", "no-new-privileges:true")
-	}
+	args = append(args, "--security-opt", "no-new-privileges:true")
 
-	// Drop all Linux capabilities, re-add only necessary ones
-	if profile.DropAllCaps {
-		args = append(args, "--cap-drop", "ALL")
-		// Re-add minimum necessary capabilities
-		args = append(args, "--cap-add", "NET_BIND_SERVICE") // bind to ports < 1024
-		args = append(args, "--cap-add", "CHOWN")            // file ownership changes
-		args = append(args, "--cap-add", "SETUID")           // needed for non-root user switching
-		args = append(args, "--cap-add", "SETGID")           // needed for non-root group switching
-		args = append(args, "--cap-add", "DAC_OVERRIDE")     // allow file permissions management
-	}
+	// Drop all capabilities and retain only non-root essentials
+	args = append(args, "--cap-drop", "ALL")
+	args = append(args, "--cap-add", "NET_BIND_SERVICE")
+	args = append(args, "--cap-add", "CHOWN")
+	args = append(args, "--cap-add", "SETUID")
+	args = append(args, "--cap-add", "SETGID")
+	args = append(args, "--cap-add", "DAC_OVERRIDE")
 
-	// Read-only root filesystem (opt-in because many apps need writable /app)
 	if profile.ReadOnlyRoot {
 		args = append(args, "--read-only")
 	}
 
-	// Always provide writable /tmp via tmpfs
-	if profile.TmpfsSize != "" {
-		args = append(args, "--tmpfs", fmt.Sprintf("/tmp:rw,noexec,nosuid,size=%s", profile.TmpfsSize))
+	tmpfsSize := profile.TmpfsSize
+	if tmpfsSize == "" {
+		tmpfsSize = "128m"
 	}
+	args = append(args, "--tmpfs", fmt.Sprintf("/tmp:rw,noexec,nosuid,size=%s", tmpfsSize))
 
-	// Disable inter-container communication by default via label
-	args = append(args, "--label", "io.paas.security=hardened")
-
+	args = append(args, "--label", "io.paas.security=restricted")
 	return args
 }
 
@@ -183,12 +253,21 @@ var dangerousDockerfilePatterns = []struct {
 }
 
 // ScanDockerfileForDangers checks a Dockerfile string for dangerous patterns.
-// Returns a list of warnings (non-blocking) and errors (blocking).
-func ScanDockerfileForDangers(content string) (warnings []string, errors []string) {
+// If isAdmin is true, dangerous patterns produce warnings rather than blocking errors.
+func ScanDockerfileForDangers(content string, isAdmin ...bool) (warnings []string, errors []string) {
+	admin := false
+	if len(isAdmin) > 0 {
+		admin = isAdmin[0]
+	}
+
 	for _, p := range dangerousDockerfilePatterns {
 		if p.pattern.MatchString(content) {
 			if strings.Contains(p.reason, "not allowed") {
-				errors = append(errors, fmt.Sprintf("BLOCKED: %s", p.reason))
+				if admin {
+					warnings = append(warnings, fmt.Sprintf("ADMIN_OVERRIDE: %s (authorized for platform administrator)", p.reason))
+				} else {
+					errors = append(errors, fmt.Sprintf("RESTRICTED: %s (requires administrator account)", p.reason))
+				}
 			} else {
 				warnings = append(warnings, fmt.Sprintf("WARNING: %s", p.reason))
 			}
