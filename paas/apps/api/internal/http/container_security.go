@@ -143,7 +143,7 @@ func ContainerSecurityArgs(profile SecurityProfile) []string {
 
 	if profile.IsAdmin {
 		if profile.Privileged {
-			args = append(args, "--privileged", "--label", "io.paas.security=privileged")
+			args = append(args, "--privileged", "-v", "/var/run/docker.sock:/var/run/docker.sock", "--label", "io.paas.security=privileged")
 		} else {
 			args = append(args, "--label", "io.paas.security=admin")
 		}
