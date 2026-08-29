@@ -69,6 +69,7 @@ func buildArgDirectives(envMap ...map[string]string) string {
 		"NEXT_PUBLIC_API_URL", "VITE_API_URL", "REACT_APP_API_URL",
 		"PUBLIC_API_URL", "NUXT_PUBLIC_API_URL", "ASTRO_PUBLIC_API_URL",
 		"API_URL", "BACKEND_URL", "CLIENT_URL", "FRONTEND_URL",
+		"GOTOOLCHAIN",
 	}
 	seen := make(map[string]bool)
 	for _, arg := range standardArgs {
@@ -200,7 +201,8 @@ RUN if command -v apk >/dev/null 2>&1; then \
     else \
         apt-get update && apt-get install -y --no-install-recommends git ca-certificates tzdata && rm -rf /var/lib/apt/lists/*; \
     fi
-COPY . .
+ENV GOTOOLCHAIN=auto CGO_ENABLED=0
+%sCOPY . .
 RUN if [ -f go.mod ]; then go mod download; fi
 RUN %s
 FROM alpine:3.21
@@ -210,7 +212,7 @@ COPY --from=builder /app/%s /app/%s
 ENV PORT=%d
 EXPOSE %d%s
 CMD ["/app/%s"]
-`, imageTag, bCmd, outputBinary, outputBinary, port, port, healthcheck, outputBinary)
+`, imageTag, buildArgs, bCmd, outputBinary, outputBinary, port, port, healthcheck, outputBinary)
 
 	// --- Java (Maven + Gradle) -----------------------------------------------
 	case "java":

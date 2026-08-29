@@ -983,9 +983,47 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 			dfContent := generateDockerfileForPreset(presetId, buildCommand, startCommand, port, runtimeVersion, envMap)
 			_ = os.WriteFile(dockerfilePath, []byte(dfContent), 0644)
 		} else {
-			// User-provided Dockerfile: scan for dangerous patterns
+			// User-provided Dockerfile: scan for dangerous patterns and auto-configure toolchains
 			if dfBytes, err := os.ReadFile(dockerfilePath); err == nil {
-				warnings, dangers := ScanDockerfileForDangers(string(dfBytes), isAdmin)
+				dfContent := string(dfBytes)
+
+				// Ensure GOTOOLCHAIN=auto is set so Go can auto-download required runtime versions on the fly
+				if strings.Contains(dfContent, "golang") || strings.Contains(dfContent, "go build") || strings.Contains(dfContent, "go mod") {
+					if !strings.Contains(dfContent, "GOTOOLCHAIN") {
+						lines := strings.Split(dfContent, "\n")
+						var newLines []string
+						injected := false
+						for _, line := range lines {
+							newLines = append(newLines, line)
+							if !injected && strings.HasPrefix(strings.TrimSpace(strings.ToUpper(line)), "FROM") {
+								newLines = append(newLines, "ENV GOTOOLCHAIN=auto CGO_ENABLED=0")
+								injected = true
+							}
+						}
+						dfContent = strings.Join(newLines, "\n")
+						appendLog(serviceID, depID, "build", "[runtime] Auto-configured GOTOOLCHAIN=auto (downloads required Go runtime versions on-the-fly).")
+					}
+				}
+
+				// If user explicitly configured runtimeVersion (e.g. 1.25.0), upgrade base image tag in Dockerfile
+				if runtimeVersion != "" && !strings.EqualFold(runtimeVersion, "auto") {
+					cleanVer := strings.TrimPrefix(strings.TrimSpace(runtimeVersion), "go")
+					if strings.Contains(dfContent, "golang:") {
+						reGo := regexp.MustCompile(`golang:\d+(\.\d+)*(-alpine[a-z0-9.]*)?`)
+						if reGo.MatchString(dfContent) {
+							targetImage := fmt.Sprintf("golang:%s-alpine", cleanVer)
+							if !strings.Contains(dfContent, "-alpine") {
+								targetImage = fmt.Sprintf("golang:%s", cleanVer)
+							}
+							dfContent = reGo.ReplaceAllString(dfContent, targetImage)
+							appendLog(serviceID, depID, "build", fmt.Sprintf("[version] Upgraded Dockerfile base image to %s", targetImage))
+						}
+					}
+				}
+
+				_ = os.WriteFile(dockerfilePath, []byte(dfContent), 0644)
+
+				warnings, dangers := ScanDockerfileForDangers(dfContent, isAdmin)
 				for _, w := range warnings {
 					appendLog(serviceID, depID, "system", fmt.Sprintf("[security] %s", w))
 				}
@@ -997,6 +1035,10 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 					return
 				}
 			}
+		}
+
+		if _, exists := envMap["GOTOOLCHAIN"]; !exists {
+			envMap["GOTOOLCHAIN"] = "auto"
 		}
 
 		// Step 5: Build Container Image with Docker
