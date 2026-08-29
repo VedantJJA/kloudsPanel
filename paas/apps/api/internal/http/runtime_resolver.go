@@ -828,7 +828,33 @@ func detectGoMainTarget(dir string) string {
 		}
 	}
 
-	// 3. Fallback to .
-	return "."
+	// 3. Fallback: check all subdirectories for package main
+	var foundMain string
+	_ = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || foundMain != "" {
+			return nil
+		}
+		if info.IsDir() {
+			if info.Name() == ".git" || info.Name() == "vendor" || info.Name() == "node_modules" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if strings.HasSuffix(info.Name(), ".go") && !strings.HasSuffix(info.Name(), "_test.go") {
+			if bytes, err := os.ReadFile(path); err == nil {
+				if strings.Contains(string(bytes), "package main") {
+					rel, _ := filepath.Rel(dir, filepath.Dir(path))
+					if rel == "." {
+						foundMain = "."
+					} else {
+						foundMain = fmt.Sprintf("./%s", filepath.ToSlash(rel))
+					}
+				}
+			}
+		}
+		return nil
+	})
+
+	return foundMain
 }
 

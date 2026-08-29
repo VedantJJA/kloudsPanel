@@ -1026,14 +1026,18 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 				// auto-detect the real main package target (e.g. `.` or `./cmd/...`) and update the command.
 				if strings.Contains(dfContent, "go build") {
 					realGoTarget := detectGoMainTarget(contextDir)
-					reCmdTarget := regexp.MustCompile(`(\./cmd/[a-zA-Z0-9_\-]+)`)
-					matches := reCmdTarget.FindAllString(dfContent, -1)
-					for _, m := range matches {
-						relDir := strings.TrimPrefix(m, "./")
-						if _, err := os.Stat(filepath.Join(contextDir, relDir)); os.IsNotExist(err) {
-							dfContent = strings.ReplaceAll(dfContent, m, realGoTarget)
-							appendLog(serviceID, depID, "build", fmt.Sprintf("[builder] Auto-corrected Go build target: replaced non-existent '%s' with '%s'", m, realGoTarget))
+					if realGoTarget != "" {
+						reCmdTarget := regexp.MustCompile(`(\./cmd/[a-zA-Z0-9_\-]+)`)
+						matches := reCmdTarget.FindAllString(dfContent, -1)
+						for _, m := range matches {
+							relDir := strings.TrimPrefix(m, "./")
+							if _, err := os.Stat(filepath.Join(contextDir, relDir)); os.IsNotExist(err) {
+								dfContent = strings.ReplaceAll(dfContent, m, realGoTarget)
+								appendLog(serviceID, depID, "build", fmt.Sprintf("[builder] Auto-corrected Go build target: replaced non-existent '%s' with '%s'", m, realGoTarget))
+							}
 						}
+					} else {
+						appendLog(serviceID, depID, "system", "[builder] Notice: No 'package main' found in repository. Ensure your main Go entrypoint (e.g. cmd/server/main.go or main.go) is committed and pushed to git.")
 					}
 				}
 
