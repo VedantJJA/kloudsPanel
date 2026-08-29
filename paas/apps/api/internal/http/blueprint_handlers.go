@@ -49,6 +49,7 @@ type ParsedRenderService struct {
 	RuntimeVersion    string            `json:"runtime_version,omitempty"`
 	MemoryLimit       string            `json:"memory_limit,omitempty"`
 	CPULimit          string            `json:"cpu_limit,omitempty"`
+	Privileged        bool              `json:"privileged,omitempty"`
 }
 
 type ParsedRenderResult struct {
@@ -567,6 +568,20 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 				parts := strings.SplitN(trimmed, ":", 2)
 				if len(parts) > 1 {
 					currentSvc.RootDir = strings.Trim(strings.TrimSpace(parts[1]), `"'`)
+				}
+			} else if strings.HasPrefix(trimmed, "privileged:") {
+				parts := strings.SplitN(trimmed, ":", 2)
+				if len(parts) > 1 {
+					val := strings.ToLower(strings.TrimSpace(parts[1]))
+					currentSvc.Privileged = (val == "true" || val == "yes")
+				}
+			} else if strings.HasPrefix(trimmed, "mode:") {
+				parts := strings.SplitN(trimmed, ":", 2)
+				if len(parts) > 1 {
+					val := strings.ToLower(strings.TrimSpace(parts[1]))
+					if val == "privileged" {
+						currentSvc.Privileged = true
+					}
 				}
 			}
 		}

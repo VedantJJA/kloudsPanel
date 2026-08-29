@@ -502,6 +502,19 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 						if svc.CPULimit != "" {
 							secProfile.CPULimit = svc.CPULimit
 						}
+						if svc.Privileged {
+							if isAdmin {
+								secProfile.Privileged = true
+								secProfile.AllowRoot = true
+								secProfile.NoNewPrivs = false
+								secProfile.DropAllCaps = false
+								secProfile.PIDLimit = 0
+								secProfile.ReadOnlyRoot = false
+								appendLog(serviceID, depID, "system", "[security] Blueprint enabled Privileged Mode for administrator (elevated container permissions active).")
+							} else {
+								appendLog(serviceID, depID, "stderr", "[security] Notice: Blueprint requested privileged mode, but service deployer is not a Platform Administrator. Running in restricted mode for safety.")
+							}
+						}
 						for k, v := range svc.EnvVars {
 							if _, exists := envMap[k]; !exists {
 								envMap[k] = v
