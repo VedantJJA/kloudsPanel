@@ -382,6 +382,16 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 				return
 			}
 			appendLog(serviceID, depID, "system", "[git] Repository checkout complete.")
+
+			// Show current commit details (hash, commit message, and author)
+			commitCmd := exec.Command("git", "log", "-1", "--pretty=format:%h|||%s|||%an (%cr)")
+			commitCmd.Dir = workspaceDir
+			if commitOut, err := commitCmd.Output(); err == nil {
+				parts := strings.Split(strings.TrimSpace(string(commitOut)), "|||")
+				if len(parts) == 3 {
+					appendLog(serviceID, depID, "system", fmt.Sprintf("[git] Deployed commit %s: \"%s\" (by %s)", parts[0], parts[1], parts[2]))
+				}
+			}
 		} else if sourceArchiveFound != "" {
 			appendLog(serviceID, depID, "system", fmt.Sprintf("[upload] Loading user uploaded source archive (%s)...", filepath.Base(sourceArchiveFound)))
 			if err := ExtractArchive(sourceArchiveFound, workspaceDir); err != nil {
@@ -1049,6 +1059,21 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 				}
 				if strings.Contains(dfContent, "docker:cli-alpine") {
 					dfContent = strings.ReplaceAll(dfContent, "docker:cli-alpine", "docker:cli")
+				}
+
+				// Auto-fix non-existent apk packages (e.g. docker-dind is not an apk package in Alpine)
+				if strings.Contains(dfContent, "docker-dind") {
+					dfContent = strings.ReplaceAll(dfContent, "docker-dind", "")
+					appendLog(serviceID, depID, "build", "[builder] Removed non-existent 'docker-dind' package from apk add command.")
+				}
+
+				// Auto-upgrade to docker:27-dind if Dockerfile uses dockerd/DinD runtime
+				if strings.Contains(dfContent, "dockerd") || strings.Contains(dfContent, "entrypoint.sh") {
+					reDockerDind := regexp.MustCompile(`FROM docker:\d+-cli\b|FROM docker:cli\b`)
+					if reDockerDind.MatchString(dfContent) {
+						dfContent = reDockerDind.ReplaceAllString(dfContent, "FROM docker:27-dind")
+						appendLog(serviceID, depID, "build", "[builder] Upgraded base image to 'docker:27-dind' to support DinD dockerd runtime.")
+					}
 				}
 
 				_ = os.WriteFile(dockerfilePath, []byte(dfContent), 0644)
