@@ -792,3 +792,43 @@ func resolveDatabaseVersion(engine, requestedVersion string) (imageTag string, r
 	}
 }
 
+// detectGoMainTarget finds the relative path to the Go main entrypoint in a project directory.
+func detectGoMainTarget(dir string) string {
+	if dir == "" {
+		return "."
+	}
+
+	// 1. Check root directory for package main
+	if entries, err := os.ReadDir(dir); err == nil {
+		for _, e := range entries {
+			if !e.IsDir() && strings.HasSuffix(e.Name(), ".go") && !strings.HasSuffix(e.Name(), "_test.go") {
+				if bytes, err := os.ReadFile(filepath.Join(dir, e.Name())); err == nil {
+					if strings.Contains(string(bytes), "package main") {
+						return "."
+					}
+				}
+			}
+		}
+	}
+
+	// 2. Check cmd/* subdirectories
+	cmdDir := filepath.Join(dir, "cmd")
+	if entries, err := os.ReadDir(cmdDir); err == nil {
+		for _, e := range entries {
+			if e.IsDir() {
+				subPath := filepath.Join(cmdDir, e.Name())
+				if subEntries, err := os.ReadDir(subPath); err == nil {
+					for _, se := range subEntries {
+						if strings.HasSuffix(se.Name(), ".go") {
+							return fmt.Sprintf("./cmd/%s", e.Name())
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// 3. Fallback to .
+	return "."
+}
+

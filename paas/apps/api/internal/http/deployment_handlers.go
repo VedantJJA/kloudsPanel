@@ -1021,6 +1021,22 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 					}
 				}
 
+				// Go package target verification:
+				// If Dockerfile has hardcoded `./cmd/server` or `./cmd/api` that doesn't exist on disk in contextDir,
+				// auto-detect the real main package target (e.g. `.` or `./cmd/...`) and update the command.
+				if strings.Contains(dfContent, "go build") {
+					realGoTarget := detectGoMainTarget(contextDir)
+					reCmdTarget := regexp.MustCompile(`(\./cmd/[a-zA-Z0-9_\-]+)`)
+					matches := reCmdTarget.FindAllString(dfContent, -1)
+					for _, m := range matches {
+						relDir := strings.TrimPrefix(m, "./")
+						if _, err := os.Stat(filepath.Join(contextDir, relDir)); os.IsNotExist(err) {
+							dfContent = strings.ReplaceAll(dfContent, m, realGoTarget)
+							appendLog(serviceID, depID, "build", fmt.Sprintf("[builder] Auto-corrected Go build target: replaced non-existent '%s' with '%s'", m, realGoTarget))
+						}
+					}
+				}
+
 				_ = os.WriteFile(dockerfilePath, []byte(dfContent), 0644)
 
 				warnings, dangers := ScanDockerfileForDangers(dfContent, isAdmin)
