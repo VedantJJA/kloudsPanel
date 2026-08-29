@@ -569,6 +569,15 @@ func parseRenderYAMLString(yamlStr string) ParsedRenderResult {
 				if len(parts) > 1 {
 					currentSvc.RootDir = strings.Trim(strings.TrimSpace(parts[1]), `"'`)
 				}
+			} else if strings.HasPrefix(trimmed, "runtime:") || strings.HasPrefix(trimmed, "preset:") || strings.HasPrefix(trimmed, "env:") {
+				parts := strings.SplitN(trimmed, ":", 2)
+				if len(parts) > 1 {
+					val := strings.ToLower(strings.Trim(strings.TrimSpace(parts[1]), `"'`))
+					if val != "" {
+						currentSvc.Env = val
+						currentSvc.Preset = val
+					}
+				}
 			} else if strings.HasPrefix(trimmed, "privileged:") {
 				parts := strings.SplitN(trimmed, ":", 2)
 				if len(parts) > 1 {

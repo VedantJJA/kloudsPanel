@@ -772,9 +772,37 @@
     window.location.href = `/api/v1/integrations/git/${provider}/authorize?return_to=${encodeURIComponent(returnTo)}`;
   }
 
+  function resolveServicePresetId(preset?: string, env?: string, kind?: string, image?: string): string {
+    const raw = (preset || env || '').toLowerCase().trim();
+    if (raw === 'docker' || raw === 'dockerfile') return 'dockerfile';
+    if (raw === 'go' || raw === 'golang') return 'go';
+    if (raw === 'node' || raw === 'nodejs' || raw === 'javascript' || raw === 'typescript') return 'node';
+    if (raw === 'python' || raw === 'py') return 'python';
+    if (raw === 'rust') return 'rust';
+    if (raw === 'java') return 'java';
+    if (raw === 'php') return 'php';
+    if (raw === 'ruby') return 'ruby';
+    if (raw === 'elixir') return 'elixir';
+    if (raw === 'deno') return 'deno';
+    if (raw === 'bun') return 'bun';
+    if (raw === 'dotnet' || raw === 'csharp') return 'dotnet';
+    if (raw === 'static' || raw === 'static-spa' || raw === 'nginx') return 'static-spa';
+    if (image && (image.includes('docker') || image.includes('dind'))) return 'dockerfile';
+    if (image && image.includes('golang')) return 'go';
+    if (image && image.includes('python')) return 'python';
+    if (image && image.includes('node')) return 'node';
+    if (raw) return raw;
+    const k = (kind || '').toLowerCase().trim();
+    if (k === 'static') return 'static-spa';
+    if (k === 'worker') return 'worker';
+    if (k === 'cron') return 'cron-job';
+    return 'node';
+  }
+
   function getPresetVersions(presetId: string) {
-    const p = presets.find(x => x.id === (presetId || '').toLowerCase()) || 
-              presets.find(x => x.kind === (presetId || '').toLowerCase()) || 
+    const canonicalId = resolveServicePresetId(presetId);
+    const p = presets.find(x => x.id === canonicalId) || 
+              presets.find(x => x.kind === canonicalId) || 
               presets[0];
     return p?.versions || [
       { value: 'auto', label: 'Auto-Detect (Latest)' }
@@ -973,8 +1001,10 @@
     kind = svc.kind || kind;
     rootDirectory = svc.root_dir || svc.rootDir || '.';
 
-    const matchingPreset = presets.find(p => p.id === svc.preset) || 
-                          presets.find(p => p.kind === svc.kind) || 
+    const targetPresetId = resolveServicePresetId(svc.preset, svc.env, svc.kind, svc.image);
+    const matchingPreset = presets.find(p => p.id === targetPresetId) || 
+                          presets.find(p => p.kind === targetPresetId) || 
+                          presets.find(p => p.id === 'dockerfile') ||
                           presets[0];
     choosePreset(matchingPreset);
 
@@ -1782,7 +1812,7 @@
           >
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
               <div style="display: flex; align-items: center; gap: 6px;">
-                <FrameworkIcon name={s.preset || s.env || s.kind} size={18} />
+                <FrameworkIcon name={resolveServicePresetId(s.preset, s.env, s.kind, s.image)} size={18} />
                 <span style="font-weight: 700; font-size: 0.875rem; color: var(--color-ink);">{s.name}</span>
               </div>
               <button
@@ -1808,11 +1838,11 @@
                 bind:value={s.runtime_version}
                 onchange={(e: any) => {
                   if (selectedBlueprintIndex === idx) {
-                    updateImageRefFromVersion(s.preset || s.env || s.kind, e.target.value);
+                    updateImageRefFromVersion(resolveServicePresetId(s.preset, s.env, s.kind, s.image), e.target.value);
                   }
                 }}
               >
-                {#each getPresetVersions(s.preset || s.env || s.kind) as v}
+                {#each getPresetVersions(resolveServicePresetId(s.preset, s.env, s.kind, s.image)) as v}
                   <option value={v.value}>{v.label}</option>
                 {/each}
               </select>
@@ -1915,7 +1945,7 @@
                 "
                 onclick={() => applyDetectedService(s, idx)}
               >
-                <FrameworkIcon name={s.preset || s.env || s.kind} size={15} />
+                <FrameworkIcon name={resolveServicePresetId(s.preset, s.env, s.kind, s.image)} size={15} />
                 <span>{s.name}</span>
                 <span class="badge" style="font-size: 0.65rem; background: rgba(0,0,0,0.18); color: inherit;">
                   {s.runtime_version || 'auto'}
@@ -2143,7 +2173,7 @@
                 "
                 onclick={() => applyDetectedService(s, idx)}
               >
-                <FrameworkIcon name={s.preset || s.env || s.kind} size={15} />
+                <FrameworkIcon name={resolveServicePresetId(s.preset, s.env, s.kind, s.image)} size={15} />
                 <span>{s.name}</span>
                 <span class="badge" style="font-size: 0.65rem; background: rgba(0,0,0,0.18); color: inherit;">
                   {Object.keys(s.env_vars || {}).length} vars
