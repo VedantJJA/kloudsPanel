@@ -21,6 +21,7 @@
     Clock,
     Layers,
     ShieldCheck,
+    ShieldAlert,
     ArrowUp,
     ArrowDown,
     Sliders,
@@ -37,6 +38,16 @@
 
   const id = $derived($page.params.id);
   const tab = $derived($page.params.tab);
+
+  let currentUser = $state<any>(null);
+  const isAdmin = $derived(
+    currentUser?.isAdmin === true || 
+    currentUser?.isMainAdmin === true || 
+    currentUser?.platform_role === 'main_admin' || 
+    currentUser?.platform_role === 'admin' || 
+    currentUser?.platformRole === 'main_admin' || 
+    currentUser?.platformRole === 'admin'
+  );
 
   let service = $state<any>(null);
   let deployments = $state<any[]>([]);
@@ -480,6 +491,7 @@
             settingsRepoUrl = r.gitRepoUrl || r.repoUrl || '';
             settingsPort = service.internal_port || service.InternalPort || r.internal_port || r.internalPort || 80;
             settingsAutoDeploy = service.auto_deploy !== false;
+            settingsPrivileged = r.privileged === true || r.privileged_mode === true || r.mode === 'privileged' || r.security_mode === 'privileged';
           }
           if (!routesDirty && r.routes && Array.isArray(r.routes)) {
             serviceRoutes = r.routes.map((rt: any) => ({
@@ -527,6 +539,10 @@
   }
 
   onMount(() => {
+    fetch('/api/v1/auth/me', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) currentUser = data?.user || data; })
+      .catch(() => {});
     scheduleServicePoll();
     if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', handleTabVisibility);
@@ -562,6 +578,8 @@
         currentR.runtimeVersion = settingsRuntimeVersion === 'auto' ? '' : settingsRuntimeVersion;
         currentR.mem_limit = settingsMemoryLimit;
         currentR.cpu_limit = settingsCPULimit;
+        currentR.privileged = settingsPrivileged;
+        currentR.privileged_mode = settingsPrivileged;
         if (routesDirty && serviceRoutes && serviceRoutes.length > 0) {
           currentR.routes = serviceRoutes;
         }
@@ -894,6 +912,7 @@
   let settingsRuntimeVersion = $state('auto');
   let settingsMemoryLimit = $state('512m');
   let settingsCPULimit = $state('1.0');
+  let settingsPrivileged = $state(false);
   let settingsSaving = $state(false);
   let settingsSaved = $state(false);
   let settingsError = $state('');
@@ -922,6 +941,8 @@
       currentR.runtimeVersion = settingsRuntimeVersion === 'auto' ? '' : settingsRuntimeVersion;
       currentR.mem_limit = settingsMemoryLimit;
       currentR.cpu_limit = settingsCPULimit;
+      currentR.privileged = settingsPrivileged;
+      currentR.privileged_mode = settingsPrivileged;
       if (routesDirty && serviceRoutes && serviceRoutes.length > 0) {
         currentR.routes = serviceRoutes;
       }
@@ -1031,6 +1052,23 @@
         <FrameworkIcon name={parsedResource.presetId || service?.kind || 'node'} size={24} />
         <h1 class="page-title" style="margin:0;">{service?.name || service?.Name}</h1>
         <span class="badge badge-{statusBadge}">{statusBadge}</span>
+        {#if settingsPrivileged}
+          <span 
+            class="badge" 
+            style="background: rgba(239, 68, 68, 0.12); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); font-size: 0.72rem; display: inline-flex; align-items: center; gap: 4px;"
+            title="Running in Privileged Mode with elevated container capabilities and Docker socket access"
+          >
+            <ShieldAlert size={12} /> Privileged (Admin)
+          </span>
+        {:else}
+          <span 
+            class="badge" 
+            style="background: var(--color-surface-subtle); color: var(--color-ink-secondary); border: 1px solid var(--color-border); font-size: 0.72rem; display: inline-flex; align-items: center; gap: 4px;"
+            title="Running in Restricted Sandbox mode with non-root security"
+          >
+            <ShieldCheck size={12} /> Restricted Sandbox
+          </span>
+        {/if}
         {#if endpointUrl && (service?.kind === 'web' || service?.kind === 'static')}
           <a 
             href={endpointUrl} 
@@ -2009,12 +2047,22 @@
         <div style="background: var(--color-canvas); padding: 1.25rem; border-radius: var(--radius-md); border: 1px solid var(--color-border); margin-bottom: 1.25rem;">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
             <div style="display: flex; align-items: center; gap: 0.5rem;">
-              <ShieldCheck size={18} style="color: var(--color-accent);" />
+              {#if settingsPrivileged}
+                <ShieldAlert size={18} style="color: #ef4444;" />
+              {:else}
+                <ShieldCheck size={18} style="color: var(--color-accent);" />
+              {/if}
               <span style="font-size: 0.875rem; font-weight: 700;">Sandbox Resource Limits & Security</span>
             </div>
-            <span class="badge" style="background: var(--color-success-subtle); color: var(--color-success); font-size: 0.7rem; display: flex; align-items: center; gap: 4px;">
-              <ShieldCheck size={12} /> Non-Root Sandbox Active
-            </span>
+            {#if settingsPrivileged}
+              <span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); font-size: 0.7rem; display: flex; align-items: center; gap: 4px;">
+                <ShieldAlert size={12} /> Privileged Mode Active
+              </span>
+            {:else}
+              <span class="badge" style="background: var(--color-success-subtle); color: var(--color-success); font-size: 0.7rem; display: flex; align-items: center; gap: 4px;">
+                <ShieldCheck size={12} /> Non-Root Sandbox Active
+              </span>
+            {/if}
           </div>
 
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
@@ -2040,6 +2088,36 @@
               </select>
             </div>
           </div>
+
+          <!-- Privileged Mode Admin Setting -->
+          {#if isAdmin}
+            <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--color-border); display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
+              <div style="max-width: 460px;">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span style="font-weight: 700; font-size: 0.8125rem; color: var(--color-ink);">Privileged Mode (Elevated Permissions)</span>
+                  <span class="badge" style="font-size: 0.65rem; background: var(--color-accent-subtle); color: var(--color-accent);">Admin Only</span>
+                </div>
+                <p class="text-xs text-muted" style="margin: 3px 0 0 0;">
+                  Runs container with <code>--privileged</code> and mounts <code>/var/run/docker.sock</code>. Enables Docker-in-Docker (DinD) and sandbox runners.
+                </p>
+              </div>
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
+                <input 
+                  type="checkbox" 
+                  bind:checked={settingsPrivileged} 
+                  onchange={() => settingsDirty = true}
+                  style="cursor: pointer; width: 16px; height: 16px;"
+                />
+                <span style="font-size: 0.8125rem; font-weight: 700; color: {settingsPrivileged ? '#ef4444' : 'var(--color-ink-secondary)'};">
+                  {settingsPrivileged ? 'Enabled' : 'Disabled'}
+                </span>
+              </label>
+            </div>
+          {:else if settingsPrivileged}
+            <div style="margin-top: 0.85rem; padding-top: 0.85rem; border-top: 1px solid var(--color-border); font-size: 0.75rem; color: var(--color-ink-muted);">
+              Container is currently running in <strong>Privileged Mode</strong> (configured by Platform Administrator).
+            </div>
+          {/if}
         </div>
 
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem; margin-bottom: 1.25rem;">

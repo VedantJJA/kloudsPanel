@@ -33,6 +33,7 @@
     Sliders,
     Info,
     ShieldCheck,
+    ShieldAlert,
     ChevronRight,
     ChevronLeft,
     Package
@@ -234,6 +235,17 @@
   let memoryLimit = $state('512m');
   let cpuLimit = $state('1.0');
   let pidsLimit = $state(256);
+  let privilegedMode = $state(false);
+
+  let currentUser = $state<any>(null);
+  const isAdmin = $derived(
+    currentUser?.isAdmin === true || 
+    currentUser?.isMainAdmin === true || 
+    currentUser?.platform_role === 'main_admin' || 
+    currentUser?.platform_role === 'admin' || 
+    currentUser?.platformRole === 'main_admin' || 
+    currentUser?.platformRole === 'admin'
+  );
 
   type ServicePreset = {
     id: string;
@@ -909,6 +921,11 @@
 
   onMount(() => {
     choosePreset(presets[0]);
+    fetch('/api/v1/auth/me', { credentials: 'include' })
+      .then(res => res.ok ? res.json() : null)
+      .then(data => { if (data) currentUser = data?.user || data; })
+      .catch(() => {});
+
     const projSlug = $page.params.slug || slug || '';
     if (projSlug) {
       fetch(`/api/v1/projects/${encodeURIComponent(projSlug)}`, { credentials: 'include' })
@@ -1019,6 +1036,7 @@
     if (svc.internalPort) internalPort = svc.internalPort;
     if (svc.cron_schedule) cronSchedule = svc.cron_schedule;
     if (svc.cronSchedule) cronSchedule = svc.cronSchedule;
+    privilegedMode = svc.privileged === true || svc.privileged_mode === true || svc.mode === 'privileged' || svc.security_mode === 'privileged';
     const rawSvcEnv = svc.env_vars || svc.envVars || (svc.env && typeof svc.env === 'object' && !Array.isArray(svc.env) ? svc.env : null);
     if (rawSvcEnv && typeof rawSvcEnv === 'object' && !Array.isArray(rawSvcEnv) && Object.keys(rawSvcEnv).length > 0) {
       envVars = Object.entries(rawSvcEnv)
@@ -1206,6 +1224,8 @@
         mem_limit: memoryLimit,
         cpu_limit: cpuLimit,
         pids_limit: pidsLimit,
+        privileged: privilegedMode,
+        privileged_mode: privilegedMode,
         image: imageRef,
         buildCommand: buildCommand,
         build_command: buildCommand,
@@ -2188,12 +2208,22 @@
       <div style="background: var(--color-canvas); padding: 1.25rem; border-radius: var(--radius-md); border: 1px solid var(--color-border); margin-bottom: 1.5rem;">
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
           <div style="display: flex; align-items: center; gap: 0.5rem;">
-            <ShieldCheck size={18} style="color: var(--color-accent);" />
+            {#if privilegedMode}
+              <ShieldAlert size={18} style="color: #ef4444;" />
+            {:else}
+              <ShieldCheck size={18} style="color: var(--color-accent);" />
+            {/if}
             <span style="font-size: 0.875rem; font-weight: 700;">Security Hardening & Limits</span>
           </div>
-          <span class="badge" style="background: var(--color-success-subtle); color: var(--color-success); font-size: 0.7rem; display: flex; align-items: center; gap: 4px;">
-            <ShieldCheck size={12} /> Non-Root Sandbox Active
-          </span>
+          {#if privilegedMode}
+            <span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); font-size: 0.7rem; display: flex; align-items: center; gap: 4px;">
+              <ShieldAlert size={12} /> Privileged Mode Active
+            </span>
+          {:else}
+            <span class="badge" style="background: var(--color-success-subtle); color: var(--color-success); font-size: 0.7rem; display: flex; align-items: center; gap: 4px;">
+              <ShieldCheck size={12} /> Non-Root Sandbox Active
+            </span>
+          {/if}
         </div>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 0.75rem;">
@@ -2228,6 +2258,31 @@
             <Sliders size={11} /> User 1001 Non-Root
           </span>
         </div>
+
+        <!-- Privileged Mode Admin Option -->
+        {#if isAdmin}
+          <div style="margin-top: 0.85rem; padding-top: 0.85rem; border-top: 1px solid var(--color-border); display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
+            <div style="max-width: 480px;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-weight: 700; font-size: 0.8125rem; color: var(--color-ink);">Privileged Mode (Elevated Permissions)</span>
+                <span class="badge" style="font-size: 0.65rem; background: var(--color-accent-subtle); color: var(--color-accent);">Admin Only</span>
+              </div>
+              <p class="text-xs text-muted" style="margin: 3px 0 0 0;">
+                Runs container with <code>--privileged</code> and mounts <code>/var/run/docker.sock</code>. Enables Docker-in-Docker (DinD) and container runners.
+              </p>
+            </div>
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
+              <input 
+                type="checkbox" 
+                bind:checked={privilegedMode}
+                style="cursor: pointer; width: 16px; height: 16px;"
+              />
+              <span style="font-size: 0.8125rem; font-weight: 700; color: {privilegedMode ? '#ef4444' : 'var(--color-ink-secondary)'};">
+                {privilegedMode ? 'Enabled' : 'Disabled'}
+              </span>
+            </label>
+          </div>
+        {/if}
       </div>
 
       <!-- Environment Variables Table -->
