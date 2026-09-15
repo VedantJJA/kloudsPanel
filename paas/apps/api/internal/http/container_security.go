@@ -193,6 +193,7 @@ func ContainerSecurityArgs(profile SecurityProfile) []string {
 	}
 	args = append(args, "--tmpfs", fmt.Sprintf("/tmp:rw,noexec,nosuid,size=%s", tmpfsSize))
 
+	args = append(args, "--sysctl", "net.ipv4.ip_unprivileged_port_start=0")
 	args = append(args, "--label", "io.paas.security=restricted")
 	return args
 }
@@ -331,7 +332,8 @@ func NonRootDirective(preset string) string {
 	return `
 # Security: Run as non-root user
 RUN (getent group appgroup >/dev/null 2>&1 || groupadd -g 1001 appgroup 2>/dev/null || addgroup -g 1001 -S appgroup 2>/dev/null || true) && \
-    (id -u appuser >/dev/null 2>&1 || useradd -u 1001 -g 1001 -M -s /bin/sh appuser 2>/dev/null || adduser -u 1001 -G appgroup -S -s /bin/sh appuser 2>/dev/null || true)
+    (id -u appuser >/dev/null 2>&1 || useradd -u 1001 -g 1001 -M -s /bin/sh appuser 2>/dev/null || adduser -u 1001 -G appgroup -S -s /bin/sh appuser 2>/dev/null || true) && \
+    chown -R 1001:1001 /app 2>/dev/null || true
 USER 1001
 `
 }

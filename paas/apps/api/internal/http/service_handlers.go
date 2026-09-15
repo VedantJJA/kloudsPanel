@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
@@ -434,6 +435,21 @@ func (h *Handler) syncServiceTraefikConfig(ctx context.Context, s *domain.Servic
 	port := 80
 	if s.InternalPort != nil && *s.InternalPort > 0 {
 		port = *s.InternalPort
+	}
+	if s.Kind == domain.ServiceKindStatic {
+		port = 80
+	} else if envVars, ok := resMap["envVars"].([]any); ok {
+		for _, ev := range envVars {
+			if evMap, ok := ev.(map[string]any); ok {
+				if k, _ := evMap["key"].(string); strings.EqualFold(k, "PORT") {
+					if v, _ := evMap["value"].(string); v != "" {
+						if p, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && p > 0 {
+							port = p
+						}
+					}
+				}
+			}
+		}
 	}
 	rootDomain := getRootDomain()
 

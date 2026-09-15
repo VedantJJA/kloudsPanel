@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -145,10 +146,12 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 		deployerUserID = service.CreatedBy
 	}
 	if deployerUserID != "" {
-		if u, err := h.store.Users().GetByID(context.Background(), deployerUserID); err == nil && u != nil {
-			isAdmin = (u.PlatformRole == domain.PlatformRoleMainAdmin || u.PlatformRole == domain.PlatformRoleAdmin)
+		if h.store.Users() != nil {
+			if u, err := h.store.Users().GetByID(context.Background(), deployerUserID); err == nil && u != nil {
+				isAdmin = (u.PlatformRole == domain.PlatformRoleMainAdmin || u.PlatformRole == domain.PlatformRoleAdmin)
+			}
 		}
-	} else {
+	} else if h.store.Projects() != nil && h.store.Users() != nil {
 		if proj, err := h.store.Projects().GetByID(context.Background(), service.ProjectID); err == nil && proj != nil && proj.CreatedBy != "" {
 			if u, err := h.store.Users().GetByID(context.Background(), proj.CreatedBy); err == nil && u != nil {
 				isAdmin = (u.PlatformRole == domain.PlatformRoleMainAdmin || u.PlatformRole == domain.PlatformRoleAdmin)
@@ -486,7 +489,7 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 						if startCommand == "" && svc.StartCommand != "" {
 							startCommand = svc.StartCommand
 						}
-						if svc.InternalPort > 0 && (service.InternalPort == nil || *service.InternalPort == 80) {
+						if svc.InternalPort > 0 {
 							port = svc.InternalPort
 						}
 						if svc.Preset != "" && (presetId == "" || presetId == "web" || presetId == "custom") {
@@ -1010,6 +1013,14 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 			if dfBytes, err := os.ReadFile(dockerfilePath); err == nil {
 				dfContent := string(dfBytes)
 
+				// Auto-detect listening port from Dockerfile directives (EXPOSE / ENV PORT)
+				if detectedPort := detectPortFromDockerfile(dfContent); detectedPort > 0 {
+					if service.Kind != domain.ServiceKindStatic && presetId != "static" && presetId != "static-spa" && presetId != "nginx" {
+						port = detectedPort
+						appendLog(serviceID, depID, "build", fmt.Sprintf("[port] Auto-detected listening port :%d from Dockerfile (EXPOSE / ENV PORT)", detectedPort))
+					}
+				}
+
 				// Ensure GOTOOLCHAIN=auto is set so Go can auto-download required runtime versions on the fly
 				if strings.Contains(dfContent, "golang") || strings.Contains(dfContent, "go build") || strings.Contains(dfContent, "go mod") {
 					if !strings.Contains(dfContent, "GOTOOLCHAIN") {
@@ -1170,7 +1181,23 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 	// Force port 80 for static sites on container launch
 	if service.Kind == domain.ServiceKindStatic || presetId == "static" || presetId == "static-spa" || presetId == "nginx" {
 		port = 80
+	} else {
+		// Synchronize port with environment variables (PORT, APP_PORT, SERVER_PORT, HTTP_PORT, INTERNAL_PORT)
+		for _, portKey := range []string{"PORT", "APP_PORT", "SERVER_PORT", "HTTP_PORT", "INTERNAL_PORT"} {
+			if val, ok := envMap[portKey]; ok && val != "" {
+				if p, err := strconv.Atoi(strings.TrimSpace(val)); err == nil && p > 0 {
+					if port != p {
+						appendLog(serviceID, depID, "system", fmt.Sprintf("[port] Synchronized routing port to :%d from environment variable %s=%s", p, portKey, val))
+						port = p
+					}
+					break
+				}
+			}
+		}
 	}
+
+	// Ensure envMap["PORT"] matches the finalized port so container and proxy are strictly aligned
+	envMap["PORT"] = fmt.Sprintf("%d", port)
 
 	// Step 5: Stop previous container and run the new container
 	containerName := fmt.Sprintf("paas-svc-%s", service.Slug)
@@ -1231,6 +1258,9 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 		"--label", fmt.Sprintf("traefik.http.routers.%s.entrypoints=websecure", service.Slug),
 		"--label", fmt.Sprintf("traefik.http.routers.%s.tls.certresolver=letsencrypt", service.Slug),
 		"--label", fmt.Sprintf("traefik.http.services.%s.loadbalancer.server.port=%d", service.Slug, port),
+		"--label", fmt.Sprintf("traefik.http.middlewares.%s-retry.retry.attempts=4", service.Slug),
+		"--label", fmt.Sprintf("traefik.http.middlewares.%s-retry.retry.initialinterval=250ms", service.Slug),
+		"--label", fmt.Sprintf("traefik.http.routers.%s.middlewares=%s-retry", service.Slug, service.Slug),
 	)
 
 	for k, v := range envMap {
@@ -1329,6 +1359,21 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 		}
 	}
 
+	// Verify container status via docker inspect
+	inspectOut, inspectErr := exec.Command("docker", "inspect", "--format", "{{.State.Status}}|{{.State.ExitCode}}", containerName).CombinedOutput()
+	if inspectErr == nil {
+		parts := strings.Split(strings.TrimSpace(string(inspectOut)), "|")
+		status := parts[0]
+		exitCode := "0"
+		if len(parts) > 1 {
+			exitCode = parts[1]
+		}
+		if status == "exited" || status == "dead" {
+			h.failDeployment(service, dep, fmt.Sprintf("[runtime] Container crashed or terminated on startup (status: %s, exit code: %s). Check container logs above for details.", status, exitCode))
+			return
+		}
+	}
+
 	appendLog(serviceID, depID, "stdout", fmt.Sprintf("Application '%s' is live and accessible at https://%s.%s", service.Name, service.Slug, rootDomain))
 
 	// Deploy-time readiness gating: wait for linked databases to become ready
@@ -1353,6 +1398,7 @@ func (h *Handler) executeDeployment(service *domain.Service, dep *domain.Deploym
 	dep.FinishedAt = &finishTime
 	_ = h.store.Deployments().Update(context.Background(), dep)
 
+	service.InternalPort = &port
 	service.RuntimeStatus = domain.ServiceStatusRunning
 	service.DesiredState = domain.ServiceDesiredRunning
 	_ = h.store.Services().Update(context.Background(), service)
@@ -1476,4 +1522,24 @@ func (h *Handler) handleGetDeployment(c fiber.Ctx) error {
 
 func (h *Handler) handleCreateTerminalSession(c fiber.Ctx) error {
 	return c.Status(202).JSON(fiber.Map{"grant": "todo"})
+}
+
+// detectPortFromDockerfile scans a Dockerfile for EXPOSE or ENV PORT directives.
+func detectPortFromDockerfile(dfContent string) int {
+	reExpose := regexp.MustCompile(`(?i)^\s*EXPOSE\s+(\d+)`)
+	reEnvPort := regexp.MustCompile(`(?i)^\s*ENV\s+PORT[=\s]+(\d+)`)
+	for _, line := range strings.Split(dfContent, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if m := reExpose.FindStringSubmatch(trimmed); len(m) > 1 {
+			if p, err := strconv.Atoi(m[1]); err == nil && p > 0 {
+				return p
+			}
+		}
+		if m := reEnvPort.FindStringSubmatch(trimmed); len(m) > 1 {
+			if p, err := strconv.Atoi(m[1]); err == nil && p > 0 {
+				return p
+			}
+		}
+	}
+	return 0
 }

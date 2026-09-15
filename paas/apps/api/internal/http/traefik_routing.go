@@ -19,11 +19,11 @@ func getRootDomain() string {
 }
 
 func getDynamicTraefikDirs() []string {
-	var candidates []string
 	if d := os.Getenv("TRAEFIK_DYNAMIC_DIR"); d != "" {
-		candidates = append(candidates, d)
+		_ = os.MkdirAll(d, 0755)
+		return []string{d}
 	}
-	candidates = append(candidates, "/traefik/dynamic", "./paas/deploy/traefik/dynamic", "./deploy/traefik/dynamic")
+	candidates := []string{"/traefik/dynamic", "./paas/deploy/traefik/dynamic", "./deploy/traefik/dynamic"}
 
 	var validDirs []string
 	seen := make(map[string]bool)
@@ -77,6 +77,10 @@ func writeTraefikDynamicConfigWithDomainsRoutesAndSiblings(slug string, port int
 
 	// Primary container backend service
 	servicesYAML.WriteString(fmt.Sprintf("    svc-%s:\n      loadBalancer:\n        servers:\n          - url: \"http://paas-svc-%s:%d\"\n", cleanSlug, cleanSlug, port))
+
+	// Resilient connection retry middleware (prevents 502 Bad Gateway during container boot)
+	retryMwKey := fmt.Sprintf("svc-%s-retry", cleanSlug)
+	middlewaresYAML.WriteString(fmt.Sprintf("    %s:\n      retry:\n        attempts: 4\n        initialInterval: \"250ms\"\n", retryMwKey))
 
 	// Render-Style Redirect & Rewrite Rules
 	for i, r := range routes {
@@ -230,12 +234,12 @@ func writeTraefikDynamicConfigWithDomainsRoutesAndSiblings(slug string, port int
 	for _, fSlug := range siblingStaticSlugs {
 		fSlug = strings.TrimSpace(strings.ToLower(fSlug))
 		if fSlug != "" && fSlug != cleanSlug {
-			routersYAML.WriteString(fmt.Sprintf("    svc-%s-api-proxy-%s:\n      rule: \"Host(`%s.%s`) && PathPrefix(`/api`)\"\n      priority: 150\n      entryPoints:\n        - \"web\"\n        - \"websecure\"\n      tls:\n        certResolver: \"letsencrypt\"\n      service: \"svc-%s\"\n", cleanSlug, fSlug, fSlug, rootDomain, cleanSlug))
+			routersYAML.WriteString(fmt.Sprintf("    svc-%s-api-proxy-%s:\n      rule: \"Host(`%s.%s`) && PathPrefix(`/api`)\"\n      priority: 150\n      middlewares:\n        - \"%s\"\n      entryPoints:\n        - \"web\"\n        - \"websecure\"\n      tls:\n        certResolver: \"letsencrypt\"\n      service: \"svc-%s\"\n", cleanSlug, fSlug, fSlug, rootDomain, retryMwKey, cleanSlug))
 		}
 	}
 
 	// Base fallback router
-	routersYAML.WriteString(fmt.Sprintf("    svc-%s:\n      rule: \"%s\"\n      priority: 10\n      entryPoints:\n        - \"web\"\n        - \"websecure\"\n      tls:\n        certResolver: \"letsencrypt\"\n      service: \"svc-%s\"\n", cleanSlug, baseHostRule, cleanSlug))
+	routersYAML.WriteString(fmt.Sprintf("    svc-%s:\n      rule: \"%s\"\n      priority: 10\n      middlewares:\n        - \"%s\"\n      entryPoints:\n        - \"web\"\n        - \"websecure\"\n      tls:\n        certResolver: \"letsencrypt\"\n      service: \"svc-%s\"\n", cleanSlug, baseHostRule, retryMwKey, cleanSlug))
 
 	var output strings.Builder
 	output.WriteString("http:\n")
